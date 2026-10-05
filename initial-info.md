@@ -138,6 +138,7 @@ C# ASP.NET application
     - BookingController - for all booking creations/amendments
         - GET specific boat details - limited only to necessary boat data for the customer booking
         - POST a new booking - booking dates from the customer facing UI must have validation around Week/Mid-week/Weekend logic. Bookings from admin/internal use must not do so. This can be implemented via dependency injection with a validation strategy pattern
+- To discuss: endpoint to wakeup GCP when a customer clicks the house boat widget button?
 
 ### Frontend
 
