@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  REGION: australia-southeast1
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }} # e.g. berger-harbour
+  IMAGE_BASE: australia-southeast1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  apis:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no JSON keys
+    strategy:
+      matrix:
+        include:
+          - service: public-api
+            project: PublicApi
+            service_account: ${{ vars.PUBLIC_API_SERVICE_ACCOUNT }}
+            max_instances: 3
+            secrets: >-
+              STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,BREVO_API_KEY=brevo-api-key:latest,TURNSTILE_SECRET=turnstile-secret:latest,EDGE_PROXY_SECRET=edge-proxy-secret:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest
+            env_vars: >-
+              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},PUBLIC_BOOKING_BASE_URL=https://book.bergerhouseboats.com.au,CORS_ALLOWED_ORIGIN=https://book.bergerhouseboats.com.au
+          - service: admin-api
+            project: AdminApi
+            service_account: ${{ vars.ADMIN_API_SERVICE_ACCOUNT }}
+            max_instances: 2
+            secrets: >-
+              BREVO_API_KEY=brevo-api-key:latest,EDGE_PROXY_SECRET=edge-proxy-secret:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest,ADMIN_ALLOWED_EMAILS=admin-allowed-emails:latest
+            env_vars: >-
+              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},PUBLIC_BOOKING_BASE_URL=https://book.bergerhouseboats.com.au,CORS_ALLOWED_ORIGIN=https://admin.bergerhouseboats.com.au,CF_ACCESS_TEAM_DOMAIN=${{ vars.CF_ACCESS_TEAM_DOMAIN }},CF_ACCESS_AUD=${{ vars.CF_ACCESS_AUD }},SCHEDULER_SERVICE_ACCOUNT_EMAIL=${{ vars.SCHEDULER_SERVICE_ACCOUNT }},SCHEDULER_AUDIENCE=${{ vars.ADMIN_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          IMAGE=${IMAGE_BASE}/${{ matrix.service }}:${GITHUB_SHA}
+          docker build -f src/BergerHarbour.${{ matrix.project }}/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ matrix.service }} \
+            --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
+            --service-account "${{ matrix.service_account }}" \
+            --ingress all --allow-unauthenticated \
+            --min-instances 0 --max-instances ${{ matrix.max_instances }} \
+            --cpu 1 --memory 512Mi --cpu-boost \
+            --set-secrets "${{ matrix.secrets }}" \
+            --set-env-vars "${{ matrix.env_vars }}"
+
+  pages:
+    needs: apis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Build
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: npm run build -w booking && npm run build -w admin
+      - name: Deploy booking app
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/booking
+          command: pages deploy dist --project-name=berger-booking --branch=main
+      - name: Deploy admin app
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/admin
+          command: pages deploy dist --project-name=berger-admin --branch=main

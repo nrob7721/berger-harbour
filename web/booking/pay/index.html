@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Make a payment — Berger Houseboats</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app__header">
+        <p class="app__brand">Berger Houseboats</p>
+        <h1 class="app__title">Make a payment</h1>
+      </header>
+      <main id="pay" aria-live="polite">
+        <div class="skeleton skeleton--block"></div>
+      </main>
+      <div id="checkout" class="checkout"></div>
+    </div>
+    <script type="module" src="/src/pay.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.vscode/
+node_modules/
+dist/
+.wrangler/
+*.log
+firebase-debug.log
+firestore-debug.log
+.env
+.env.local
+.dev-emails/

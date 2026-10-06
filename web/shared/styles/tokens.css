@@ -1,0 +1,290 @@
+/* Shared design tokens for the booking and admin apps. Contrast meets WCAG AA. */
+:root {
+  --c-ink: #13232f;
+  --c-ink-soft: #3e5566;
+  --c-muted: #5f7383;
+  --c-bg: #f5f8fa;
+  --c-surface: #ffffff;
+  --c-border: #cfdbe3;
+  --c-brand: #0b5c7a;
+  --c-brand-strong: #084860;
+  --c-brand-tint: #e3f1f7;
+  --c-accent: #e0a526;
+  --c-success: #1f7a4d;
+  --c-success-tint: #e3f4ea;
+  --c-warning: #8a5a00;
+  --c-warning-tint: #fff4dc;
+  --c-danger: #b42318;
+  --c-danger-tint: #fdecea;
+  --c-disabled: #eef2f5;
+  --c-disabled-ink: #8b9aa6;
+  --c-focus: #1d7ff0;
+
+  --radius: 8px;
+  --radius-sm: 4px;
+  --shadow: 0 1px 2px rgb(16 35 47 / 8%), 0 4px 16px rgb(16 35 47 / 8%);
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --gutter: 16px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--c-ink);
+  background: var(--c-bg);
+}
+
+body.has-dialog {
+  overflow: hidden;
+}
+
+:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--c-brand);
+}
+
+h1, h2, h3 {
+  line-height: 1.25;
+  margin: 0 0 0.5em;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  min-height: 44px;
+  padding: 0.5em 1.1em;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: var(--c-brand);
+}
+
+.button--primary {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+  color: #fff;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--c-brand-strong);
+}
+
+.button--danger {
+  color: var(--c-danger);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button--small {
+  min-height: 32px;
+  padding: 0.2em 0.7em;
+  font-size: 0.9em;
+}
+
+.icon-button {
+  border: 0;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--c-ink-soft);
+  border-radius: var(--radius);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.field label, .field__label {
+  font-weight: 600;
+}
+
+.field input, .field select, .field textarea {
+  font: inherit;
+  padding: 0.55em 0.7em;
+  min-height: 44px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  width: 100%;
+}
+
+.field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.field--invalid input, .field--invalid select, .field--invalid textarea {
+  border-color: var(--c-danger);
+}
+
+.field__error {
+  color: var(--c-danger);
+  font-size: 0.9em;
+}
+
+.field__hint {
+  color: var(--c-muted);
+  font-size: 0.9em;
+}
+
+.notice {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-border);
+  background: var(--c-brand-tint);
+  margin: 0 0 16px;
+}
+
+.notice--warning {
+  background: var(--c-warning-tint);
+  border-color: #f0d08a;
+  color: #5c3c00;
+}
+
+.notice--error {
+  background: var(--c-danger-tint);
+  border-color: #f3b5ae;
+  color: #7a1a12;
+}
+
+.notice--success {
+  background: var(--c-success-tint);
+  border-color: #a9dcbf;
+  color: #14532f;
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(10 25 35 / 55%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+  z-index: 1000;
+}
+
+.dialog {
+  background: var(--c-surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  width: min(520px, 100%);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog--wide {
+  width: min(960px, 100%);
+}
+
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 0 20px;
+}
+
+.dialog__title {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+.dialog__body {
+  padding: 8px 20px 12px;
+  overflow: auto;
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 20px 20px;
+}
+
+.toast-region {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1100;
+  width: min(480px, calc(100% - 32px));
+}
+
+.toast {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--c-ink);
+  color: #fff;
+  box-shadow: var(--shadow);
+}
+
+.toast--success {
+  background: var(--c-success);
+}
+
+.toast--error {
+  background: var(--c-danger);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e6edf1 25%, #f2f6f8 50%, #e6edf1 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

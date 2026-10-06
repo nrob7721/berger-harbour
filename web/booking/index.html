@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Book a houseboat — Berger Houseboats</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="app__header">
+        <p class="app__brand">Berger Houseboats</p>
+        <h1 class="app__title" id="boat-name"><span class="skeleton skeleton--title"></span></h1>
+      </header>
+
+      <div id="page-notice" role="alert" aria-live="assertive"></div>
+
+      <ol class="progress" id="progress" aria-label="Booking progress">
+        <li data-step="dates">Dates</li>
+        <li data-step="guests">Guests</li>
+        <li data-step="addons">Add-ons</li>
+        <li data-step="details">Your details</li>
+        <li data-step="summary">Summary</li>
+        <li data-step="payment">Payment</li>
+      </ol>
+
+      <main id="main">
+        <!-- Step 0: loading skeleton -->
+        <section class="step step--active" data-step="loading" aria-busy="true" aria-label="Loading">
+          <div class="skeleton skeleton--block"></div>
+          <div class="skeleton skeleton--calendar"></div>
+        </section>
+
+        <!-- Step 1: dates -->
+        <section class="step" data-step="dates" aria-labelledby="dates-title">
+          <h2 id="dates-title">Choose your dates</h2>
+          <fieldset class="period-options" id="period-options">
+            <legend>Type of stay</legend>
+            <label class="radio-card">
+              <input type="radio" name="periodType" value="Midweek" checked />
+              <span><strong>Mid-week</strong> <span class="muted">(Mon–Fri)</span></span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="periodType" value="Weekend" />
+              <span><strong>Weekend</strong> <span class="muted">(Fri–Mon)</span></span>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="periodType" value="Week" />
+              <span><strong>Week</strong> <span class="muted">(Mon–Mon or Fri–Fri)</span></span>
+            </label>
+          </fieldset>
+          <p class="times">Check-in from <strong id="check-in-time">1:00pm</strong> · Check-out by <strong id="check-out-time">8:00am</strong></p>
+          <div id="calendar"></div>
+          <ul class="legend" aria-label="Calendar legend">
+            <li><span class="swatch swatch--available"></span>Available</li>
+            <li><span class="swatch swatch--selected"></span>Your stay</li>
+            <li><span class="swatch swatch--taken"></span>Unavailable</li>
+            <li><span class="swatch swatch--enquire"></span>Phone or email to book</li>
+          </ul>
+          <p class="selection-summary" id="selection-summary" aria-live="polite"></p>
+          <div class="step__nav">
+            <span></span>
+            <button type="button" class="button button--primary" data-next disabled>Next</button>
+          </div>
+        </section>
+
+        <!-- Step 2: guests -->
+        <section class="step" data-step="guests" aria-labelledby="guests-title">
+          <h2 id="guests-title">Guests</h2>
+          <div class="field">
+            <label for="guests">Number of guests</label>
+            <select id="guests" required><option value="">Choose…</option></select>
+            <span class="field__hint" id="bedding-hint"></span>
+          </div>
+          <fieldset class="field" id="group-question">
+            <legend class="field__label">Is your group an under-30s group or an all-male group?</legend>
+            <label class="inline-choice"><input type="radio" name="group" value="no" /> No</label>
+            <label class="inline-choice"><input type="radio" name="group" value="yes" /> Yes</label>
+          </fieldset>
+          <div id="group-message"></div>
+          <div class="step__nav">
+            <button type="button" class="button" data-back>Back</button>
+            <button type="button" class="button button--primary" data-next disabled>Next</button>
+          </div>
+        </section>
+
+        <!-- Step 3: add-ons -->
+        <section class="step" data-step="addons" aria-labelledby="addons-title">
+          <h2 id="addons-title">Add-ons</h2>
+          <p class="notice">Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance.</p>
+          <ul class="addon-list" id="addon-list"></ul>
+          <div class="step__nav">
+            <button type="button" class="button" data-back>Back</button>
+            <button type="button" class="button button--primary" data-next>Next</button>
+          </div>
+        </section>
+
+        <!-- Step 4: details -->
+        <section class="step" data-step="details" aria-labelledby="details-title">
+          <h2 id="details-title">Your details</h2>
+          <form id="details-form" novalidate>
+            <div class="field" data-field="fullName">
+              <label for="fullName">Full name</label>
+              <input id="fullName" name="fullName" autocomplete="name" required maxlength="200" />
+            </div>
+            <div class="field" data-field="email">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" />
+            </div>
+            <div class="field" data-field="mobile">
+              <label for="mobile">Mobile number</label>
+              <input id="mobile" name="mobile" type="tel" autocomplete="tel" required maxlength="30" />
+            </div>
+            <div class="field" data-field="termsAccepted">
+              <label class="inline-choice">
+                <input type="checkbox" id="terms" required />
+                <span>I accept the <a id="terms-link" href="#" target="_blank" rel="noopener">Hire Terms and Procedures</a></span>
+              </label>
+            </div>
+            <div class="field" data-field="turnstileToken">
+              <div id="turnstile"></div>
+            </div>
+          </form>
+          <div class="step__nav">
+            <button type="button" class="button" data-back>Back</button>
+            <button type="button" class="button button--primary" data-next>Review booking</button>
+          </div>
+        </section>
+
+        <!-- Step 5: summary -->
+        <section class="step" data-step="summary" aria-labelledby="summary-title">
+          <h2 id="summary-title">Summary</h2>
+          <div id="summary"></div>
+          <div class="step__nav">
+            <button type="button" class="button" data-back>Back</button>
+            <button type="button" class="button button--primary" id="pay-button">Pay</button>
+          </div>
+        </section>
+
+        <!-- Step 6: payment -->
+        <section class="step" data-step="payment" aria-labelledby="payment-title">
+          <h2 id="payment-title">Payment</h2>
+          <p class="muted" id="payment-hold"></p>
+          <div id="checkout" class="checkout"></div>
+        </section>
+
+        <!-- Step 7: complete -->
+        <section class="step" data-step="complete" aria-labelledby="complete-title">
+          <h2 id="complete-title">Thank you</h2>
+          <div id="complete" aria-live="polite"></div>
+          <div class="step__nav">
+            <span></span>
+            <button type="button" class="button button--primary" id="close-button" hidden>Close</button>
+          </div>
+        </section>
+
+        <!-- Unknown boat -->
+        <section class="step" data-step="error">
+          <div class="notice notice--error" id="fatal-error"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Firebase CLI (Firestore emulator)
+        run: npm install -g firebase-tools
+      - name: Build
+        run: dotnet build BergerHarbour.slnx -c Release
+      - name: OpenAPI documents are up to date
+        run: git diff --exit-code -- web/shared/openapi
+      - name: Unit tests
+        run: |
+          dotnet test tests/BergerHarbour.Domain.Tests -c Release --no-build
+          dotnet test tests/BergerHarbour.Application.Tests -c Release --no-build
+      - name: Integration tests (Firestore emulator)
+        run: firebase emulators:exec --only firestore --project demo-berger-harbour "dotnet test tests/BergerHarbour.Infrastructure.IntegrationTests -c Release --no-build"
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Generated API types are up to date
+        run: npm run gen:api && git diff --exit-code -- shared/src/api
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build -w booking && npm run build -w admin

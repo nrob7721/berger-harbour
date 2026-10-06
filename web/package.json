@@ -1,0 +1,30 @@
+{
+  "name": "berger-harbour-web",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "booking",
+    "admin"
+  ],
+  "scripts": {
+    "gen:api": "openapi-typescript shared/openapi/public-api.json -o shared/src/api/public.d.ts && openapi-typescript shared/openapi/admin-api.json -o shared/src/api/admin.d.ts",
+    "typecheck": "tsc -p shared --noEmit && tsc -p booking --noEmit && tsc -p admin --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "build": "npm run gen:api && npm run typecheck && npm run build -w booking && npm run build -w admin",
+    "dev:booking": "npm run dev -w booking",
+    "dev:admin": "npm run dev -w admin"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.4.4",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

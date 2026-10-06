@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BergerHarbour.AdminApi/BergerHarbour.AdminApi.csproj" />
+    <Project Path="src/BergerHarbour.Application/BergerHarbour.Application.csproj" />
+    <Project Path="src/BergerHarbour.Domain/BergerHarbour.Domain.csproj" />
+    <Project Path="src/BergerHarbour.Infrastructure/BergerHarbour.Infrastructure.csproj" />
+    <Project Path="src/BergerHarbour.PublicApi/BergerHarbour.PublicApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BergerHarbour.Application.Tests/BergerHarbour.Application.Tests.csproj" />
+    <Project Path="tests/BergerHarbour.Domain.Tests/BergerHarbour.Domain.Tests.csproj" />
+    <Project Path="tests/BergerHarbour.Infrastructure.IntegrationTests/BergerHarbour.Infrastructure.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,464 @@
+@import '../../shared/styles/tokens.css';
+
+.app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px var(--gutter) 32px;
+}
+
+.app__header {
+  margin-bottom: 12px;
+}
+
+.app__brand {
+  margin: 0;
+  color: var(--c-brand);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.app__title {
+  font-size: 1.6rem;
+  margin: 0;
+  min-height: 1.3em;
+}
+
+.app--inactive main,
+.app--inactive .progress {
+  filter: grayscale(1);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.muted {
+  color: var(--c-muted);
+}
+
+.skeleton--title {
+  display: inline-block;
+  width: 60%;
+  height: 1.2em;
+}
+
+.skeleton--block {
+  height: 48px;
+  margin: 16px 0;
+}
+
+.skeleton--calendar {
+  height: 320px;
+}
+
+/* ---- Progress ---- */
+
+.progress {
+  display: flex;
+  gap: 4px;
+  padding: 0;
+  margin: 0 0 20px;
+  list-style: none;
+  counter-reset: step;
+  overflow-x: auto;
+}
+
+.progress li {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 4px 8px;
+  border-bottom: 4px solid var(--c-border);
+  color: var(--c-muted);
+  font-size: 0.82rem;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  counter-increment: step;
+}
+
+.progress li::before {
+  content: counter(step) '. ';
+}
+
+.progress li[aria-current='step'] {
+  border-color: var(--c-brand);
+  color: var(--c-ink);
+  font-weight: 700;
+}
+
+.progress__item--done {
+  border-color: var(--c-success) !important;
+  color: var(--c-success) !important;
+}
+
+/* ---- Steps ---- */
+
+.step {
+  display: none;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.step--active {
+  display: block;
+}
+
+.step h2 {
+  font-size: 1.3rem;
+}
+
+.step h2:focus {
+  outline: none;
+}
+
+.step__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+/* ---- Dates ---- */
+
+.period-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.period-options legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.radio-card {
+  flex: 1 1 200px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.radio-card:has(input:checked) {
+  border-color: var(--c-brand);
+  background: var(--c-brand-tint);
+}
+
+.times {
+  margin: 0 0 12px;
+}
+
+.calendar {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.calendar--disabled {
+  opacity: 0.6;
+}
+
+.calendar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.calendar__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.calendar__grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  table-layout: fixed;
+}
+
+.calendar__grid th {
+  font-size: 0.8rem;
+  color: var(--c-muted);
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.calendar__grid td {
+  padding: 0;
+  text-align: center;
+}
+
+.day {
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  aspect-ratio: 1 / 0.9;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--c-ink);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+.day--available .day__number {
+  font-weight: 600;
+}
+
+.day--available:hover .day__number {
+  text-decoration: underline;
+}
+
+.day[aria-disabled='true'] {
+  cursor: default;
+  color: var(--c-disabled-ink);
+  background: var(--c-disabled);
+}
+
+.day--taken[aria-disabled='true'] .day__number {
+  text-decoration: line-through;
+}
+
+.day--blocked,
+.day--enquire {
+  background: repeating-linear-gradient(135deg, #f3ead6, #f3ead6 6px, #fbf5e8 6px, #fbf5e8 12px);
+  color: #6b4b00;
+}
+
+.day--enquire {
+  cursor: help;
+}
+
+.day--selected {
+  background: var(--c-brand-tint);
+  color: var(--c-ink);
+}
+
+.day--check-in,
+.day--check-out {
+  background: var(--c-brand);
+  color: #fff;
+}
+
+.day--check-in {
+  border-radius: 999px 0 0 999px;
+}
+
+.day--check-out {
+  border-radius: 0 999px 999px 0;
+}
+
+.day--check-in .day__number,
+.day--check-out .day__number {
+  font-weight: 700;
+}
+
+.day__marker {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--c-ink-soft);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+
+.swatch--available {
+  background: var(--c-surface);
+}
+
+.swatch--selected {
+  background: var(--c-brand);
+}
+
+.swatch--taken {
+  background: var(--c-disabled);
+}
+
+.swatch--enquire {
+  background: repeating-linear-gradient(135deg, #f3ead6, #f3ead6 3px, #fbf5e8 3px, #fbf5e8 6px);
+}
+
+.selection-summary {
+  min-height: 1.5em;
+  font-weight: 600;
+  margin: 12px 0 0;
+}
+
+/* ---- Guests & add-ons ---- */
+
+.inline-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 20px;
+  min-height: 44px;
+  font-weight: 400;
+}
+
+.inline-choice input {
+  width: 20px;
+  height: 20px;
+}
+
+fieldset.field {
+  border: 0;
+  padding: 0;
+}
+
+.addon-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.addon {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'check label price' 'check label qty';
+  gap: 4px 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.addon > input[type='checkbox'] {
+  grid-area: check;
+  width: 22px;
+  height: 22px;
+}
+
+.addon__label {
+  grid-area: label;
+  display: flex;
+  flex-direction: column;
+}
+
+.addon__price {
+  grid-area: price;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.addon__qty {
+  grid-area: qty;
+  width: 80px;
+  justify-self: end;
+  font: inherit;
+  padding: 4px 8px;
+  min-height: 36px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+}
+
+/* ---- Summary ---- */
+
+.summary {
+  margin: 0 0 16px;
+}
+
+.summary__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.summary dt {
+  font-weight: 600;
+  color: var(--c-ink-soft);
+}
+
+.summary dd {
+  margin: 0;
+}
+
+.summary__due {
+  font-size: 1.15rem;
+}
+
+.plain-list {
+  margin: 0;
+  padding-left: 1.1em;
+}
+
+.checkout {
+  min-height: 200px;
+}
+
+@media (max-width: 480px) {
+  .step {
+    padding: 16px 12px;
+  }
+
+  .app__title {
+    font-size: 1.3rem;
+  }
+
+  .progress li {
+    font-size: 0;
+  }
+
+  .progress li::before {
+    font-size: 0.8rem;
+  }
+
+  .progress li[aria-current='step'] {
+    flex: 3 1 0;
+    font-size: 0.8rem;
+  }
+
+  .summary__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .addon {
+    grid-template-columns: auto 1fr;
+    grid-template-areas: 'check label' 'check price' 'check qty';
+  }
+
+  .addon__price,
+  .addon__qty {
+    justify-self: start;
+    text-align: left;
+  }
+}
