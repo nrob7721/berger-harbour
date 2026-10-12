@@ -108,13 +108,16 @@ public sealed class SettingsService(
 
     // ---- Add-ons --------------------------------------------------------------------------------------------------
 
+    /// <summary>In the admin-defined order (used everywhere add-ons are listed).</summary>
     public async Task<IReadOnlyList<AddonDto>> ListAddonsAsync(CancellationToken ct = default) =>
-        (await addons.ListAsync(ct)).OrderBy(a => a.Name).Select(ToDto).ToList();
+        AddonCatalogue.InDisplayOrder(await addons.ListAsync(ct)).Select(ToDto).ToList();
 
+    /// <summary>New add-ons go to the end of the order.</summary>
     public async Task<AddonDto> CreateAddonAsync(AddonRequest request, CancellationToken ct = default)
     {
         var addon = AddonDefinition.Create(request.Name, request.Description, request.PriceOnRequest, Prices(request),
-            request.QuantityApplies);
+            request.QuantityApplies, request.Capacity, request.CapacityUnitLabel,
+            AddonCatalogue.NextSortOrder(await addons.ListAsync(ct)));
         if (!request.IsActive)
         {
             addon.Deactivate();
@@ -128,7 +131,8 @@ public sealed class SettingsService(
     {
         var addon = await addons.GetAsync(new AddonId(id), ct) ?? throw new NotFoundException("Add-on not found.");
         addon.EnsureVersion(request.Version);
-        addon.Update(request.Name, request.Description, request.PriceOnRequest, Prices(request), request.QuantityApplies);
+        addon.Update(request.Name, request.Description, request.PriceOnRequest, Prices(request), request.QuantityApplies,
+            request.Capacity, request.CapacityUnitLabel);
         if (request.IsActive)
         {
             addon.Activate();
@@ -151,6 +155,18 @@ public sealed class SettingsService(
         await addons.SaveAsync(addon, ct);
     }
 
+    /// <summary>Rewrites the order from the full ordered list of ids (the ▲/▼ buttons). Returns the new order.</summary>
+    public async Task<IReadOnlyList<AddonDto>> ReorderAddonsAsync(AddonOrderRequest request, CancellationToken ct = default)
+    {
+        var all = await addons.ListAsync(ct);
+        foreach (var addon in AddonCatalogue.Reorder(all, (request.AddonIds ?? []).Select(id => new AddonId(id)).ToList()))
+        {
+            await addons.SaveAsync(addon, ct);
+        }
+
+        return AddonCatalogue.InDisplayOrder(all).Select(ToDto).ToList();
+    }
+
     private static AddonPrices? Prices(AddonRequest request) =>
         request.PriceOnRequest || request.Prices is null
             ? null
@@ -159,7 +175,8 @@ public sealed class SettingsService(
     // ---- Email templates ------------------------------------------------------------------------------------------
 
     public async Task<EmailTemplatesDto> ListTemplatesAsync(CancellationToken ct = default) =>
-        new((await templates.ListAsync(ct)).OrderBy(t => t.Key).Select(ToDto).ToList(), EmailPlaceholders.All);
+        new((await templates.ListAsync(ct)).OrderBy(t => t.Key).Select(ToDto).ToList(), EmailPlaceholders.All,
+            EmailPlaceholders.Sections);
 
     public async Task<EmailTemplateDto> UpdateTemplateAsync(EmailTemplateKey key, EmailTemplateRequest request,
         CancellationToken ct = default)
@@ -185,7 +202,8 @@ public sealed class SettingsService(
         new(p.Id.Value, p.Version, p.Name, p.Nights.FirstNight, p.Nights.LastNight, p.UsesExtendedPaymentSchedule);
 
     private static AddonDto ToDto(AddonDefinition a) => new(a.Id.Value, a.Version, a.Name, a.Description, a.PriceOnRequest,
-        a.Prices is { } p ? new AddonPricesDto(p.Midweek, p.Weekend, p.Week) : null, a.QuantityApplies, a.IsActive);
+        a.Prices is { } p ? new AddonPricesDto(p.Midweek, p.Weekend, p.Week) : null, a.QuantityApplies, a.Capacity,
+        a.CapacityUnitLabel, a.IsActive);
 
     private static EmailTemplateDto ToDto(EmailTemplate t) => new(t.Key, t.Version, t.Subject, t.HtmlBody);
 }

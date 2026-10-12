@@ -17,10 +17,11 @@ public sealed class FleetService(
     IBoatScheduleLock scheduleLock,
     IClock clock)
 {
+    /// <summary>Ordered by max guests (largest first), then name.</summary>
     public async Task<IReadOnlyList<BoatSummaryDto>> ListAsync(CancellationToken ct = default) =>
-        (await boats.ListAsync(ct)).OrderBy(b => b.Name)
-        .Select(b => new BoatSummaryDto(b.Id.Value, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.NoOfBeds, b.IsActive))
-        .ToList();
+        Boat.InDisplayOrder(await boats.ListAsync(ct))
+            .Select(b => new BoatSummaryDto(b.Id.Value, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.AdultBeds, b.KidsBeds, b.IsActive))
+            .ToList();
 
     public async Task<BoatDetailDto> GetAsync(string id, CancellationToken ct = default) =>
         ToDto(await LoadAsync(id, ct), await seasons.ListAsync(ct));
@@ -127,8 +128,8 @@ public sealed class FleetService(
         }
 
         errors.ThrowIfInvalid();
-        boat.UpdateDetails(request.Name, request.Slug, request.MaxNoOfGuests, request.NoOfBeds, request.BeddingDescription,
-            request.SecurityBond, now);
+        boat.UpdateDetails(request.Name, request.Slug, request.MaxNoOfGuests, request.AdultBeds, request.KidsBeds,
+            request.BeddingDescription, request.SecurityBond, request.DepositAmount, now);
         boat.SetRates((request.Rates ?? []).Select(r => new BoatRate(new SeasonId(r.SeasonId), r.PeriodType, r.Price)), now);
         boat.SetAllowedAddons((request.AllowedAddonIds ?? []).Select(a => new AddonId(a)), now);
         if (request.IsActive && !boat.IsActive)
@@ -157,8 +158,8 @@ public sealed class FleetService(
         await boats.GetAsync(new BoatId(id ?? string.Empty), ct) ?? throw new NotFoundException("Boat not found.");
 
     private static BoatDetailDto ToDto(Boat b, IReadOnlyList<Season> allSeasons) => new(
-        b.Id.Value, b.Version, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.NoOfBeds, b.BeddingDescription, b.SecurityBond,
-        b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
+        b.Id.Value, b.Version, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.AdultBeds, b.KidsBeds, b.BeddingDescription,
+        b.SecurityBond, b.DepositAmount, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
         b.AllowedAddonIds.Select(a => a.Value).ToList(), b.IsActive, b.MissingActivationData(allSeasons), b.CreatedDate,
         b.ModifiedDate);
 

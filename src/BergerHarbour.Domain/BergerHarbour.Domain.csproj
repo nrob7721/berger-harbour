@@ -3,4 +3,8 @@
   <PropertyGroup>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.41" />
+  </ItemGroup>
+
 </Project>

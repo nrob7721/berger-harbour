@@ -4,6 +4,49 @@
  */
 
 export interface paths {
+    "/api/addons/{addonId}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    startDate?: string;
+                    endDate?: string;
+                    excludeBookingId?: string;
+                };
+                header?: never;
+                path: {
+                    addonId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonAvailabilityDto"];
+                        "application/json": components["schemas"]["AddonAvailabilityDto"];
+                        "text/json": components["schemas"]["AddonAvailabilityDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boats": {
         parameters: {
             query?: never;
@@ -488,6 +531,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bookings/{id}/rebook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["RebookDto"];
+                        "application/json": components["schemas"]["RebookDto"];
+                        "text/json": components["schemas"]["RebookDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bookings/{id}/recalculate-price": {
         parameters: {
             query?: never;
@@ -800,6 +882,45 @@ export interface paths {
                         "text/plain": components["schemas"]["CustomerDto"];
                         "application/json": components["schemas"]["CustomerDto"];
                         "text/json": components["schemas"]["CustomerDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/customers/{id}/bookings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["CustomerBookingDto"][];
+                        "application/json": components["schemas"]["CustomerBookingDto"][];
+                        "text/json": components["schemas"]["CustomerBookingDto"][];
                     };
                 };
             };
@@ -1200,6 +1321,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/addons/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AddonOrderRequest"];
+                    "text/json": components["schemas"]["AddonOrderRequest"];
+                    "application/*+json": components["schemas"]["AddonOrderRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"][];
+                        "application/json": components["schemas"]["AddonDto"][];
+                        "text/json": components["schemas"]["AddonDto"][];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/addons/{id}": {
         parameters: {
             query?: never;
@@ -1394,6 +1558,13 @@ export interface components {
             /** Format: int32 */
             quantity: number;
         };
+        AddonAvailabilityDto: {
+            addonId: string;
+            /** Format: int32 */
+            capacity: number;
+            /** Format: int32 */
+            remaining: number;
+        };
         AddonDto: {
             id: string;
             /** Format: int32 */
@@ -1403,6 +1574,9 @@ export interface components {
             priceOnRequest: boolean;
             prices: null | components["schemas"]["AddonPricesDto"];
             quantityApplies: boolean;
+            /** Format: int32 */
+            capacity: null | number;
+            capacityUnitLabel: null | string;
             isActive: boolean;
         };
         AddonLineDto: {
@@ -1413,12 +1587,16 @@ export interface components {
             quantity: number;
             /** Format: double */
             unitPrice: null | number;
-            status: components["schemas"]["AddonLineStatus"];
             /** Format: double */
             lineTotal: null | number;
+            /** Format: int32 */
+            remaining: null | number;
+            /** Format: int32 */
+            capacity: null | number;
         };
-        /** @enum {unknown} */
-        AddonLineStatus: "Requested" | "Confirmed" | "Declined";
+        AddonOrderRequest: {
+            addonIds: string[];
+        };
         AddonPricesDto: {
             /** Format: double */
             midweek: number;
@@ -1435,7 +1613,17 @@ export interface components {
             priceOnRequest: boolean;
             prices: null | components["schemas"]["AddonPricesDto"];
             quantityApplies: boolean;
+            /** Format: int32 */
+            capacity: null | number;
+            capacityUnitLabel: null | string;
             isActive: boolean;
+        };
+        AdminAddonLineRequest: {
+            addonId: string;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            unitPrice: null | number;
         };
         AdminBookingRequest: {
             boatId: string;
@@ -1445,14 +1633,28 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             /** Format: int32 */
-            numberOfGuests: number;
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkInTime: null | string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkOutTime: null | string;
             email: null | string;
             fullName: null | string;
             phone: null | string;
+            secondaryPhone: null | string;
             isStandby: boolean;
             comments: null | string;
             /** Format: double */
             hirePrice: null | number;
+            addons: null | components["schemas"]["AdminAddonLineRequest"][];
         };
         AdminBookingUpdateRequest: {
             /** Format: int32 */
@@ -1464,10 +1666,23 @@ export interface components {
             /** Format: date */
             endDate: null | string;
             /** Format: int32 */
-            numberOfGuests: number;
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkInTime: null | string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkOutTime: null | string;
             email: null | string;
             fullName: null | string;
             phone: null | string;
+            secondaryPhone: null | string;
             isStandby: boolean;
             comments: null | string;
             /** Format: double */
@@ -1514,10 +1729,14 @@ export interface components {
             /** Format: int32 */
             maxNoOfGuests: number;
             /** Format: int32 */
-            noOfBeds: null | number;
+            adultBeds: null | number;
+            /** Format: int32 */
+            kidsBeds: null | number;
             beddingDescription: null | string;
             /** Format: double */
             securityBond: number;
+            /** Format: double */
+            depositAmount: null | number;
             rates: components["schemas"]["BoatRateDto"][];
             allowedAddonIds: string[];
             isActive: boolean;
@@ -1541,7 +1760,9 @@ export interface components {
             /** Format: int32 */
             maxNoOfGuests: number;
             /** Format: int32 */
-            noOfBeds: null | number;
+            adultBeds: null | number;
+            /** Format: int32 */
+            kidsBeds: null | number;
             isActive: boolean;
         };
         /** @enum {unknown} */
@@ -1554,16 +1775,25 @@ export interface components {
             /** Format: int32 */
             maxNoOfGuests: number;
             /** Format: int32 */
-            noOfBeds: null | number;
+            adultBeds: null | number;
+            /** Format: int32 */
+            kidsBeds: null | number;
             beddingDescription: null | string;
             /** Format: double */
             securityBond: number;
+            /** Format: double */
+            depositAmount: null | number;
             rates: null | components["schemas"]["BoatRateDto"][];
             allowedAddonIds: null | string[];
             isActive: boolean;
         };
         /** @enum {unknown} */
         BookingCreatedBy: "Customer" | "SystemUser";
+        BookingCustomerDetailsDto: {
+            fullName: string;
+            email: string;
+            mobileNumber: string;
+        };
         BookingDetailDto: {
             id: string;
             /** Format: int32 */
@@ -1580,14 +1810,29 @@ export interface components {
             /** Format: date */
             endDate: string;
             /** Format: int32 */
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
+            /** Format: int32 */
             numberOfGuests: number;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkInTime: string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkOutTime: string;
             comments: null | string;
             /** Format: double */
             hirePrice: number;
             /** Format: double */
             depositAmount: number;
             paymentSchedule: components["schemas"]["PaymentSchedule"];
-            customer: components["schemas"]["CustomerDto"];
+            customer: null | components["schemas"]["CustomerDto"];
+            customerDetails: null | components["schemas"]["BookingCustomerDetailsDto"];
             addonLines: components["schemas"]["AddonLineDto"][];
             payments: components["schemas"]["PaymentDto"][];
             /** Format: double */
@@ -1611,8 +1856,8 @@ export interface components {
             /** Format: date-time */
             roomingWarningAcceptedAt: null | string;
             roomingWarningText: null | string;
-            groupRestrictionDeclaredNotApplicable: null | boolean;
             sentNotifications: components["schemas"]["SentNotification"][];
+            warnings: string[];
         };
         BookingSearchResultDto: {
             id: string;
@@ -1643,11 +1888,26 @@ export interface components {
             contactEmail: string;
             hireTermsUrl: string;
         };
+        CustomerBookingDto: {
+            id: string;
+            reference: string;
+            boatId: string;
+            boatName: string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            periodType: components["schemas"]["PeriodType"];
+            status: components["schemas"]["BookingStatus"];
+            isStandby: boolean;
+            paymentStatus: components["schemas"]["PaymentStatus"];
+        };
         CustomerDto: {
             id: string;
             fullName: string;
             email: string;
             mobileNumber: null | string;
+            secondaryPhone: null | string;
             /** Format: date-time */
             createdDate: string;
         };
@@ -1659,7 +1919,7 @@ export interface components {
             htmlBody: string;
         };
         /** @enum {unknown} */
-        EmailTemplateKey: "BookingConfirmed" | "StaffNewOnlineBooking" | "PaymentDue" | "PaymentReceived" | "PreHireInstructions" | "StaffBalanceOverdue" | "StaffStandbySuperseded";
+        EmailTemplateKey: "BookingConfirmed" | "StaffNewOnlineBooking" | "PaymentDue" | "PaymentReceived" | "PreHireInstructions" | "StaffBalanceOverdue" | "StaffStandbySuperseded" | "StaffAbandonedBooking";
         EmailTemplateRequest: {
             /** Format: int32 */
             version: number;
@@ -1669,6 +1929,7 @@ export interface components {
         EmailTemplatesDto: {
             templates: components["schemas"]["EmailTemplateDto"][];
             placeholders: string[];
+            sections: string[];
         };
         ManualPaymentRequest: {
             /** Format: int32 */
@@ -1688,6 +1949,7 @@ export interface components {
             requiredCumulative: number;
             /** Format: date */
             dueDate: null | string;
+            dueNow: boolean;
         };
         /** @enum {unknown} */
         MilestoneKind: "Deposit" | "Balance" | "FirstInstalment" | "Final";
@@ -1712,6 +1974,44 @@ export interface components {
         PaymentStatus: "Outstanding" | "DepositPaid" | "PartPaid" | "FullyPaid";
         /** @enum {unknown} */
         PeriodType: "Midweek" | "Weekend" | "Week" | "LongWeekend" | "Custom";
+        RebookAddonDto: {
+            addonId: string;
+            name: string;
+            /** Format: int32 */
+            quantity: number;
+            /** Format: double */
+            unitPrice: null | number;
+        };
+        RebookDto: {
+            originalReference: string;
+            boatId: string;
+            periodType: components["schemas"]["PeriodType"];
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            /** Format: int32 */
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkInTime: string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkOutTime: string;
+            email: null | string;
+            fullName: null | string;
+            phone: null | string;
+            secondaryPhone: null | string;
+            /** Format: double */
+            hirePrice: null | number;
+            addons: components["schemas"]["RebookAddonDto"][];
+        };
         SeasonDto: {
             id: string;
             /** Format: int32 */
@@ -1751,6 +2051,8 @@ export interface components {
         TimelineBoatDto: {
             id: string;
             name: string;
+            /** Format: int32 */
+            maxNoOfGuests: number;
             isActive: boolean;
         };
         TimelineBookingDto: {
@@ -1817,7 +2119,6 @@ export interface components {
             quantity: number;
             /** Format: double */
             unitPrice: null | number;
-            status: components["schemas"]["AddonLineStatus"];
         };
         VersionRequest: {
             /** Format: int32 */

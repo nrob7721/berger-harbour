@@ -1,6 +1,9 @@
 using BergerHarbour.Application.Boats;
 using BergerHarbour.Application.Bookings;
 using BergerHarbour.Application.Common;
+using BergerHarbour.Application.Customers;
+using BergerHarbour.Application.Payments;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 
@@ -8,16 +11,19 @@ namespace BergerHarbour.Application.Tests;
 
 public class AdminBookingTests
 {
-    private static AdminBookingRequest Request(DateOnly start, int nights = 4, bool standby = false,
-        string email = "jane@example.com", decimal? price = null, PeriodType type = PeriodType.Custom) =>
-        new("pacific-blue", type, start, start.AddDays(nights), 4, email, "Jane Citizen", null, standby, null,
-            price ?? (type == PeriodType.Custom ? 4000m : null));
+    internal static AdminBookingRequest Request(DateOnly start, int nights = 4, bool standby = false,
+        string email = "jane@example.com", decimal? price = null, PeriodType type = PeriodType.Custom, int adults = 3,
+        int children = 1, string boatId = "pacific-blue") =>
+        new(boatId, type, start, start.AddDays(nights), adults, children, null, null, email, "Jane Citizen", null, null,
+            standby, null, price ?? (type == PeriodType.Custom ? 4000m : null), null);
 
-    private static AdminBookingUpdateRequest Update(BookingDetailDto b, BookingStatus? status = null, DateOnly? start = null,
+    internal static AdminBookingUpdateRequest Update(BookingDetailDto b, BookingStatus? status = null, DateOnly? start = null,
         bool? standby = null, int? version = null) =>
-        new(version ?? b.Version, b.BoatId, b.PeriodType, start ?? b.StartDate, (start ?? b.StartDate).AddDays(b.EndDate.DayNumber - b.StartDate.DayNumber),
-            b.NumberOfGuests, b.Customer.Email, b.Customer.FullName, b.Customer.MobileNumber, standby ?? b.IsStandby, b.Comments,
-            b.HirePrice, status ?? b.Status);
+        new(version ?? b.Version, b.BoatId, b.PeriodType, start ?? b.StartDate,
+            (start ?? b.StartDate).AddDays(b.EndDate.DayNumber - b.StartDate.DayNumber), b.NumberOfAdults, b.NumberOfChildren,
+            b.CheckInTime, b.CheckOutTime, b.Customer?.Email ?? b.CustomerDetails?.Email,
+            b.Customer?.FullName ?? b.CustomerDetails?.FullName, b.Customer?.MobileNumber, b.Customer?.SecondaryPhone,
+            standby ?? b.IsStandby, b.Comments, b.HirePrice, status ?? b.Status);
 
     [Fact]
     public async Task Staff_booking_is_active_immediately_and_sends_the_confirmation()
@@ -26,7 +32,61 @@ public class AdminBookingTests
         var booking = await app.Get<AdminBookingService>().CreateAsync(Request(app.MondayAfter(10)));
         Assert.Equal(BookingStatus.Active, booking.Status);
         Assert.Equal(BookingCreatedBy.SystemUser, booking.CreatedBy);
+        Assert.Equal((3, 1, 4), (booking.NumberOfAdults, booking.NumberOfChildren, booking.NumberOfGuests));
+        Assert.Equal((new TimeOnly(11, 0), new TimeOnly(8, 0)), (booking.CheckInTime, booking.CheckOutTime));
+        Assert.Equal(1000m, booking.DepositAmount);
+        Assert.Null(booking.Customer!.SecondaryPhone);
         Assert.Single(app.Emails.Sent, m => m.To == "jane@example.com" && m.Subject.Contains("confirmed"));
+    }
+
+    [Fact]
+    public async Task Staff_record_custom_times_and_a_secondary_phone()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var booking = await admin.CreateAsync(Request(app.MondayAfter(10)) with
+        {
+            CheckInTime = new TimeOnly(9, 30), CheckOutTime = new TimeOnly(10, 0), Phone = "0412 345 678",
+            SecondaryPhone = "+44 7911 123456",
+        });
+        Assert.Equal((new TimeOnly(9, 30), new TimeOnly(10, 0)), (booking.CheckInTime, booking.CheckOutTime));
+        Assert.Equal(("+61412345678", "+447911123456"), (booking.Customer!.MobileNumber, booking.Customer.SecondaryPhone));
+
+        var cleared = await admin.UpdateAsync(booking.Id, Update(booking) with { SecondaryPhone = null });
+        Assert.Null(cleared.Customer!.SecondaryPhone);
+
+        var ex = await Assert.ThrowsAsync<RequestValidationException>(() =>
+            admin.UpdateAsync(booking.Id, Update(cleared) with { SecondaryPhone = "12" }));
+        Assert.True(ex.Errors.ContainsKey("secondaryPhone"));
+    }
+
+    [Fact]
+    public async Task Guest_and_bed_limits_are_only_warnings_for_staff()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var aboveBeds = await admin.CreateAsync(Request(app.MondayAfter(10), adults: 7, children: 2));
+        Assert.Contains(aboveBeds.Warnings, w => w.Contains("only 8 beds"));
+        var aboveMax = await admin.CreateAsync(Request(app.MondayAfter(20), adults: 10, children: 4, email: "b@example.com"));
+        Assert.Contains(aboveMax.Warnings, w => w.Contains("maximum of 12"));
+        var ok = await admin.CreateAsync(Request(app.MondayAfter(30), adults: 6, children: 2, email: "c@example.com"));
+        Assert.Empty(ok.Warnings);
+
+        var noAdult = await Assert.ThrowsAsync<RequestValidationException>(() =>
+            admin.CreateAsync(Request(app.MondayAfter(40), adults: 0, children: 2)));
+        Assert.True(noAdult.Errors.ContainsKey("numberOfAdults"));
+    }
+
+    [Fact]
+    public async Task A_custom_time_that_clashes_with_a_same_day_changeover_is_a_warning()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var start = app.MondayAfter(10);
+        var first = await admin.CreateAsync(Request(start) with { CheckOutTime = new TimeOnly(12, 0) });
+        var second = await admin.CreateAsync(Request(start.AddDays(4), email: "b@example.com"));
+        Assert.Contains(second.Warnings, w => w.Contains(first.Reference) && w.Contains("checks out at 12pm"));
+        Assert.Contains((await admin.GetAsync(first.Id)).Warnings, w => w.Contains(second.Reference) && w.Contains("checks in at 11am"));
     }
 
     [Fact]
@@ -145,7 +205,7 @@ public class AdminBookingTests
     }
 
     [Fact]
-    public async Task Expired_holds_cannot_be_edited()
+    public async Task Superseded_bookings_only_take_comments_and_customer_details()
     {
         var app = await TestApp.CreateAsync(online: false);
         var admin = app.Get<AdminBookingService>();
@@ -158,7 +218,7 @@ public class AdminBookingTests
     }
 
     [Fact]
-    public async Task Confirmed_addons_raise_the_total_and_payments_update_the_status()
+    public async Task Add_on_lines_count_once_priced_are_declined_by_removing_and_payments_update_the_status()
     {
         var app = await TestApp.CreateAsync(online: false);
         var admin = app.Get<AdminBookingService>();
@@ -166,15 +226,21 @@ public class AdminBookingTests
         booking = await admin.AddAddonAsync(booking.Id, new AddAddonLineRequest(booking.Version, "welcome-hamper", 1));
         var line = Assert.Single(booking.AddonLines);
         Assert.Null(line.UnitPrice);
-        await Assert.ThrowsAsync<DomainValidationException>(() =>
-            admin.UpdateAddonAsync(booking.Id, line.Id, new UpdateAddonLineRequest(booking.Version, 1, null, AddonLineStatus.Confirmed)));
-        booking = await admin.UpdateAddonAsync(booking.Id, line.Id, new UpdateAddonLineRequest(booking.Version, 1, 150m, AddonLineStatus.Confirmed));
+        Assert.Equal(4000m, booking.TotalPrice);
+        booking = await admin.UpdateAddonAsync(booking.Id, line.Id, new UpdateAddonLineRequest(booking.Version, 1, 150m));
         Assert.Equal(4150m, booking.TotalPrice);
 
+        booking = await admin.AddAddonAsync(booking.Id, new AddAddonLineRequest(booking.Version, "skipper", 1));
+        var skipper = booking.AddonLines.Single(l => l.AddonId == "skipper");
+        booking = await admin.RemoveAddonAsync(booking.Id, skipper.Id, booking.Version);
+        Assert.Single(booking.AddonLines);
+
         app.Emails.Sent.Clear();
-        booking = await admin.AddManualPaymentAsync(booking.Id, new ManualPaymentRequest(booking.Version, 1000m, app.Today, "EFT"));
-        Assert.Equal(PaymentStatus.DepositPaid, booking.PaymentStatus);
-        Assert.Contains("Payment received", Assert.Single(app.Emails.Sent).Subject);
+        booking = await admin.AddManualPaymentAsync(booking.Id, new ManualPaymentRequest(booking.Version, 500m, app.Today, "EFT"));
+        Assert.Equal(PaymentStatus.PartPaid, booking.PaymentStatus); // below the deposit
+        booking = await admin.AddManualPaymentAsync(booking.Id, new ManualPaymentRequest(booking.Version, 500m, app.Today, "EFT"));
+        Assert.Equal(PaymentStatus.DepositPaid, booking.PaymentStatus); // exactly the deposit
+        Assert.All(app.Emails.Sent, m => Assert.Contains("Payment received", m.Subject));
         Assert.Equal(3150m, booking.AmountDueNow);
 
         app.Emails.Sent.Clear();
@@ -186,6 +252,116 @@ public class AdminBookingTests
         booking = await admin.AddManualPaymentAsync(booking.Id, new ManualPaymentRequest(booking.Version, 3150m, app.Today, null));
         Assert.Equal(PaymentStatus.FullyPaid, booking.PaymentStatus);
         await Assert.ThrowsAsync<RequestValidationException>(() => admin.SendPaymentLinkAsync(booking.Id));
+    }
+
+    [Fact]
+    public async Task Add_ons_on_long_weekend_and_custom_bookings_have_no_price_until_staff_enter_one()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var friday = app.MondayAfter(10).AddDays(4);
+        var booking = await admin.CreateAsync(Request(friday, type: PeriodType.LongWeekend));
+        booking = await admin.AddAddonAsync(booking.Id, new AddAddonLineRequest(booking.Version, "outboard-motor", 1));
+        Assert.Null(Assert.Single(booking.AddonLines).UnitPrice);
+
+        var midweek = await admin.CreateAsync(Request(app.MondayAfter(30), type: PeriodType.Midweek, email: "b@example.com"));
+        midweek = await admin.AddAddonAsync(midweek.Id, new AddAddonLineRequest(midweek.Version, "outboard-motor", 1));
+        Assert.Equal(95m, Assert.Single(midweek.AddonLines).UnitPrice);
+    }
+
+    [Fact]
+    public async Task Car_parking_over_capacity_is_a_warning_for_staff()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var start = app.MondayAfter(10);
+        var first = await admin.CreateAsync(Request(start) with
+        {
+            Addons = [new AdminAddonLineRequest("car-parking", 8, null)],
+        });
+        var line = Assert.Single(first.AddonLines);
+        Assert.Equal((11, 11), (line.Capacity, line.Remaining)); // excluding this booking
+        Assert.Empty(first.Warnings);
+
+        var capacity = await app.Get<AddonCapacityQueries>().RemainingAsync("car-parking", start, start.AddDays(4));
+        Assert.Equal(3, capacity.Remaining);
+        var excluding = await app.Get<AddonCapacityQueries>().RemainingAsync("car-parking", start, start.AddDays(4), first.Id);
+        Assert.Equal(11, excluding.Remaining);
+
+        var detail = await admin.AddAddonAsync(first.Id, new AddAddonLineRequest(first.Version, "car-parking", 4));
+        Assert.Contains(detail.Warnings, w => w.StartsWith("This exceeds car parking capacity on "));
+    }
+
+    [Fact]
+    public async Task Rebook_prefills_next_years_dates_current_prices_guests_times_customer_and_add_ons()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var original = await admin.CreateAsync(Request(new DateOnly(2026, 11, 16), type: PeriodType.Midweek, adults: 5,
+            children: 3) with
+        {
+            HirePrice = 3999m, CheckInTime = new TimeOnly(12, 0), Phone = "0412 345 678", SecondaryPhone = "(02) 4444 4444",
+            Comments = "Not copied", Addons = [new AdminAddonLineRequest("outboard-motor", 1, 80m), new AdminAddonLineRequest("ice", 3, null)],
+        });
+
+        var rebook = await admin.GetRebookAsync(original.Id);
+
+        Assert.Equal(original.Reference, rebook.OriginalReference);
+        Assert.Equal(new DateOnly(2027, 11, 16), rebook.StartDate); // a Tuesday in 2027
+        Assert.Equal(new DateOnly(2027, 11, 20), rebook.EndDate);
+        Assert.Equal(PeriodType.Custom, rebook.PeriodType);
+        Assert.Equal(3999m, rebook.HirePrice); // Custom keeps the original price
+        Assert.Equal((5, 3), (rebook.NumberOfAdults, rebook.NumberOfChildren));
+        Assert.Equal(new TimeOnly(12, 0), rebook.CheckInTime);
+        Assert.Equal(("jane@example.com", "Jane Citizen", "+61412345678", "+61244444444"),
+            (rebook.Email, rebook.FullName, rebook.Phone, rebook.SecondaryPhone));
+        Assert.Equal(["ice", "outboard-motor"], rebook.Addons.Select(a => a.AddonId));
+        Assert.Equal(80m, rebook.Addons.Single(a => a.AddonId == "outboard-motor").UnitPrice); // Custom: no current price
+
+        var created = await admin.CreateAsync(new AdminBookingRequest(rebook.BoatId, rebook.PeriodType, rebook.StartDate,
+            rebook.EndDate, rebook.NumberOfAdults, rebook.NumberOfChildren, rebook.CheckInTime, rebook.CheckOutTime, rebook.Email,
+            rebook.FullName, rebook.Phone, rebook.SecondaryPhone, false, null, rebook.HirePrice,
+            rebook.Addons.Select(a => new AdminAddonLineRequest(a.AddonId, a.Quantity, a.UnitPrice)).ToList()));
+        Assert.Equal(2, created.AddonLines.Count);
+        Assert.Null(created.Comments);
+    }
+
+    [Fact]
+    public async Task Rebook_keeps_a_period_type_that_still_fits_and_uses_current_rates()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        // Fri 06/11/2026 → Mon 09/11/2026; 06/11/2027 is a Saturday, so it becomes Custom; LongWeekend is kept.
+        var longWeekend = await admin.CreateAsync(Request(new DateOnly(2026, 11, 6), type: PeriodType.LongWeekend) with
+        {
+            HirePrice = 100m,
+            Addons = [new AdminAddonLineRequest("outboard-motor", 1, 80m)],
+        });
+        var rebook = await admin.GetRebookAsync(longWeekend.Id);
+        Assert.Equal(PeriodType.LongWeekend, rebook.PeriodType);
+        Assert.Equal(4620m, rebook.HirePrice); // current Normal long weekend rate
+        Assert.Equal(80m, Assert.Single(rebook.Addons).UnitPrice); // no long weekend add-on prices
+
+        var midweek = await admin.CreateAsync(Request(new DateOnly(2025, 11, 17), type: PeriodType.Midweek, email: "b@example.com")
+            with { HirePrice = 100m });
+        var next = await admin.GetRebookAsync(midweek.Id); // 17/11/2026 is a Tuesday → Custom
+        Assert.Equal(PeriodType.Custom, next.PeriodType);
+        Assert.Equal(new DateOnly(2026, 11, 17), next.StartDate);
+    }
+
+    [Fact]
+    public async Task Customers_list_all_their_bookings_newest_first()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var older = await admin.CreateAsync(Request(app.MondayAfter(10)));
+        var newer = await admin.CreateAsync(Request(app.MondayAfter(40)));
+        await admin.UpdateAsync(older.Id, Update(older, BookingStatus.Cancelled));
+
+        var bookings = await app.Get<CustomerQueries>().ListBookingsAsync(newer.Customer!.Id);
+        Assert.Equal([newer.Reference, older.Reference], bookings.Select(b => b.Reference));
+        Assert.Equal(BookingStatus.Cancelled, bookings[1].Status);
+        Assert.Equal("Pacific Blue", bookings[0].BoatName);
     }
 
     [Fact]
@@ -227,6 +403,51 @@ public class AdminBookingTests
         var all = await admin.GetTimelineAsync(from, from.AddMonths(1), true);
         Assert.Equal("Jane Citizen", Assert.Single(all.Bookings).CustomerName);
         Assert.Equal(14, all.Boats.Count);
+    }
+
+    [Fact]
+    public async Task Boats_are_listed_largest_first_then_by_name()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var from = app.Today;
+        var timeline = await app.Get<AdminBookingService>().GetTimelineAsync(from, from.AddMonths(1), false);
+        var expected = new[]
+        {
+            "Blue Bayou", "Gypsea Belle", "Image Anne", "Island Dream", "Kalinda", "Ocean Spirit", "Pacific Blue",
+            "Paradise II", "Misty Blue", "JFS Rhyanna", "Marie Claire", "Wanderer", "Wavebreak", "Runaway Bear",
+        };
+        Assert.Equal(expected, timeline.Boats.Select(b => b.Name));
+        Assert.Equal(expected, (await app.Get<FleetService>().ListAsync()).Select(b => b.Name));
+    }
+
+    [Fact]
+    public async Task Online_holds_without_a_customer_show_and_search_by_the_details_entered()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var start = app.MondayAfter(40);
+        var id = BookingId.New();
+        var hold = Booking.CreateOnlineHold(BookingReference.Create(2026, 7000),
+            new BookingCustomerDetails("Olivia Online", "olivia@example.com", "0412 345 678"), BookingDraftId.New(),
+            TestApp.PacificBlue, PeriodType.Midweek, new Stay(start, start.AddDays(4)), 2, 0, 4060m, 1000m,
+            PaymentSchedule.Standard, [], app.Clock.UtcNow.AddMinutes(40), null, app.Clock.UtcNow,
+            app.Get<PaymentLinkTokens>().HashFor(id), app.Clock.UtcNow, id);
+        await app.Get<IBookingRepository>().SaveAsync(hold);
+
+        var admin = app.Get<AdminBookingService>();
+        var found = Assert.Single(await admin.SearchAsync("olivia"));
+        Assert.Equal(("Olivia Online", "olivia@example.com"), (found.CustomerName, found.CustomerEmail));
+        var detail = await admin.GetAsync(id.Value);
+        Assert.Null(detail.Customer);
+        Assert.Equal("+61412345678", detail.CustomerDetails!.MobileNumber);
+        var from = new DateOnly(start.Year, start.Month, 1);
+        Assert.Equal("Olivia Online", Assert.Single((await admin.GetTimelineAsync(from, from.AddMonths(1), false)).Bookings).CustomerName);
+
+        // Editing an expired hold's comments never creates a customer.
+        app.Clock.Advance(TimeSpan.FromHours(1));
+        await app.Get<BergerHarbour.Application.Notifications.NotificationJob>().RunAsync();
+        var expired = await admin.GetAsync(id.Value);
+        await admin.UpdateAsync(id.Value, Update(expired) with { Comments = "Called her" });
+        Assert.Empty(app.Store.Customers.All());
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -62,6 +63,7 @@ public sealed class VersionedTable<TKey, TSnapshot> where TKey : notnull
 public sealed class InMemoryStore
 {
     public VersionedTable<string, BookingSnapshot> Bookings { get; } = new();
+    public VersionedTable<string, BookingDraftSnapshot> BookingDrafts { get; } = new();
     public VersionedTable<string, BoatSnapshot> Boats { get; } = new();
     public VersionedTable<string, CustomerSnapshot> Customers { get; } = new();
     public VersionedTable<string, BoatUnavailabilitySnapshot> Unavailabilities { get; } = new();
@@ -74,6 +76,7 @@ public sealed class InMemoryStore
     public InMemoryStore()
     {
         Bookings.CurrentVersion = k => Bookings.Get(k)!.Version;
+        BookingDrafts.CurrentVersion = k => BookingDrafts.Get(k)!.Version;
         Boats.CurrentVersion = k => Boats.Get(k)!.Version;
         Customers.CurrentVersion = k => Customers.Get(k)!.Version;
         Unavailabilities.CurrentVersion = k => Unavailabilities.Get(k)!.Version;

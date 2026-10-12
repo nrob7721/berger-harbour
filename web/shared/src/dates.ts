@@ -41,7 +41,7 @@ export function daysInMonth(iso: IsoDate): number {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
 }
 
-/** dd/MM/yyyy */
+/** dd/MM/yyyy — Australian day-first; never month-first. */
 export function formatDate(iso: IsoDate | null | undefined): string {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
@@ -68,4 +68,43 @@ export function weekdayShort(dow: number): string {
 /** Today in Australia/Sydney. */
 export function sydneyToday(now: Date = new Date()): IsoDate {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+
+/** "11am", "11:30am" from "HH:mm" (or "HH:mm:ss"). */
+export function formatTime(hhmm: string | null | undefined): string {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const hour = h! % 12 === 0 ? 12 : h! % 12;
+  const suffix = h! < 12 ? 'am' : 'pm';
+  return m ? `${hour}:${String(m).padStart(2, '0')}${suffix}` : `${hour}${suffix}`;
+}
+
+const sydneyParts = new Intl.DateTimeFormat('en-AU', {
+  timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', minute: '2-digit', hour12: false,
+});
+
+/** dd/MM/yyyy h:mma in Australia/Sydney, e.g. "12/10/2026 3:05pm". */
+export function formatTimestamp(instant: string | null | undefined): string {
+  if (!instant) return '';
+  const parts = Object.fromEntries(sydneyParts.formatToParts(new Date(instant)).map((p) => [p.type, p.value]));
+  const hour = Number(parts.hour) % 24;
+  return `${parts.day}/${parts.month}/${parts.year} ${formatTime(`${hour}:${parts.minute}`)}`;
+}
+
+/** The Australia/Sydney date of an instant, as yyyy-MM-dd. */
+export function sydneyDate(instant: string): IsoDate {
+  return sydneyToday(new Date(instant));
+}
+
+const offsetFormat = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Sydney', timeZoneName: 'shortOffset' });
+
+/**
+ * "AEST" or "AEDT": the Australia/Sydney time zone at 11am on the date. Daylight saving changes at 2–3am, so mid-morning
+ * is unambiguous.
+ */
+export function sydneyZoneLabel(iso: IsoDate): string {
+  const d = parseIso(iso);
+  const morning = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 30)); // 10:30–11:30 in Sydney
+  const zone = offsetFormat.formatToParts(morning).find((p) => p.type === 'timeZoneName')?.value ?? '';
+  return zone.includes('+11') ? 'AEDT' : 'AEST';
 }

@@ -246,13 +246,15 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
       ```
       (needs `gcloud auth application-default login` with an account that can write Firestore.)
 - [ ] Open `https://admin.bergerhouseboats.com.au` and sign in with Google.
-- [ ] **Settings → General**: check deposit ($1,000), lead time (30 days), bookings open until, staff alert email,
-      contact phone and email, hire terms URL.
-- [ ] **Fleet**: for every boat, check the **slug matches its WordPress page URL**, then enter beds, bedding
-      description, security bond, rates for every season (Mid-week, Weekend, Week, and Long weekend), allowed
-      add-ons, and tick **Active**. Pacific Blue is pre-filled as the reference boat — check its figures too.
-- [ ] **Settings → Add-ons**: enter prices for add-ons that are not "price on request". Welcome hamper and Skipper
-      stay price on request.
+- [ ] **Settings → General**: check the default deposit ($1,000), lead time (30 days), bookings open until, staff
+      alert email, contact phone and email, hire terms URL.
+- [ ] **Fleet**: for every boat, check the **slug matches its WordPress page URL**, then enter the number of adult
+      beds and kids beds (0 if none), bedding description, security bond, a deposit only if it differs from the
+      default, rates for every season (Mid-week, Weekend, Week, and Long weekend), allowed add-ons, and tick
+      **Active**. Pacific Blue is pre-filled as the reference boat — check its figures too.
+- [ ] **Settings → Add-ons**: enter prices for add-ons that are not "price on request" (Welcome hamper and Skipper
+      stay price on request), put them in the order customers should see with ▲/▼, and check Car parking's
+      capacity (11 car spots, shared by every booking).
 - [ ] **Settings → Blocked periods**: enter Easter and every long weekend up to "bookings open until" (Christmas /
       New Year 2026–27 is pre-filled with the extended payment schedule).
 - [ ] **Settings → Email templates**: review the wording of each template and press **Send test** for each.
@@ -260,7 +262,7 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 ## 7. Enter existing future bookings (before go-live)
 
 - [ ] For every **future** booking on paper/Excel, create a staff booking in **Bookings → + New** with the
-      customer's email, correct boat, dates and agreed hire price.
+      customer's email, correct boat, dates, adults and children, and agreed hire price.
       Note: creating a non-stand-by booking emails the customer a confirmation — let customers know the new system
       is coming, or enter them as you contact them.
 - [ ] Record payments already received with **Add manual payment** (amount, date, note such as "Deposit — EFT").
@@ -273,10 +275,12 @@ In test mode (cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` asks 
 and any CVC):
 
 - [ ] Book Pacific Blue online on desktop (inside the WordPress modal) and on a phone (new tab).
-- [ ] Check: the deposit is charged, the booking appears **Active** in the admin timeline, the customer gets
-      email #1 and staff get #2, and the Stripe receipt arrives.
-- [ ] In the admin app, confirm a price-on-request add-on and press **Send payment link**; pay through the link;
-      check email #5 and the booking's payment status.
+- [ ] Check: only the deposit is charged, the booking appears **Active** in the admin timeline, the customer now
+      appears under **Customers**, the customer gets email #1 and staff get #2, and the Stripe receipt arrives.
+- [ ] In the admin app, enter a price for a price-on-request add-on and press **Send payment link**; pay through the
+      link; check email #5 and the booking's payment status.
+- [ ] Start a booking, enter your details and stop: about two hours later staff get email #10 (unfinished online
+      booking), and no customer record is created.
 - [ ] Try two browsers booking the same dates at once: one must get "Sorry, those dates were just taken".
 - [ ] Try a Christmas date: the "please call or email us" pop-up appears.
 - [ ] Check Cloud Scheduler's last run succeeded.

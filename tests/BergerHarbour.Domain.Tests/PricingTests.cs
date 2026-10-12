@@ -65,61 +65,92 @@ public class PricingTests
     }
 
     [Fact]
-    public void Addon_pricing_by_period_type()
+    public void Addon_pricing_by_period_type_with_no_prices_for_long_weekend_or_custom()
     {
-        var motor = AddonDefinition.Create("Outboard motor", null, false, new AddonPrices(95m, 95m, 130m), false);
+        var motor = Addon("Outboard motor", false, new AddonPrices(95m, 95m, 130m), false);
         Assert.Equal(95m, PricingService.AddonUnitPrice(motor, PeriodType.Midweek));
         Assert.Equal(95m, PricingService.AddonUnitPrice(motor, PeriodType.Weekend));
         Assert.Equal(130m, PricingService.AddonUnitPrice(motor, PeriodType.Week));
-        Assert.Equal(95m, PricingService.AddonUnitPrice(motor, PeriodType.LongWeekend));
+        Assert.Null(PricingService.AddonUnitPrice(motor, PeriodType.LongWeekend));
         Assert.Null(PricingService.AddonUnitPrice(motor, PeriodType.Custom));
     }
 
     [Fact]
     public void Price_on_request_addons_have_no_price()
     {
-        var hamper = AddonDefinition.Create("Welcome hamper", null, true, new AddonPrices(1m, 1m, 1m), false);
+        var hamper = Addon("Welcome hamper", true, new AddonPrices(1m, 1m, 1m), false);
         Assert.Null(hamper.Prices);
         Assert.Null(PricingService.AddonUnitPrice(hamper, PeriodType.Week));
     }
 
     [Fact]
     public void Priced_addon_requires_prices() =>
-        Assert.Throws<DomainValidationException>(() => AddonDefinition.Create("Ice", null, false, null, true));
+        Assert.Throws<DomainValidationException>(() => Addon("Ice", false, null, true));
 
     [Fact]
     public void Quantity_is_always_one_when_quantity_does_not_apply()
     {
-        var motor = AddonDefinition.Create("Outboard motor", null, false, new AddonPrices(95m, 95m, 130m), false);
-        var ice = AddonDefinition.Create("Ice", null, true, null, true);
+        var motor = Addon("Outboard motor", false, new AddonPrices(95m, 95m, 130m), false);
+        var ice = Addon("Ice", true, null, true);
         Assert.Equal(1, motor.NormaliseQuantity(5));
         Assert.Equal(5, ice.NormaliseQuantity(5));
         Assert.Throws<DomainValidationException>(() => ice.NormaliseQuantity(0));
     }
 
     [Fact]
-    public void Requested_addons_are_not_in_the_total_until_confirmed()
+    public void Priced_add_on_lines_count_toward_the_total_straight_away()
     {
         var booking = StaffBooking(BoatId.New(), D(2026, 11, 9), D(2026, 11, 13), hirePrice: 4060m);
-        var line = booking.AddAddon(new RequestedAddon(AddonId.New(), "Outboard motor", 1, 95m), Now);
-        Assert.Equal(4060m, booking.TotalPrice);
-
-        booking.UpdateAddonLine(line.Id, 1, 95m, AddonLineStatus.Confirmed, Now);
+        booking.AddAddon(new RequestedAddon(AddonId.New(), "Outboard motor", 1, 95m), Now);
         Assert.Equal(4155m, booking.TotalPrice);
-
-        booking.UpdateAddonLine(line.Id, 1, 95m, AddonLineStatus.Declined, Now);
-        Assert.Equal(4060m, booking.TotalPrice);
     }
 
     [Fact]
-    public void Price_on_request_line_needs_a_price_before_confirming()
+    public void Price_on_request_line_counts_once_staff_enter_a_price()
     {
         var booking = StaffBooking(BoatId.New(), D(2026, 11, 9), D(2026, 11, 13));
         var line = booking.AddAddon(new RequestedAddon(AddonId.New(), "Welcome hamper", 1, null), Now);
-        Assert.Throws<DomainValidationException>(() => booking.UpdateAddonLine(line.Id, 1, null, AddonLineStatus.Confirmed, Now));
-        booking.UpdateAddonLine(line.Id, 2, 150m, AddonLineStatus.Confirmed, Now);
+        Assert.Equal(booking.HirePrice, booking.TotalPrice);
+        booking.UpdateAddonLine(line.Id, 2, 150m, Now);
         Assert.Equal(booking.HirePrice + 300m, booking.TotalPrice);
     }
+
+    [Fact]
+    public void Capacity_must_not_be_negative_and_its_label_is_dropped_without_a_capacity()
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            AddonDefinition.Create("Car parking", null, true, null, true, -1, "car spots", 0));
+        var addon = AddonDefinition.Create("Car parking", null, true, null, true, null, "car spots", 0);
+        Assert.False(addon.HasCapacity);
+        Assert.Null(addon.CapacityUnitLabel);
+    }
+
+    [Fact]
+    public void Add_ons_are_listed_and_reordered_by_their_admin_defined_position()
+    {
+        var a = AddonDefinition.Create("Yabby pumps", null, true, null, false, null, null, 0);
+        var b = AddonDefinition.Create("Ice", null, true, null, true, null, null, 1);
+        var c = AddonDefinition.Create("Bait", null, true, null, true, null, null, 2);
+        Assert.Equal(3, AddonCatalogue.NextSortOrder([a, b, c]));
+        Assert.Equal(["Yabby pumps", "Ice", "Bait"], AddonCatalogue.InDisplayOrder([c, a, b]).Select(x => x.Name));
+
+        var changed = AddonCatalogue.Reorder([a, b, c], [c.Id, a.Id, b.Id]);
+        Assert.Equal(3, changed.Count);
+        Assert.Equal(["Bait", "Yabby pumps", "Ice"], AddonCatalogue.InDisplayOrder([a, b, c]).Select(x => x.Name));
+        Assert.Empty(AddonCatalogue.Reorder([a, b, c], [c.Id, a.Id, b.Id]));
+
+        Assert.Throws<DomainValidationException>(() => AddonCatalogue.Reorder([a, b, c], [c.Id, a.Id]));
+        Assert.Throws<DomainValidationException>(() => AddonCatalogue.Reorder([a, b, c], [c.Id, a.Id, a.Id]));
+    }
+
+    [Theory]
+    [InlineData("car spots", 6, "6 car spots remaining")]
+    [InlineData(null, 2, "2 available for your dates")]
+    public void Remaining_text(string? unit, int remaining, string expected) =>
+        Assert.Equal(expected, AddonDefinition.Create("Car parking", null, true, null, true, 11, unit, 0).RemainingText(remaining));
+
+    private static AddonDefinition Addon(string name, bool priceOnRequest, AddonPrices? prices, bool quantityApplies) =>
+        AddonDefinition.Create(name, null, priceOnRequest, prices, quantityApplies, null, null, 0);
 
     [Fact]
     public void Season_ranges_cannot_overlap_within_a_season() =>

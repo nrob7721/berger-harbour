@@ -1,5 +1,6 @@
 using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Payments;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -27,9 +28,9 @@ public static class NotificationKeys
 }
 
 /// <summary>
-/// Sends the system's emails (#1, #2, #4, #5, #6, #7, #8). No email of any kind is sent for stand-by bookings or
-/// for bookings that are not Active, except #8 to staff. Keyed emails are recorded on the booking after a
-/// successful send.
+/// Sends the system's emails (#1, #2, #4, #5, #6, #7, #8, #10). No email of any kind is sent for stand-by bookings
+/// or for bookings that are not Active, except #8 to staff. Keyed emails are recorded on the booking after a
+/// successful send; #10 is deduplicated on the draft by the job.
 /// </summary>
 public sealed class NotificationService(
     IEmailSender sender,
@@ -37,16 +38,20 @@ public sealed class NotificationService(
     IBoatRepository boats,
     ICustomerRepository customers,
     IBusinessSettingsRepository settingsRepository,
+    IAddonDefinitionRepository addons,
     IBookingRepository bookings,
     PaymentScheduleService paymentSchedule,
     PaymentLinkTokens paymentLinks,
     IClock clock,
     ILogger<NotificationService> logger)
 {
-    /// <summary>#1 to the customer.</summary>
+    /// <summary>
+    /// #1 to the customer. When a payment was already due when the booking was made, it says so and includes the
+    /// payment link (the {{#PaymentDueNow}} section).
+    /// </summary>
     public Task<bool> SendBookingConfirmedAsync(Booking booking, CancellationToken ct = default) =>
         SendAsync(booking, EmailTemplateKey.BookingConfirmed, Recipient.Customer, NotificationKeys.BookingConfirmed,
-            null, ct);
+            paymentSchedule.UnpaidMilestonesDueAtCreation(booking).FirstOrDefault(), ct);
 
     /// <summary>#2 to staff.</summary>
     public Task<bool> SendStaffNewOnlineBookingAsync(Booking booking, CancellationToken ct = default) =>
@@ -77,25 +82,53 @@ public sealed class NotificationService(
         SendAsync(standby, EmailTemplateKey.StaffStandbySuperseded, Recipient.StaffAboutStandby,
             NotificationKeys.StandbySuperseded, null, ct);
 
+    /// <summary>#10 to staff, about an abandoned online booking, so they can follow up.</summary>
+    public async Task SendStaffAbandonedBookingAsync(BookingDraft draft, CancellationToken ct = default)
+    {
+        var settings = await settingsRepository.GetAsync(ct);
+        var template = await TemplateAsync(EmailTemplateKey.StaffAbandonedBooking, ct);
+        var boat = await boats.GetAsync(draft.BoatId, ct) ?? throw new InvalidOperationException($"Boat {draft.BoatId} not found.");
+        var data = new EmailData(boat, new EmailContact(draft.FullName, draft.Email.Value, draft.MobileNumber), settings,
+            await addons.ListAsync(ct), Draft: draft);
+        var (subject, body) = EmailComposer.Compose(template, data);
+        await sender.SendAsync(new EmailMessage(settings.StaffAlertEmail, "Berger Houseboats staff", subject, body), ct);
+        logger.LogInformation("Sent {Template} for draft created {Created}", EmailTemplateKey.StaffAbandonedBooking, draft.CreatedDate);
+    }
+
     /// <summary>Sends a sample of the template to the staff alert address.</summary>
     public async Task SendTestAsync(EmailTemplateKey key, CancellationToken ct = default)
     {
         var settings = await settingsRepository.GetAsync(ct);
-        var template = await templates.GetAsync(key, ct) ?? throw new InvalidOperationException($"Template {key} is missing.");
+        var template = await TemplateAsync(key, ct);
         var now = clock.UtcNow;
         var boat = Boat.Create("Pacific Blue", "pacific-blue", BoatType.House, 12, now);
-        boat.UpdateDetails("Pacific Blue", "pacific-blue", 12, 8, "4 queen bedrooms, bunk area (2 singles)", 2000m, now);
-        var customer = Customer.Create("Sample Customer", "sample@example.com", "0400 000 000", now);
+        boat.UpdateDetails("Pacific Blue", "pacific-blue", 12, 6, 2, "4 queen bedrooms, bunk area (2 singles)", 2000m, null, now);
+        var contact = new EmailContact("Sample Customer", "sample@example.com", "+61412345678");
         var start = SydneyTime.Today(now).AddDays(60);
-        var booking = Booking.CreateByStaff(BookingReference.Create(start.Year, 1), customer.Id, boat.Id, PeriodType.Midweek,
-            new Stay(start, start.AddDays(4)), 8, false, null, 4060m, settings.DepositAmount, PaymentSchedule.Standard,
-            "sample", now);
-        booking.AddAddon(new RequestedAddon(AddonId.New(), "Outboard motor", 1, 95m), now);
-        booking.AddAddon(new RequestedAddon(AddonId.New(), "Welcome hamper", 1, null), now);
-        booking.RecordManualPayment(settings.DepositAmount, now, null, now);
-        var milestones = paymentSchedule.Milestones(booking);
-        var data = new EmailData(booking, boat, customer, settings, milestones,
-            $"{paymentLinks.LinkFor(booking.Id).Split('?')[0]}?token=SAMPLE", booking.AmountOwing, milestones[^1].DueDate);
+        var stay = new Stay(start, start.AddDays(4));
+        var addonList = await addons.ListAsync(ct);
+        EmailData data;
+        if (key == EmailTemplateKey.StaffAbandonedBooking)
+        {
+            var draft = BookingDraft.Create(boat.Id, PeriodType.Midweek, stay, contact.FullName, contact.Email, contact.Phone!, now);
+            draft.Update(PeriodType.Midweek, stay, contact.FullName, contact.Email, contact.Phone!, 6, 2,
+                addonList.Take(2).Select(a => new DraftAddonRequest(a.Id, 1)), BookingStep.Addons, now);
+            data = new EmailData(boat, contact, settings, addonList, Draft: draft);
+        }
+        else
+        {
+            var booking = Booking.CreateByStaff(BookingReference.Create(start.Year, 1), CustomerId.New(), boat.Id,
+                PeriodType.Midweek, stay, 6, 2, Stay.CheckInTime, Stay.CheckOutTime, false, null, 4060m,
+                settings.DepositAmount, PaymentSchedule.Standard, "sample", now);
+            booking.AddAddon(new RequestedAddon(AddonId.New(), "Outboard motor", 1, 95m), now);
+            booking.AddAddon(new RequestedAddon(AddonId.New(), "Welcome hamper", 1, null), now);
+            booking.RecordManualPayment(settings.DepositAmount, now, null, now);
+            var milestones = paymentSchedule.Milestones(booking);
+            data = new EmailData(boat, contact, settings, addonList, booking, milestones,
+                $"{paymentLinks.LinkFor(booking.Id).Split('?')[0]}?token=SAMPLE", booking.AmountOwing, milestones[^1].DueDate,
+                PaymentDueNow: true);
+        }
+
         var (subject, body) = EmailComposer.Compose(template, data);
         await sender.SendAsync(new EmailMessage(settings.StaffAlertEmail, "Berger Houseboats staff", "[TEST] " + subject, body), ct);
     }
@@ -107,6 +140,9 @@ public sealed class NotificationService(
         StaffAboutStandby,
     }
 
+    /// <param name="milestone">
+    /// The milestone the email is about; for #1, the first unpaid milestone that was already due at creation.
+    /// </param>
     private async Task<bool> SendAsync(Booking booking, EmailTemplateKey templateKey, Recipient recipient, string? key,
         PaymentMilestone? milestone, CancellationToken ct)
     {
@@ -128,22 +164,21 @@ public sealed class NotificationService(
         }
 
         var settings = await settingsRepository.GetAsync(ct);
-        var template = await templates.GetAsync(templateKey, ct)
-                       ?? throw new InvalidOperationException($"Email template {templateKey} is missing. Run the seed.");
+        var template = await TemplateAsync(templateKey, ct);
         var boat = await boats.GetAsync(booking.BoatId, ct)
                    ?? throw new InvalidOperationException($"Boat {booking.BoatId} not found.");
-        var customer = await customers.GetAsync(booking.CustomerId, ct)
-                       ?? throw new InvalidOperationException($"Customer {booking.CustomerId} not found.");
+        var contact = await ContactAsync(booking, ct);
         var now = clock.UtcNow;
         var milestones = paymentSchedule.Milestones(booking);
         var amountDue = paymentSchedule.AmountDueNow(booking, now);
         var dueDate = milestone?.DueDate ?? NextDueDate(milestones, booking, now);
-        var data = new EmailData(booking, boat, customer, settings, milestones, paymentLinks.LinkFor(booking.Id),
-            amountDue, dueDate);
+        var paymentDueNow = templateKey == EmailTemplateKey.BookingConfirmed && milestone is not null;
+        var data = new EmailData(boat, contact, settings, await addons.ListAsync(ct), booking, milestones,
+            paymentLinks.LinkFor(booking.Id), amountDue, dueDate, paymentDueNow);
         var (subject, body) = EmailComposer.Compose(template, data);
 
         var message = recipient == Recipient.Customer
-            ? new EmailMessage(customer.Email.Value, customer.FullName, subject, body)
+            ? new EmailMessage(contact.Email, contact.FullName, subject, body)
             : new EmailMessage(settings.StaffAlertEmail, "Berger Houseboats staff", subject, body);
         await sender.SendAsync(message, ct);
         logger.LogInformation("Sent {Template} for {Reference}", templateKey, booking.Reference.Value);
@@ -154,6 +189,25 @@ public sealed class NotificationService(
         }
 
         return true;
+    }
+
+    private async Task<EmailTemplate> TemplateAsync(EmailTemplateKey key, CancellationToken ct) =>
+        await templates.GetAsync(key, ct) ?? throw new InvalidOperationException($"Email template {key} is missing. Run the seed.");
+
+    /// <summary>The customer record, or for an online booking not yet linked to one, the details entered online.</summary>
+    private async Task<EmailContact> ContactAsync(Booking booking, CancellationToken ct)
+    {
+        if (booking.CustomerId is { } id && await customers.GetAsync(id, ct) is { } customer)
+        {
+            return new EmailContact(customer.FullName, customer.Email.Value, customer.MobileNumber);
+        }
+
+        if (booking.CustomerDetails is { } d)
+        {
+            return new EmailContact(d.FullName, d.Email, d.MobileNumber);
+        }
+
+        throw new InvalidOperationException($"Booking {booking.Reference.Value} has no customer.");
     }
 
     /// <summary>The earliest milestone that is not yet met, or today.</summary>

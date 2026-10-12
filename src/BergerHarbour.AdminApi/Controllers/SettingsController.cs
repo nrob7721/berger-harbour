@@ -56,6 +56,11 @@ public sealed class SettingsController(SettingsService settings) : ControllerBas
     [HttpPost("addons")]
     public Task<AddonDto> CreateAddon(AddonRequest request, CancellationToken ct) => settings.CreateAddonAsync(request, ct);
 
+    /// <summary>Body: the full ordered list of add-on ids; the server rewrites the order.</summary>
+    [HttpPut("addons/order")]
+    public Task<IReadOnlyList<AddonDto>> ReorderAddons(AddonOrderRequest request, CancellationToken ct) =>
+        settings.ReorderAddonsAsync(request, ct);
+
     [HttpPut("addons/{id}")]
     public Task<AddonDto> UpdateAddon(string id, AddonRequest request, CancellationToken ct) =>
         settings.UpdateAddonAsync(id, request, ct);

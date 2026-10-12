@@ -29,27 +29,76 @@ public enum EmailTemplateKey
 
     /// <summary>#8, to the staff alert address.</summary>
     StaffStandbySuperseded,
+
+    /// <summary>#10, to the staff alert address, about an abandoned online booking.</summary>
+    StaffAbandonedBooking,
 }
 
+/// <summary>
+/// Template placeholders ({{Name}}) and conditional sections ({{#Name}}…{{/Name}}, kept only when the condition
+/// holds). Placeholders that do not apply to a message render empty.
+/// </summary>
 public static partial class EmailPlaceholders
 {
     public static readonly IReadOnlyList<string> All =
     [
-        "CustomerName", "BookingReference", "BoatName", "CheckInDate", "CheckOutDate", "CheckInTime", "CheckOutTime",
-        "NumberOfGuests", "HirePrice", "TotalPrice", "AmountPaid", "AmountOwing", "AmountDue", "DueDate", "PaymentLink",
-        "SecurityBond", "RequestedAddons", "PaymentSchedule", "HireTermsUrl", "ContactPhone", "ContactEmail",
+        "CustomerName", "CustomerEmail", "CustomerPhone", "BookingReference", "BoatName", "CheckInDate", "CheckOutDate",
+        "CheckInTime", "CheckOutTime", "NumberOfGuests", "NumberOfAdults", "NumberOfChildren", "HirePrice", "TotalPrice",
+        "AmountPaid", "AmountOwing", "AmountDue", "DueDate", "PaymentLink", "SecurityBond", "RequestedAddons",
+        "PaymentSchedule", "HireTermsUrl", "ContactPhone", "ContactEmail", "LastStepReached",
     ];
+
+    /// <summary>
+    /// Conditional sections. PaymentDueNow: a payment was already due when the booking was made (#1 then includes
+    /// the amount due and the payment link).
+    /// </summary>
+    public static readonly IReadOnlyList<string> Sections = ["PaymentDueNow"];
 
     private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);
 
+    private static readonly HashSet<string> KnownSections = new(Sections, StringComparer.Ordinal);
+
     public static IReadOnlyList<string> FindUnknown(string text) =>
         Pattern().Matches(text).Select(m => m.Groups[1].Value).Where(n => !Known.Contains(n)).Distinct().ToList();
+
+    /// <summary>Problems with the conditional sections: unknown names, or an opening tag without its closing tag.</summary>
+    public static IReadOnlyList<string> FindSectionErrors(string text)
+    {
+        var errors = new List<string>();
+        var tags = SectionTagPattern().Matches(text).Select(m => (Close: m.Groups[1].Value == "/", Name: m.Groups[2].Value)).ToList();
+        foreach (var name in tags.Select(t => t.Name).Distinct().Where(n => !KnownSections.Contains(n)))
+        {
+            errors.Add($"unknown section {{{{#{name}}}}}");
+        }
+
+        foreach (var name in tags.Select(t => t.Name).Distinct().Where(KnownSections.Contains))
+        {
+            if (tags.Count(t => t.Name == name && !t.Close) != tags.Count(t => t.Name == name && t.Close) ||
+                SectionPattern(name).Matches(text).Count != tags.Count(t => t.Name == name && !t.Close))
+            {
+                errors.Add($"{{{{#{name}}}}} must be closed with {{{{/{name}}}}}");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>Keeps the content of sections whose condition holds and removes the others.</summary>
+    public static string ApplySections(string text, Func<string, bool> condition) =>
+        Sections.Aggregate(text, (current, name) =>
+            SectionPattern(name).Replace(current, m => condition(name) ? m.Groups[1].Value : string.Empty));
 
     public static string Replace(string text, Func<string, string> valueFor) =>
         Pattern().Replace(text, m => valueFor(m.Groups[1].Value));
 
     [GeneratedRegex(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")]
     private static partial Regex Pattern();
+
+    [GeneratedRegex(@"\{\{\s*([#/])\s*([A-Za-z0-9_]+)\s*\}\}")]
+    private static partial Regex SectionTagPattern();
+
+    private static Regex SectionPattern(string name) =>
+        new(@"\{\{\s*#\s*" + name + @"\s*\}\}(.*?)\{\{\s*/\s*" + name + @"\s*\}\}", RegexOptions.Singleline);
 }
 
 public sealed class EmailTemplate : AggregateRoot<EmailTemplateKey>
@@ -89,6 +138,12 @@ public sealed class EmailTemplate : AggregateRoot<EmailTemplateKey>
         if (unknownInBody.Count > 0)
         {
             throw new DomainValidationException("htmlBody", $"Unknown placeholder(s): {Format(unknownInBody)}.");
+        }
+
+        var sectionErrors = EmailPlaceholders.FindSectionErrors(s).Concat(EmailPlaceholders.FindSectionErrors(body)).ToList();
+        if (sectionErrors.Count > 0)
+        {
+            throw new DomainValidationException("htmlBody", $"Invalid section(s): {string.Join("; ", sectionErrors)}.");
         }
 
         Subject = s;

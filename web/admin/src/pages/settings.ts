@@ -12,6 +12,7 @@ const TEMPLATE_LABELS: Record<string, string> = {
   PreHireInstructions: '#6 Pre-hire instructions (customer)',
   StaffBalanceOverdue: '#7 Overdue balance (staff)',
   StaffStandbySuperseded: '#8 Stand-by superseded (staff)',
+  StaffAbandonedBooking: '#10 Unfinished online booking (staff)',
 };
 
 export async function renderSettings(page: HTMLElement): Promise<void> {
@@ -44,7 +45,8 @@ async function general(body: HTMLElement): Promise<void> {
     clear(body);
     const form = h('div', {},
       h('div', { class: 'form-grid' },
-        field({ label: 'Deposit (AUD)', name: 'depositAmount', type: 'number', required: true, value: s.depositAmount, attrs: { min: 1, step: '0.01' } }),
+        field({ label: 'Default deposit (AUD)', name: 'depositAmount', type: 'number', required: true, value: s.depositAmount,
+          attrs: { min: 1, step: '0.01' }, hint: 'Used for boats without their own deposit (Fleet → boat → Deposit).' }),
         field({ label: 'Minimum lead time (days)', name: 'minimumLeadTimeDays', type: 'number', required: true, value: s.minimumLeadTimeDays, attrs: { min: 0 } }),
         field({ label: 'Bookings open until', name: 'bookingsOpenUntil', type: 'date', required: true, value: s.bookingsOpenUntil,
           hint: 'The last night customers can book online. Move it forward each year after entering blocked periods and prices.' }),
@@ -242,6 +244,11 @@ async function addons(body: HTMLElement): Promise<void> {
         field({ label: 'Week price', name: 'week', type: 'number', value: addon?.prices?.week, attrs: { min: 0, step: '0.01' } })),
       h('label', { class: 'toggle' }, h('input', { type: 'checkbox', name: 'quantityApplies', checked: addon?.quantityApplies ?? false }),
         ' Quantity applies (e.g. bags of ice)'),
+      h('div', { class: 'form-grid' },
+        field({ label: 'Capacity', name: 'capacity', type: 'number', value: addon?.capacity, attrs: { min: 0, step: 1 },
+          hint: 'Optional. Shared by all boats and bookings per night (e.g. 11 car spots). Leave empty for no limit.' }),
+        field({ label: 'Capacity unit label', name: 'capacityUnitLabel', value: addon?.capacityUnitLabel,
+          hint: 'e.g. "car spots" → "6 car spots remaining".' })),
       h('label', { class: 'toggle' }, h('input', { type: 'checkbox', name: 'isActive', checked: addon?.isActive ?? true }), ' Active'));
     modal.body.append(form);
     modal.footer.append(h('button', { type: 'button', class: 'button', onclick: () => modal.close() }, 'Cancel'),
@@ -258,6 +265,8 @@ async function addons(body: HTMLElement): Promise<void> {
           priceOnRequest,
           prices: priceOnRequest || midweek === null || weekend === null || week === null ? null : { midweek, weekend, week },
           quantityApplies: checkedBox('quantityApplies'),
+          capacity: numberOrNull(value(form, 'capacity')),
+          capacityUnitLabel: value(form, 'capacityUnitLabel') || null,
           isActive: checkedBox('isActive'),
         };
         try {
@@ -271,13 +280,34 @@ async function addons(body: HTMLElement): Promise<void> {
         }
       } }, 'Save'));
   };
+  /** ▲/▼ swap an add-on with its neighbour; the server rewrites the order from the full list. */
+  const move = async (index: number, by: -1 | 1) => {
+    const ids = list.map((a) => a.id);
+    const target = index + by;
+    if (target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target]!, ids[index]!];
+    try {
+      list = await adminApi.reorderAddons(ids);
+      refresh();
+      setTimeout(() => body.querySelector<HTMLButtonElement>(`[data-move="${list[target]!.id}:${by}"]`)?.focus(), 50);
+    } catch (e) {
+      showError(body, e, refresh);
+    }
+  };
   body.append(
+    h('p', { class: 'field__hint' }, 'This order is used in the booking app, the add-on picker in bookings and in emails.'),
     h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Add-on'), h('th', {}, 'Mid-week / Weekend / Week'), h('th', {}, 'Quantity'), h('th', {}, 'Status'), h('th', {}, h('span', { class: 'visually-hidden' }, 'Actions')))),
-      h('tbody', {}, ...list.map((a) => h('tr', { class: a.isActive ? '' : 'row--muted' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Order'), h('th', {}, 'Add-on'), h('th', {}, 'Mid-week / Weekend / Week'), h('th', {}, 'Quantity'), h('th', {}, 'Capacity'), h('th', {}, 'Status'), h('th', {}, h('span', { class: 'visually-hidden' }, 'Actions')))),
+      h('tbody', {}, ...list.map((a, index) => h('tr', { class: a.isActive ? '' : 'row--muted' },
+        h('td', { class: 'nowrap' },
+          h('button', { type: 'button', class: 'icon-button icon-button--small', 'aria-label': `Move ${a.name} up`, 'data-move': `${a.id}:-1`,
+            disabled: index === 0, onclick: () => void move(index, -1) }, '▲'),
+          h('button', { type: 'button', class: 'icon-button icon-button--small', 'aria-label': `Move ${a.name} down`, 'data-move': `${a.id}:1`,
+            disabled: index === list.length - 1, onclick: () => void move(index, 1) }, '▼')),
         h('td', {}, a.name),
         h('td', {}, a.priceOnRequest || !a.prices ? 'Price on request' : `${formatMoney(a.prices.midweek)} / ${formatMoney(a.prices.weekend)} / ${formatMoney(a.prices.week)}`),
         h('td', {}, a.quantityApplies ? 'Yes' : 'No'),
+        h('td', {}, a.capacity !== null ? `${a.capacity}${a.capacityUnitLabel ? ` ${a.capacityUnitLabel}` : ''}` : '—'),
         h('td', {}, a.isActive ? 'Active' : 'Inactive'),
         h('td', { class: 'nowrap' },
           h('button', { type: 'button', class: 'button button--small', onclick: () => edit(a) }, 'Edit'),
@@ -331,11 +361,15 @@ async function templates(body: HTMLElement): Promise<void> {
     };
     select.addEventListener('change', show);
     body.append(
-      h('p', { class: 'field__hint' }, 'Cancellations and add-on confirmations are not emailed by the system; staff contact the customer.'),
+      h('p', { class: 'field__hint' }, 'Cancellations and add-on changes are not emailed by the system; staff contact the customer.'),
       h('div', { class: 'field' }, h('label', {}, 'Template'), select),
       h('div', { class: 'templates' }, editor,
         h('aside', { class: 'placeholders', 'aria-label': 'Placeholders' }, h('h3', {}, 'Placeholders'),
-          h('ul', { class: 'plain-list' }, ...data.placeholders.map((p) => h('li', {}, h('code', {}, `{{${p}}}`)))))));
+          h('ul', { class: 'plain-list' }, ...data.placeholders.map((p) => h('li', {}, h('code', {}, `{{${p}}}`)))),
+          h('h3', {}, 'Sections'),
+          h('p', { class: 'field__hint' }, 'Content between the tags is only included when it applies.'),
+          h('ul', { class: 'plain-list' }, ...data.sections.map((sec) => h('li', {}, h('code', {}, `{{#${sec}}}…{{/${sec}}}`)))),
+          h('p', { class: 'field__hint' }, 'PaymentDueNow: a payment was already due when the booking was made.'))));
     show();
   } catch (e) {
     clear(body);

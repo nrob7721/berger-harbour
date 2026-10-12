@@ -92,8 +92,9 @@ public class ConcurrencyTests : IClassFixture<EmulatorFixture>
         var boat = BoatId.New();
         var now = DateTimeOffset.UtcNow;
         var start = new DateOnly(2027, 5, 3);
-        var hold = Booking.CreateOnlineHold(BookingReference.Create(2026, 7001), CustomerId.New(), boat, PeriodType.Midweek,
-            new Stay(start, start.AddDays(4)), 2, 4060m, 1000m, PaymentSchedule.Standard, [], now.AddMinutes(40), null, now,
+        var hold = Booking.CreateOnlineHold(BookingReference.Create(2026, 7001),
+            new BookingCustomerDetails("Hold", "hold@example.com", "0412 345 678"), BookingDraftId.New(), boat, PeriodType.Midweek,
+            new Stay(start, start.AddDays(4)), 2, 0, 4060m, 1000m, PaymentSchedule.Standard, [], now.AddMinutes(40), null, now,
             "h1", now);
         await new FirestoreBoatScheduleLock(_fx.Db).RunExclusiveAsync(boat, s =>
         {

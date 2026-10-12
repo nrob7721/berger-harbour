@@ -13,9 +13,9 @@ public static class DefaultEmailTemplates
         <table cellpadding="4" style="border-collapse:collapse">
           <tr><td><strong>Booking reference</strong></td><td>{{BookingReference}}</td></tr>
           <tr><td><strong>Boat</strong></td><td>{{BoatName}}</td></tr>
-          <tr><td><strong>Check-in</strong></td><td>{{CheckInDate}} from {{CheckInTime}}</td></tr>
+          <tr><td><strong>Check-in</strong></td><td>{{CheckInDate}}, {{CheckInTime}}</td></tr>
           <tr><td><strong>Check-out</strong></td><td>{{CheckOutDate}} by {{CheckOutTime}}</td></tr>
-          <tr><td><strong>Guests</strong></td><td>{{NumberOfGuests}}</td></tr>
+          <tr><td><strong>Guests</strong></td><td>{{NumberOfAdults}} adults, {{NumberOfChildren}} children (under 12)</td></tr>
         </table>
         """;
 
@@ -30,10 +30,15 @@ public static class DefaultEmailTemplates
             <h3>Payments</h3>
             <p>Hire price: {{HirePrice}}<br>Total: {{TotalPrice}}<br>Paid so far: {{AmountPaid}}<br>Still owing: {{AmountOwing}}</p>
             <p>{{PaymentSchedule}}</p>
-            <p>We will email you a payment link before each payment is due.</p>
+            {{#PaymentDueNow}}
+            <p><strong>The balance of {{AmountDue}} is now due.</strong> Please pay it using this link:</p>
+            <p><a href="{{PaymentLink}}" style="display:inline-block;padding:10px 18px;background:#0b5c7a;color:#ffffff;text-decoration:none;border-radius:4px">Pay now</a></p>
+            <p>If the button does not work, copy this link into your browser:<br>{{PaymentLink}}</p>
+            {{/PaymentDueNow}}
+            <p>We will email you a payment link before each later payment is due.</p>
             <h3>Requested add-ons</h3>
             <p>{{RequestedAddons}}</p>
-            <p>Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance.</p>
+            <p>Add-ons are requests and are subject to confirmation by our staff. Add-on prices are subject to change during peak periods.</p>
             <h3>Security bond</h3>
             <p>A {{SecurityBond}} security bond applies to this hire. We will send you the details before your trip.</p>
             <p>Please read our <a href="{{HireTermsUrl}}">Hire Terms and Procedures</a>.</p>
@@ -43,10 +48,10 @@ public static class DefaultEmailTemplates
             "New online booking {{BookingReference}} — {{BoatName}} {{CheckInDate}}",
             $$$"""
             <p>A new online booking has been paid and confirmed.</p>
-            <p><strong>Customer:</strong> {{CustomerName}}</p>
+            <p><strong>Customer:</strong> {{CustomerName}} · {{CustomerEmail}} · {{CustomerPhone}}</p>
             {{{BookingSummary}}}
             <p>Total: {{TotalPrice}} · Paid: {{AmountPaid}} · Owing: {{AmountOwing}}</p>
-            <p><strong>Requested add-ons (to confirm or decline):</strong><br>{{RequestedAddons}}</p>
+            <p><strong>Requested add-ons (remove any you decline):</strong><br>{{RequestedAddons}}</p>
             """),
         EmailTemplate.Create(EmailTemplateKey.PaymentDue,
             "Payment due for your Berger Houseboats booking {{BookingReference}}",
@@ -77,7 +82,7 @@ public static class DefaultEmailTemplates
             {{{BookingSummary}}}
             <h3>Before you arrive</h3>
             <ul>
-              <li>Check-in is from {{CheckInTime}} on {{CheckInDate}}. Please allow time for the boat handover and driving instructions.</li>
+              <li>Check-in is {{CheckInTime}} on {{CheckInDate}}. Please allow time for the boat handover and driving instructions.</li>
               <li>Check-out is by {{CheckOutTime}} on {{CheckOutDate}}.</li>
               <li>A {{SecurityBond}} security bond is payable on arrival.</li>
               <li>Bring food, drinks, linen and towels unless arranged otherwise, plus warm clothing and sun protection.</li>
@@ -103,6 +108,21 @@ public static class DefaultEmailTemplates
             <p><strong>Customer:</strong> {{CustomerName}}</p>
             {{{BookingSummary}}}
             <p>Paid so far: {{AmountPaid}}. Please contact the customer to arrange new dates.</p>
+            """),
+        EmailTemplate.Create(EmailTemplateKey.StaffAbandonedBooking,
+            "Unfinished online booking — {{CustomerName}}, {{BoatName}} {{CheckInDate}}",
+            """
+            <p>A customer started an online booking but did not finish it. Please follow up.</p>
+            <table cellpadding="4" style="border-collapse:collapse">
+              <tr><td><strong>Customer</strong></td><td>{{CustomerName}}</td></tr>
+              <tr><td><strong>Email</strong></td><td>{{CustomerEmail}}</td></tr>
+              <tr><td><strong>Phone</strong></td><td>{{CustomerPhone}}</td></tr>
+              <tr><td><strong>Boat</strong></td><td>{{BoatName}}</td></tr>
+              <tr><td><strong>Dates</strong></td><td>{{CheckInDate}} → {{CheckOutDate}}</td></tr>
+              <tr><td><strong>Adults / children</strong></td><td>{{NumberOfAdults}} / {{NumberOfChildren}}</td></tr>
+              <tr><td><strong>Requested add-ons</strong></td><td>{{RequestedAddons}}</td></tr>
+              <tr><td><strong>Last step reached</strong></td><td>{{LastStepReached}}</td></tr>
+            </table>
             """),
     ];
 }

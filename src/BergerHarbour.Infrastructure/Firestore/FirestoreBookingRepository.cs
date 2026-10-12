@@ -47,6 +47,22 @@ public sealed class FirestoreBookingRepository(FirestoreDb db) : IBookingReposit
             .ToList();
     }
 
+    /// <summary>Queries addonIds array-contains + status + startDate &lt; to and filters endDate &gt; from in memory.</summary>
+    public async Task<IReadOnlyList<Booking>> ListWithAddonOverlappingAsync(AddonId addonId, DateOnly from, DateOnly to,
+        CancellationToken ct = default)
+    {
+        var query = Collection.WhereArrayContains("addonIds", addonId.Value)
+            .WhereIn("status", new[] { BookingStatus.Active.ToString(), BookingStatus.PendingPayment.ToString() })
+            .WhereLessThan("startDate", Date(to));
+        var fromKey = Date(from);
+        var snapshot = await query.GetSnapshotAsync(ct);
+        return snapshot.Documents
+            .Select(d => (d.Id, Doc: d.ConvertTo<BookingDocument>()))
+            .Where(x => string.CompareOrdinal(x.Doc.EndDate, fromKey) > 0)
+            .Select(x => ToBooking(x.Id, x.Doc))
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<Booking>> ListByCustomerAsync(IReadOnlyCollection<CustomerId> customerIds,
         CancellationToken ct = default)
     {

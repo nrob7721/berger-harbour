@@ -38,18 +38,20 @@ public sealed partial class Boat : AggregateRoot<BoatId>
     private List<BoatRate> _rates;
     private List<AddonId> _allowedAddonIds;
 
-    private Boat(BoatId id, int version, string name, string slug, BoatType type, int maxNoOfGuests, int? noOfBeds,
-        string? beddingDescription, decimal securityBond, IEnumerable<BoatRate> rates, IEnumerable<AddonId> allowedAddonIds,
-        bool isActive, DateTimeOffset createdDate, DateTimeOffset modifiedDate)
+    private Boat(BoatId id, int version, string name, string slug, BoatType type, int maxNoOfGuests, int? adultBeds,
+        int? kidsBeds, string? beddingDescription, decimal securityBond, decimal? depositAmount, IEnumerable<BoatRate> rates,
+        IEnumerable<AddonId> allowedAddonIds, bool isActive, DateTimeOffset createdDate, DateTimeOffset modifiedDate)
         : base(id, version)
     {
         Name = name;
         Slug = slug;
         Type = type;
         MaxNoOfGuests = maxNoOfGuests;
-        NoOfBeds = noOfBeds;
+        AdultBeds = adultBeds;
+        KidsBeds = kidsBeds;
         BeddingDescription = beddingDescription;
         SecurityBond = securityBond;
+        DepositAmount = depositAmount;
         _rates = rates.ToList();
         _allowedAddonIds = allowedAddonIds.ToList();
         IsActive = isActive;
@@ -66,13 +68,19 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     public int MaxNoOfGuests { get; private set; }
 
-    /// <summary>Physical beds; a double or queen counts as one bed. Drives the rooming warning.</summary>
-    public int? NoOfBeds { get; private set; }
+    /// <summary>Physical adult beds; a double or queen counts as one bed.</summary>
+    public int? AdultBeds { get; private set; }
+
+    /// <summary>Physical kids beds (e.g. bunks); may be 0. Adult beds + kids beds drive the rooming warning.</summary>
+    public int? KidsBeds { get; private set; }
 
     public string? BeddingDescription { get; private set; }
 
     /// <summary>Displayed only; the bond is not taken or held by the system.</summary>
     public decimal SecurityBond { get; private set; }
+
+    /// <summary>This boat's own deposit; when null the Settings default applies (see <see cref="EffectiveDeposit"/>).</summary>
+    public decimal? DepositAmount { get; private set; }
 
     public IReadOnlyList<BoatRate> Rates => _rates;
 
@@ -85,30 +93,47 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     public DateTimeOffset ModifiedDate { get; private set; }
 
+    /// <summary>Everywhere staff see boats: largest first (by max guests), then by name.</summary>
+    public static IEnumerable<Boat> InDisplayOrder(IEnumerable<Boat> boats) =>
+        boats.OrderByDescending(b => b.MaxNoOfGuests).ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Creates an inactive boat. It must be completed (beds, bedding, rates) before it can be activated.</summary>
     public static Boat Create(string name, string slug, BoatType type, int maxNoOfGuests, DateTimeOffset now) =>
         CreateWithId(BoatId.New(), name, slug, type, maxNoOfGuests, now);
 
     public static Boat CreateWithId(BoatId id, string name, string slug, BoatType type, int maxNoOfGuests, DateTimeOffset now) =>
         new(id, 0, Guard.Required(name, "name", "Name", 100), ValidateSlug(slug), type, ValidateMaxGuests(maxNoOfGuests),
-            null, null, 0m, [], [], false, now, now);
+            null, null, null, 0m, null, [], [], false, now, now);
 
-    public void UpdateDetails(string name, string slug, int maxNoOfGuests, int? noOfBeds, string? beddingDescription,
-        decimal securityBond, DateTimeOffset now)
+    public void UpdateDetails(string name, string slug, int maxNoOfGuests, int? adultBeds, int? kidsBeds,
+        string? beddingDescription, decimal securityBond, decimal? depositAmount, DateTimeOffset now)
     {
-        if (noOfBeds is < 1)
+        if (adultBeds is < 1)
         {
-            throw new DomainValidationException("noOfBeds", "Number of beds must be at least 1.");
+            throw new DomainValidationException("adultBeds", "Number of adult beds must be at least 1.");
+        }
+
+        if (kidsBeds is < 0)
+        {
+            throw new DomainValidationException("kidsBeds", "Number of kids beds cannot be negative.");
         }
 
         Name = Guard.Required(name, "name", "Name", 100);
         Slug = ValidateSlug(slug);
         MaxNoOfGuests = ValidateMaxGuests(maxNoOfGuests);
-        NoOfBeds = noOfBeds;
+        AdultBeds = adultBeds;
+        KidsBeds = kidsBeds;
         BeddingDescription = Guard.Optional(beddingDescription, "beddingDescription", "Bedding description", 500);
         SecurityBond = Guard.Money(securityBond, "securityBond", "Security bond");
+        DepositAmount = depositAmount is { } deposit ? Guard.PositiveMoney(deposit, "depositAmount", "Deposit") : null;
         ModifiedDate = now;
     }
+
+    /// <summary>The deposit for new bookings of this boat: its own deposit, or the Settings default.</summary>
+    public decimal EffectiveDeposit(decimal defaultDeposit) => DepositAmount ?? defaultDeposit;
+
+    /// <summary>Adult beds plus kids beds, once both are entered.</summary>
+    public int? TotalBeds => AdultBeds is { } adults ? adults + (KidsBeds ?? 0) : null;
 
     public void SetRates(IEnumerable<BoatRate> rates, DateTimeOffset now)
     {
@@ -136,15 +161,20 @@ public sealed partial class Boat : AggregateRoot<BoatId>
     public bool AllowsAddon(AddonId addonId) => _allowedAddonIds.Contains(addonId);
 
     /// <summary>
-    /// What is missing before the boat can be activated: beds, bedding description and a rate for every season ×
-    /// {Midweek, Weekend, Week}. Empty when the boat is complete.
+    /// What is missing before the boat can be activated: adult beds, kids beds (0 allowed), bedding description and a
+    /// rate for every season × {Midweek, Weekend, Week}. Empty when the boat is complete.
     /// </summary>
     public IReadOnlyList<string> MissingActivationData(IEnumerable<Season> seasons)
     {
         var missing = new List<string>();
-        if (NoOfBeds is null)
+        if (AdultBeds is null)
         {
-            missing.Add("Number of beds");
+            missing.Add("Number of adult beds");
+        }
+
+        if (KidsBeds is null)
+        {
+            missing.Add("Number of kids beds");
         }
 
         if (string.IsNullOrWhiteSpace(BeddingDescription))
@@ -208,22 +238,27 @@ public sealed partial class Boat : AggregateRoot<BoatId>
         }
     }
 
-    /// <summary>True when an online booking for this many guests must show and accept the rooming warning.</summary>
-    public bool RequiresRoomingWarning(int numberOfGuests) => NoOfBeds is { } beds && numberOfGuests > beds;
+    /// <summary>
+    /// True when this many guests (adults + children) must see and accept the rooming warning: more guests than
+    /// adult beds + kids beds.
+    /// </summary>
+    public bool RequiresRoomingWarning(int numberOfGuests) => TotalBeds is { } beds && numberOfGuests > beds;
 
     /// <summary>The exact rooming warning text; the customer's acceptance must match it.</summary>
     public string RoomingWarningText(int numberOfGuests) =>
-        $"This boat has {NoOfBeds} beds ({BeddingDescription}). With {numberOfGuests} guests, some guests will need to " +
-        "share beds. Please make sure your group's sleeping arrangements suit this layout.";
+        $"This boat has {AdultBeds} adult beds and {KidsBeds ?? 0} children's beds ({BeddingDescription}). With " +
+        $"{numberOfGuests} guests, some guests will need to share beds. Please make sure your group's sleeping " +
+        "arrangements suit this layout.";
 
     public BoatSnapshot ToSnapshot() =>
-        new(Id.Value, Version, Name, Slug, Type, MaxNoOfGuests, NoOfBeds, BeddingDescription, SecurityBond,
-            _rates.Select(r => new BoatRateSnapshot(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
+        new(Id.Value, Version, Name, Slug, Type, MaxNoOfGuests, AdultBeds, KidsBeds, BeddingDescription, SecurityBond,
+            DepositAmount, _rates.Select(r => new BoatRateSnapshot(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
             _allowedAddonIds.Select(a => a.Value).ToList(), IsActive, CreatedDate, ModifiedDate);
 
     public static Boat FromSnapshot(BoatSnapshot s) =>
-        new(new BoatId(s.Id), s.Version, s.Name, s.Slug, s.Type, s.MaxNoOfGuests, s.NoOfBeds, s.BeddingDescription,
-            s.SecurityBond, s.Rates.Select(r => new BoatRate(new SeasonId(r.SeasonId), r.PeriodType, r.Price)),
+        new(new BoatId(s.Id), s.Version, s.Name, s.Slug, s.Type, s.MaxNoOfGuests, s.AdultBeds, s.KidsBeds,
+            s.BeddingDescription, s.SecurityBond, s.DepositAmount,
+            s.Rates.Select(r => new BoatRate(new SeasonId(r.SeasonId), r.PeriodType, r.Price)),
             s.AllowedAddonIds.Select(a => new AddonId(a)), s.IsActive, s.CreatedDate, s.ModifiedDate);
 
     private static string ValidateSlug(string slug)
@@ -254,9 +289,11 @@ public sealed record BoatSnapshot(
     string Slug,
     BoatType Type,
     int MaxNoOfGuests,
-    int? NoOfBeds,
+    int? AdultBeds,
+    int? KidsBeds,
     string? BeddingDescription,
     decimal SecurityBond,
+    decimal? DepositAmount,
     IReadOnlyList<BoatRateSnapshot> Rates,
     IReadOnlyList<string> AllowedAddonIds,
     bool IsActive,

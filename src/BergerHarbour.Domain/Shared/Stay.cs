@@ -1,12 +1,18 @@
 namespace BergerHarbour.Domain.Shared;
 
 /// <summary>
-/// A booking's dates as the half-open range [StartDate, EndDate). StartDate is the check-in day (from 1:00pm),
-/// EndDate is the check-out day (by 8:00am). The nights occupied are StartDate … EndDate−1.
+/// A booking's dates as the half-open range [StartDate, EndDate). StartDate is the check-in day (check-in window
+/// 11am – 2pm), EndDate is the check-out day (by 8am). The nights occupied are StartDate … EndDate−1. The standard
+/// times are fixed; custom times staff record on a booking never affect availability or capacity.
 /// </summary>
 public sealed record Stay
 {
-    public static readonly TimeOnly CheckInTime = new(13, 0);
+    /// <summary>Start of the check-in window; payment milestones are anchored here.</summary>
+    public static readonly TimeOnly CheckInTime = new(11, 0);
+
+    /// <summary>End of the check-in window.</summary>
+    public static readonly TimeOnly CheckInWindowEnd = new(14, 0);
+
     public static readonly TimeOnly CheckOutTime = new(8, 0);
 
     public Stay(DateOnly startDate, DateOnly endDate)
@@ -33,6 +39,16 @@ public sealed record Stay
 
     /// <summary>Booking vs inclusive night range [F, L]: Start &lt;= L &amp;&amp; F &lt; End.</summary>
     public bool Overlaps(NightRange nights) => StartDate <= nights.LastNight && nights.FirstNight < EndDate;
+
+    public bool ContainsNight(DateOnly night) => night >= StartDate && night < EndDate;
+
+    public IEnumerable<DateOnly> EachNight()
+    {
+        for (var night = StartDate; night < EndDate; night = night.AddDays(1))
+        {
+            yield return night;
+        }
+    }
 
     public override string ToString() => $"{StartDate:yyyy-MM-dd} → {EndDate:yyyy-MM-dd}";
 }

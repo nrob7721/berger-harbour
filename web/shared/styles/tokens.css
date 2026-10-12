@@ -155,6 +155,19 @@ h1, h2, h3 {
   border-color: var(--c-danger);
 }
 
+/* Phone field: searchable country code selector + number (shared/src/phone.ts). */
+.phone__row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .phone__row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .field__error {
   color: var(--c-danger);
   font-size: 0.9em;

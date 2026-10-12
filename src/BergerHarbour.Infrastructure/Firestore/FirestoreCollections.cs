@@ -4,6 +4,7 @@ public static class FirestoreCollections
 {
     public const string Boats = "boats";
     public const string Bookings = "bookings";
+    public const string BookingDrafts = "bookingDrafts";
     public const string Customers = "customers";
     public const string CustomerEmails = "customerEmails";
     public const string BoatUnavailabilities = "boatUnavailabilities";

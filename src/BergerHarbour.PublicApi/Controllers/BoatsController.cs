@@ -16,7 +16,7 @@ public sealed class BoatsController(OnlineBookingService bookings) : ControllerB
     public Task<AvailabilityDto> Availability(string slug, [FromQuery] DateOnly from, [FromQuery] DateOnly to,
         CancellationToken ct) => bookings.GetAvailabilityAsync(slug, from, to, ct);
 
-    /// <summary>Prices a stay and runs the online rules (except Turnstile, terms and acceptance).</summary>
+    /// <summary>Prices a stay and runs the online rules (except the draft, terms and acceptance).</summary>
     [HttpPost("{slug}/quote")]
     public Task<QuoteDto> Quote(string slug, QuoteRequest request, CancellationToken ct) =>
         bookings.QuoteAsync(slug, request, ct);

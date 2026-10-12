@@ -5,6 +5,61 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/addons/{addonId}/availability": {
+      "get": {
+        "tags": [
+          "Addons"
+        ],
+        "parameters": [
+          {
+            "name": "addonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/boats/{slug}": {
       "get": {
         "tags": [
@@ -154,6 +209,97 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/booking-drafts": {
+      "post": {
+        "tags": [
+          "BookingDrafts"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/booking-drafts/{draftId}": {
+      "put": {
+        "tags": [
+          "BookingDrafts"
+        ],
+        "parameters": [
+          {
+            "name": "draftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -393,6 +539,17 @@
           }
         }
       },
+      "BookingDraftCreatedDto": {
+        "required": [
+          "draftId"
+        ],
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string"
+          }
+        }
+      },
       "BookingStatus": {
         "enum": [
           "PendingPayment",
@@ -440,20 +597,23 @@
           }
         }
       },
-      "CreateOnlineBookingRequest": {
+      "BookingStep": {
+        "enum": [
+          "Details",
+          "Guests",
+          "Addons",
+          "Summary",
+          "Payment"
+        ]
+      },
+      "CreateBookingDraftRequest": {
         "required": [
           "slug",
           "periodType",
           "startDate",
-          "numberOfGuests",
           "fullName",
           "email",
           "mobile",
-          "addons",
-          "roomingWarningAccepted",
-          "roomingWarningText",
-          "groupRestrictionApplies",
-          "termsAccepted",
           "turnstileToken"
         ],
         "type": "object",
@@ -468,7 +628,71 @@
             "type": "string",
             "format": "date"
           },
-          "numberOfGuests": {
+          "fullName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mobile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "turnstileToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CreateOnlineBookingRequest": {
+        "required": [
+          "draftId",
+          "slug",
+          "periodType",
+          "startDate",
+          "numberOfAdults",
+          "numberOfChildren",
+          "fullName",
+          "email",
+          "mobile",
+          "addons",
+          "roomingWarningAccepted",
+          "roomingWarningText",
+          "termsAccepted"
+        ],
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
             "type": "integer",
             "format": "int32"
           },
@@ -508,20 +732,8 @@
               "string"
             ]
           },
-          "groupRestrictionApplies": {
-            "type": [
-              "null",
-              "boolean"
-            ]
-          },
           "termsAccepted": {
             "type": "boolean"
-          },
-          "turnstileToken": {
-            "type": [
-              "null",
-              "string"
-            ]
           }
         }
       },
@@ -593,7 +805,8 @@
           "label",
           "amount",
           "requiredCumulative",
-          "dueDate"
+          "dueDate",
+          "dueNow"
         ],
         "type": "object",
         "properties": {
@@ -617,6 +830,9 @@
               "string"
             ],
             "format": "date"
+          },
+          "dueNow": {
+            "type": "boolean"
           }
         }
       },
@@ -712,6 +928,18 @@
           "Custom"
         ]
       },
+      "PublicAddonAvailabilityDto": {
+        "required": [
+          "remaining"
+        ],
+        "type": "object",
+        "properties": {
+          "remaining": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "PublicAddonDto": {
         "required": [
           "id",
@@ -719,7 +947,9 @@
           "description",
           "priceOnRequest",
           "quantityApplies",
-          "prices"
+          "prices",
+          "hasCapacity",
+          "capacityUnitLabel"
         ],
         "type": "object",
         "properties": {
@@ -750,6 +980,15 @@
                 "$ref": "#/components/schemas/AddonPricesDto"
               }
             ]
+          },
+          "hasCapacity": {
+            "type": "boolean"
+          },
+          "capacityUnitLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -758,9 +997,11 @@
           "slug",
           "name",
           "maxNoOfGuests",
-          "noOfBeds",
+          "adultBeds",
+          "kidsBeds",
           "beddingDescription",
           "securityBond",
+          "depositAmount",
           "isActive",
           "addons",
           "settings"
@@ -777,7 +1018,14 @@
             "type": "integer",
             "format": "int32"
           },
-          "noOfBeds": {
+          "adultBeds": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "kidsBeds": {
             "type": [
               "null",
               "integer"
@@ -791,6 +1039,10 @@
             ]
           },
           "securityBond": {
+            "type": "number",
+            "format": "double"
+          },
+          "depositAmount": {
             "type": "number",
             "format": "double"
           },
@@ -817,6 +1069,7 @@
           "hireTermsUrl",
           "today",
           "checkInTime",
+          "checkInWindowEnd",
           "checkOutTime"
         ],
         "type": "object",
@@ -845,6 +1098,9 @@
           "checkInTime": {
             "type": "string"
           },
+          "checkInWindowEnd": {
+            "type": "string"
+          },
           "checkOutTime": {
             "type": "string"
           }
@@ -856,7 +1112,7 @@
           "name",
           "quantity",
           "unitPrice",
-          "estimatedTotal"
+          "lineTotal"
         ],
         "type": "object",
         "properties": {
@@ -877,7 +1133,7 @@
             ],
             "format": "double"
           },
-          "estimatedTotal": {
+          "lineTotal": {
             "type": [
               "null",
               "number"
@@ -893,14 +1149,17 @@
           "startDate",
           "endDate",
           "checkInTime",
+          "checkInWindowEnd",
           "checkOutTime",
-          "numberOfGuests",
+          "timeZoneLabel",
+          "numberOfAdults",
+          "numberOfChildren",
           "seasonName",
           "hirePrice",
           "addons",
+          "totalPrice",
           "depositAmount",
           "amountDueAtCheckout",
-          "fullPaymentAtCheckout",
           "paymentSchedule",
           "milestones",
           "roomingWarningText",
@@ -925,10 +1184,20 @@
           "checkInTime": {
             "type": "string"
           },
+          "checkInWindowEnd": {
+            "type": "string"
+          },
           "checkOutTime": {
             "type": "string"
           },
-          "numberOfGuests": {
+          "timeZoneLabel": {
+            "type": "string"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
             "type": "integer",
             "format": "int32"
           },
@@ -945,6 +1214,10 @@
               "$ref": "#/components/schemas/QuoteAddonDto"
             }
           },
+          "totalPrice": {
+            "type": "number",
+            "format": "double"
+          },
           "depositAmount": {
             "type": "number",
             "format": "double"
@@ -952,9 +1225,6 @@
           "amountDueAtCheckout": {
             "type": "number",
             "format": "double"
-          },
-          "fullPaymentAtCheckout": {
-            "type": "boolean"
           },
           "paymentSchedule": {
             "$ref": "#/components/schemas/PaymentSchedule"
@@ -981,7 +1251,8 @@
         "required": [
           "periodType",
           "startDate",
-          "numberOfGuests",
+          "numberOfAdults",
+          "numberOfChildren",
           "addons"
         ],
         "type": "object",
@@ -993,7 +1264,11 @@
             "type": "string",
             "format": "date"
           },
-          "numberOfGuests": {
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
             "type": "integer",
             "format": "int32"
           },
@@ -1007,12 +1282,85 @@
             }
           }
         }
+      },
+      "UpdateBookingDraftRequest": {
+        "required": [
+          "periodType",
+          "startDate",
+          "fullName",
+          "email",
+          "mobile",
+          "numberOfAdults",
+          "numberOfChildren",
+          "addons",
+          "lastStepReached"
+        ],
+        "type": "object",
+        "properties": {
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "fullName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mobile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "numberOfAdults": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "addons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BookingAddonRequest"
+            }
+          },
+          "lastStepReached": {
+            "$ref": "#/components/schemas/BookingStep"
+          }
+        }
       }
     }
   },
   "tags": [
     {
+      "name": "Addons"
+    },
+    {
       "name": "Boats"
+    },
+    {
+      "name": "BookingDrafts"
     },
     {
       "name": "Bookings"

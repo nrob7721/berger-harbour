@@ -18,4 +18,8 @@ public static class SydneyTime
     }
 
     public static DateTimeOffset CheckInInstant(DateOnly startDate) => ToInstant(startDate, Stay.CheckInTime);
+
+    /// <summary>"AEST" or "AEDT", whichever applies at that local date and time in Australia/Sydney.</summary>
+    public static string ZoneLabel(DateOnly date, TimeOnly time) =>
+        Zone.IsDaylightSavingTime(date.ToDateTime(time, DateTimeKind.Unspecified)) ? "AEDT" : "AEST";
 }

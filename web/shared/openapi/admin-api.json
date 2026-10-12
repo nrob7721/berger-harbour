@@ -5,6 +5,68 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/addons/{addonId}/availability": {
+      "get": {
+        "tags": [
+          "Addons"
+        ],
+        "parameters": [
+          {
+            "name": "addonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "excludeBookingId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddonAvailabilityDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddonAvailabilityDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddonAvailabilityDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/boats": {
       "get": {
         "tags": [
@@ -691,6 +753,45 @@
         }
       }
     },
+    "/api/bookings/{id}/rebook": {
+      "get": {
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebookDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebookDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebookDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/bookings/{id}/recalculate-price": {
       "post": {
         "tags": [
@@ -1105,6 +1206,54 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CustomerDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customers/{id}/bookings": {
+      "get": {
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerBookingDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerBookingDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerBookingDto"
+                  }
                 }
               }
             }
@@ -1617,6 +1766,64 @@
         }
       }
     },
+    "/api/settings/addons/order": {
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddonOrderRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddonOrderRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddonOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AddonDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AddonDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AddonDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/addons/{id}": {
       "put": {
         "tags": [
@@ -1838,6 +2045,27 @@
           }
         }
       },
+      "AddonAvailabilityDto": {
+        "required": [
+          "addonId",
+          "capacity",
+          "remaining"
+        ],
+        "type": "object",
+        "properties": {
+          "addonId": {
+            "type": "string"
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "remaining": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "AddonDto": {
         "required": [
           "id",
@@ -1847,6 +2075,8 @@
           "priceOnRequest",
           "prices",
           "quantityApplies",
+          "capacity",
+          "capacityUnitLabel",
           "isActive"
         ],
         "type": "object",
@@ -1883,6 +2113,19 @@
           "quantityApplies": {
             "type": "boolean"
           },
+          "capacity": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "capacityUnitLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "isActive": {
             "type": "boolean"
           }
@@ -1895,8 +2138,9 @@
           "name",
           "quantity",
           "unitPrice",
-          "status",
-          "lineTotal"
+          "lineTotal",
+          "remaining",
+          "capacity"
         ],
         "type": "object",
         "properties": {
@@ -1920,24 +2164,42 @@
             ],
             "format": "double"
           },
-          "status": {
-            "$ref": "#/components/schemas/AddonLineStatus"
-          },
           "lineTotal": {
             "type": [
               "null",
               "number"
             ],
             "format": "double"
+          },
+          "remaining": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "capacity": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
-      "AddonLineStatus": {
-        "enum": [
-          "Requested",
-          "Confirmed",
-          "Declined"
-        ]
+      "AddonOrderRequest": {
+        "required": [
+          "addonIds"
+        ],
+        "type": "object",
+        "properties": {
+          "addonIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       },
       "AddonPricesDto": {
         "required": [
@@ -1969,6 +2231,8 @@
           "priceOnRequest",
           "prices",
           "quantityApplies",
+          "capacity",
+          "capacityUnitLabel",
           "isActive"
         ],
         "type": "object",
@@ -2002,8 +2266,45 @@
           "quantityApplies": {
             "type": "boolean"
           },
+          "capacity": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "capacityUnitLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "isActive": {
             "type": "boolean"
+          }
+        }
+      },
+      "AdminAddonLineRequest": {
+        "required": [
+          "addonId",
+          "quantity",
+          "unitPrice"
+        ],
+        "type": "object",
+        "properties": {
+          "addonId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unitPrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           }
         }
       },
@@ -2013,13 +2314,18 @@
           "periodType",
           "startDate",
           "endDate",
-          "numberOfGuests",
+          "numberOfAdults",
+          "numberOfChildren",
+          "checkInTime",
+          "checkOutTime",
           "email",
           "fullName",
           "phone",
+          "secondaryPhone",
           "isStandby",
           "comments",
-          "hirePrice"
+          "hirePrice",
+          "addons"
         ],
         "type": "object",
         "properties": {
@@ -2040,9 +2346,31 @@
             ],
             "format": "date"
           },
-          "numberOfGuests": {
+          "numberOfAdults": {
             "type": "integer",
             "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checkInTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "checkOutTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "HH:mm",
+            "format": "time"
           },
           "email": {
             "type": [
@@ -2057,6 +2385,12 @@
             ]
           },
           "phone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secondaryPhone": {
             "type": [
               "null",
               "string"
@@ -2077,6 +2411,15 @@
               "number"
             ],
             "format": "double"
+          },
+          "addons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AdminAddonLineRequest"
+            }
           }
         }
       },
@@ -2087,10 +2430,14 @@
           "periodType",
           "startDate",
           "endDate",
-          "numberOfGuests",
+          "numberOfAdults",
+          "numberOfChildren",
+          "checkInTime",
+          "checkOutTime",
           "email",
           "fullName",
           "phone",
+          "secondaryPhone",
           "isStandby",
           "comments",
           "hirePrice",
@@ -2119,9 +2466,31 @@
             ],
             "format": "date"
           },
-          "numberOfGuests": {
+          "numberOfAdults": {
             "type": "integer",
             "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checkInTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "checkOutTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "HH:mm",
+            "format": "time"
           },
           "email": {
             "type": [
@@ -2136,6 +2505,12 @@
             ]
           },
           "phone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secondaryPhone": {
             "type": [
               "null",
               "string"
@@ -2279,9 +2654,11 @@
           "slug",
           "type",
           "maxNoOfGuests",
-          "noOfBeds",
+          "adultBeds",
+          "kidsBeds",
           "beddingDescription",
           "securityBond",
+          "depositAmount",
           "rates",
           "allowedAddonIds",
           "isActive",
@@ -2311,7 +2688,14 @@
             "type": "integer",
             "format": "int32"
           },
-          "noOfBeds": {
+          "adultBeds": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "kidsBeds": {
             "type": [
               "null",
               "integer"
@@ -2326,6 +2710,13 @@
           },
           "securityBond": {
             "type": "number",
+            "format": "double"
+          },
+          "depositAmount": {
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "rates": {
@@ -2386,7 +2777,8 @@
           "slug",
           "type",
           "maxNoOfGuests",
-          "noOfBeds",
+          "adultBeds",
+          "kidsBeds",
           "isActive"
         ],
         "type": "object",
@@ -2407,7 +2799,14 @@
             "type": "integer",
             "format": "int32"
           },
-          "noOfBeds": {
+          "adultBeds": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "kidsBeds": {
             "type": [
               "null",
               "integer"
@@ -2431,9 +2830,11 @@
           "name",
           "slug",
           "maxNoOfGuests",
-          "noOfBeds",
+          "adultBeds",
+          "kidsBeds",
           "beddingDescription",
           "securityBond",
+          "depositAmount",
           "rates",
           "allowedAddonIds",
           "isActive"
@@ -2454,7 +2855,14 @@
             "type": "integer",
             "format": "int32"
           },
-          "noOfBeds": {
+          "adultBeds": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "kidsBeds": {
             "type": [
               "null",
               "integer"
@@ -2469,6 +2877,13 @@
           },
           "securityBond": {
             "type": "number",
+            "format": "double"
+          },
+          "depositAmount": {
+            "type": [
+              "null",
+              "number"
+            ],
             "format": "double"
           },
           "rates": {
@@ -2500,6 +2915,25 @@
           "SystemUser"
         ]
       },
+      "BookingCustomerDetailsDto": {
+        "required": [
+          "fullName",
+          "email",
+          "mobileNumber"
+        ],
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mobileNumber": {
+            "type": "string"
+          }
+        }
+      },
       "BookingDetailDto": {
         "required": [
           "id",
@@ -2513,12 +2947,17 @@
           "periodType",
           "startDate",
           "endDate",
+          "numberOfAdults",
+          "numberOfChildren",
           "numberOfGuests",
+          "checkInTime",
+          "checkOutTime",
           "comments",
           "hirePrice",
           "depositAmount",
           "paymentSchedule",
           "customer",
+          "customerDetails",
           "addonLines",
           "payments",
           "totalPrice",
@@ -2533,8 +2972,8 @@
           "termsAcceptedAt",
           "roomingWarningAcceptedAt",
           "roomingWarningText",
-          "groupRestrictionDeclaredNotApplicable",
-          "sentNotifications"
+          "sentNotifications",
+          "warnings"
         ],
         "type": "object",
         "properties": {
@@ -2574,9 +3013,29 @@
             "type": "string",
             "format": "date"
           },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
           "numberOfGuests": {
             "type": "integer",
             "format": "int32"
+          },
+          "checkInTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "checkOutTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
           },
           "comments": {
             "type": [
@@ -2596,7 +3055,24 @@
             "$ref": "#/components/schemas/PaymentSchedule"
           },
           "customer": {
-            "$ref": "#/components/schemas/CustomerDto"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CustomerDto"
+              }
+            ]
+          },
+          "customerDetails": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BookingCustomerDetailsDto"
+              }
+            ]
           },
           "addonLines": {
             "type": "array",
@@ -2670,16 +3146,16 @@
               "string"
             ]
           },
-          "groupRestrictionDeclaredNotApplicable": {
-            "type": [
-              "null",
-              "boolean"
-            ]
-          },
           "sentNotifications": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/SentNotification"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         }
@@ -2781,12 +3257,62 @@
           }
         }
       },
+      "CustomerBookingDto": {
+        "required": [
+          "id",
+          "reference",
+          "boatId",
+          "boatName",
+          "startDate",
+          "endDate",
+          "periodType",
+          "status",
+          "isStandby",
+          "paymentStatus"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "boatId": {
+            "type": "string"
+          },
+          "boatName": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus"
+          },
+          "isStandby": {
+            "type": "boolean"
+          },
+          "paymentStatus": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          }
+        }
+      },
       "CustomerDto": {
         "required": [
           "id",
           "fullName",
           "email",
           "mobileNumber",
+          "secondaryPhone",
           "createdDate"
         ],
         "type": "object",
@@ -2801,6 +3327,12 @@
             "type": "string"
           },
           "mobileNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secondaryPhone": {
             "type": [
               "null",
               "string"
@@ -2844,7 +3376,8 @@
           "PaymentReceived",
           "PreHireInstructions",
           "StaffBalanceOverdue",
-          "StaffStandbySuperseded"
+          "StaffStandbySuperseded",
+          "StaffAbandonedBooking"
         ]
       },
       "EmailTemplateRequest": {
@@ -2870,7 +3403,8 @@
       "EmailTemplatesDto": {
         "required": [
           "templates",
-          "placeholders"
+          "placeholders",
+          "sections"
         ],
         "type": "object",
         "properties": {
@@ -2881,6 +3415,12 @@
             }
           },
           "placeholders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sections": {
             "type": "array",
             "items": {
               "type": "string"
@@ -2923,7 +3463,8 @@
           "label",
           "amount",
           "requiredCumulative",
-          "dueDate"
+          "dueDate",
+          "dueNow"
         ],
         "type": "object",
         "properties": {
@@ -2947,6 +3488,9 @@
               "string"
             ],
             "format": "date"
+          },
+          "dueNow": {
+            "type": "boolean"
           }
         }
       },
@@ -3035,6 +3579,130 @@
           "LongWeekend",
           "Custom"
         ]
+      },
+      "RebookAddonDto": {
+        "required": [
+          "addonId",
+          "name",
+          "quantity",
+          "unitPrice"
+        ],
+        "type": "object",
+        "properties": {
+          "addonId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unitPrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "RebookDto": {
+        "required": [
+          "originalReference",
+          "boatId",
+          "periodType",
+          "startDate",
+          "endDate",
+          "numberOfAdults",
+          "numberOfChildren",
+          "checkInTime",
+          "checkOutTime",
+          "email",
+          "fullName",
+          "phone",
+          "secondaryPhone",
+          "hirePrice",
+          "addons"
+        ],
+        "type": "object",
+        "properties": {
+          "originalReference": {
+            "type": "string"
+          },
+          "boatId": {
+            "type": "string"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "checkInTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "checkOutTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fullName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "phone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secondaryPhone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hirePrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "addons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RebookAddonDto"
+            }
+          }
+        }
       },
       "SeasonDto": {
         "required": [
@@ -3169,6 +3837,7 @@
         "required": [
           "id",
           "name",
+          "maxNoOfGuests",
           "isActive"
         ],
         "type": "object",
@@ -3178,6 +3847,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "maxNoOfGuests": {
+            "type": "integer",
+            "format": "int32"
           },
           "isActive": {
             "type": "boolean"
@@ -3390,8 +4063,7 @@
         "required": [
           "version",
           "quantity",
-          "unitPrice",
-          "status"
+          "unitPrice"
         ],
         "type": "object",
         "properties": {
@@ -3409,9 +4081,6 @@
               "number"
             ],
             "format": "double"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AddonLineStatus"
           }
         }
       },
@@ -3430,6 +4099,9 @@
     }
   },
   "tags": [
+    {
+      "name": "Addons"
+    },
     {
       "name": "Boats"
     },

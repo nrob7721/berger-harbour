@@ -13,28 +13,43 @@ public sealed class BookingDocument
     [FirestoreProperty("createdBy")] public string CreatedBy { get; set; } = "";
     [FirestoreProperty("isStandby")] public bool IsStandby { get; set; }
     [FirestoreProperty("status")] public string Status { get; set; } = "";
-    [FirestoreProperty("customerId")] public string CustomerId { get; set; } = "";
+    [FirestoreProperty("customerId")] public string? CustomerId { get; set; }
+    [FirestoreProperty("customerDetails")] public CustomerDetailsDocument? CustomerDetails { get; set; }
+    [FirestoreProperty("bookingDraftId")] public string? BookingDraftId { get; set; }
     [FirestoreProperty("boatId")] public string BoatId { get; set; } = "";
     [FirestoreProperty("periodType")] public string PeriodType { get; set; } = "";
     [FirestoreProperty("startDate")] public string StartDate { get; set; } = "";
     [FirestoreProperty("endDate")] public string EndDate { get; set; } = "";
-    [FirestoreProperty("numberOfGuests")] public int NumberOfGuests { get; set; }
+    [FirestoreProperty("numberOfAdults")] public int NumberOfAdults { get; set; }
+    [FirestoreProperty("numberOfChildren")] public int NumberOfChildren { get; set; }
+    [FirestoreProperty("checkInTime")] public string CheckInTime { get; set; } = "";
+    [FirestoreProperty("checkOutTime")] public string CheckOutTime { get; set; } = "";
     [FirestoreProperty("comments")] public string? Comments { get; set; }
     [FirestoreProperty("hirePriceCents")] public long HirePriceCents { get; set; }
     [FirestoreProperty("depositAmountCents")] public long DepositAmountCents { get; set; }
     [FirestoreProperty("paymentSchedule")] public string PaymentSchedule { get; set; } = "";
     [FirestoreProperty("addonLines")] public List<AddonLineDocument> AddonLines { get; set; } = [];
+
+    /// <summary>Denormalised add-on ids so capacity queries can use array-contains.</summary>
+    [FirestoreProperty("addonIds")] public List<string> AddonIds { get; set; } = [];
     [FirestoreProperty("payments")] public List<PaymentDocument> Payments { get; set; } = [];
     [FirestoreProperty("holdExpiresAt")] public Timestamp? HoldExpiresAt { get; set; }
     [FirestoreProperty("stripeCheckoutSessionId")] public string? StripeCheckoutSessionId { get; set; }
     [FirestoreProperty("roomingWarningAcceptedAt")] public Timestamp? RoomingWarningAcceptedAt { get; set; }
     [FirestoreProperty("roomingWarningText")] public string? RoomingWarningText { get; set; }
     [FirestoreProperty("termsAcceptedAt")] public Timestamp? TermsAcceptedAt { get; set; }
-    [FirestoreProperty("groupRestrictionDeclaredNotApplicable")] public bool? GroupRestrictionDeclaredNotApplicable { get; set; }
     [FirestoreProperty("paymentLinkTokenHash")] public string PaymentLinkTokenHash { get; set; } = "";
     [FirestoreProperty("sentNotifications")] public List<SentNotificationDocument> SentNotifications { get; set; } = [];
     [FirestoreProperty("createdDate")] public Timestamp CreatedDate { get; set; }
     [FirestoreProperty("modifiedDate")] public Timestamp ModifiedDate { get; set; }
+}
+
+[FirestoreData]
+public sealed class CustomerDetailsDocument
+{
+    [FirestoreProperty("fullName")] public string FullName { get; set; } = "";
+    [FirestoreProperty("email")] public string Email { get; set; } = "";
+    [FirestoreProperty("mobileNumber")] public string MobileNumber { get; set; } = "";
 }
 
 [FirestoreData]
@@ -45,7 +60,6 @@ public sealed class AddonLineDocument
     [FirestoreProperty("nameSnapshot")] public string NameSnapshot { get; set; } = "";
     [FirestoreProperty("quantity")] public int Quantity { get; set; }
     [FirestoreProperty("unitPriceCents")] public long? UnitPriceCents { get; set; }
-    [FirestoreProperty("status")] public string Status { get; set; } = "";
 }
 
 [FirestoreData]
@@ -75,9 +89,11 @@ public sealed class BoatDocument
     [FirestoreProperty("slug")] public string Slug { get; set; } = "";
     [FirestoreProperty("type")] public string Type { get; set; } = "";
     [FirestoreProperty("maxNoOfGuests")] public int MaxNoOfGuests { get; set; }
-    [FirestoreProperty("noOfBeds")] public int? NoOfBeds { get; set; }
+    [FirestoreProperty("adultBeds")] public int? AdultBeds { get; set; }
+    [FirestoreProperty("kidsBeds")] public int? KidsBeds { get; set; }
     [FirestoreProperty("beddingDescription")] public string? BeddingDescription { get; set; }
     [FirestoreProperty("securityBondCents")] public long SecurityBondCents { get; set; }
+    [FirestoreProperty("depositAmountCents")] public long? DepositAmountCents { get; set; }
     [FirestoreProperty("rates")] public List<BoatRateDocument> Rates { get; set; } = [];
     [FirestoreProperty("allowedAddonIds")] public List<string> AllowedAddonIds { get; set; } = [];
     [FirestoreProperty("isActive")] public bool IsActive { get; set; }
@@ -100,6 +116,7 @@ public sealed class CustomerDocument
     [FirestoreProperty("fullName")] public string FullName { get; set; } = "";
     [FirestoreProperty("email")] public string Email { get; set; } = "";
     [FirestoreProperty("mobileNumber")] public string? MobileNumber { get; set; }
+    [FirestoreProperty("secondaryPhone")] public string? SecondaryPhone { get; set; }
     [FirestoreProperty("createdDate")] public Timestamp CreatedDate { get; set; }
     [FirestoreProperty("modifiedDate")] public Timestamp ModifiedDate { get; set; }
 }
@@ -158,6 +175,9 @@ public sealed class AddonDocument
     [FirestoreProperty("weekendPriceCents")] public long? WeekendPriceCents { get; set; }
     [FirestoreProperty("weekPriceCents")] public long? WeekPriceCents { get; set; }
     [FirestoreProperty("quantityApplies")] public bool QuantityApplies { get; set; }
+    [FirestoreProperty("capacity")] public int? Capacity { get; set; }
+    [FirestoreProperty("capacityUnitLabel")] public string? CapacityUnitLabel { get; set; }
+    [FirestoreProperty("sortOrder")] public int SortOrder { get; set; }
     [FirestoreProperty("isActive")] public bool IsActive { get; set; }
 }
 
@@ -180,4 +200,33 @@ public sealed class BusinessSettingsDocument
     [FirestoreProperty("contactPhone")] public string ContactPhone { get; set; } = "";
     [FirestoreProperty("contactEmail")] public string ContactEmail { get; set; } = "";
     [FirestoreProperty("hireTermsUrl")] public string HireTermsUrl { get; set; } = "";
+}
+
+[FirestoreData]
+public sealed class BookingDraftDocument
+{
+    [FirestoreProperty("version")] public int Version { get; set; }
+    [FirestoreProperty("boatId")] public string BoatId { get; set; } = "";
+    [FirestoreProperty("periodType")] public string PeriodType { get; set; } = "";
+    [FirestoreProperty("startDate")] public string StartDate { get; set; } = "";
+    [FirestoreProperty("endDate")] public string EndDate { get; set; } = "";
+    [FirestoreProperty("fullName")] public string FullName { get; set; } = "";
+    [FirestoreProperty("email")] public string Email { get; set; } = "";
+    [FirestoreProperty("mobileNumber")] public string MobileNumber { get; set; } = "";
+    [FirestoreProperty("numberOfAdults")] public int? NumberOfAdults { get; set; }
+    [FirestoreProperty("numberOfChildren")] public int? NumberOfChildren { get; set; }
+    [FirestoreProperty("addonRequests")] public List<DraftAddonRequestDocument> AddonRequests { get; set; } = [];
+    [FirestoreProperty("lastStepReached")] public string LastStepReached { get; set; } = "";
+    [FirestoreProperty("lastActivityAt")] public Timestamp LastActivityAt { get; set; }
+    [FirestoreProperty("convertedBookingId")] public string? ConvertedBookingId { get; set; }
+    [FirestoreProperty("convertedAt")] public Timestamp? ConvertedAt { get; set; }
+    [FirestoreProperty("abandonedNotifiedAt")] public Timestamp? AbandonedNotifiedAt { get; set; }
+    [FirestoreProperty("createdDate")] public Timestamp CreatedDate { get; set; }
+}
+
+[FirestoreData]
+public sealed class DraftAddonRequestDocument
+{
+    [FirestoreProperty("addonId")] public string AddonId { get; set; } = "";
+    [FirestoreProperty("quantity")] public int Quantity { get; set; }
 }

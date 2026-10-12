@@ -1,6 +1,7 @@
 using BergerHarbour.Application;
 using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Common;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -81,6 +82,7 @@ public static class DependencyInjection
         services.AddSingleton(_ => CreateFirestore(config));
         services.AddSingleton<IBoatRepository, FirestoreBoatRepository>();
         services.AddSingleton<IBookingRepository, FirestoreBookingRepository>();
+        services.AddSingleton<IBookingDraftRepository, FirestoreBookingDraftRepository>();
         services.AddSingleton<ICustomerRepository, FirestoreCustomerRepository>();
         services.AddSingleton<IBoatUnavailabilityRepository, FirestoreBoatUnavailabilityRepository>();
         services.AddSingleton<ISeasonRepository, FirestoreSeasonRepository>();

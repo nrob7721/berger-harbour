@@ -31,6 +31,9 @@ public static class PricingService
         return new HirePriceQuote(season, price);
     }
 
-    /// <summary>The add-on's price for the period type, or null when it is price on request.</summary>
+    /// <summary>
+    /// The add-on's price for a Midweek, Weekend or Week booking; null (staff enter it) when the add-on is price on
+    /// request or the booking is LongWeekend or Custom.
+    /// </summary>
     public static decimal? AddonUnitPrice(AddonDefinition addon, PeriodType periodType) => addon.UnitPriceFor(periodType);
 }

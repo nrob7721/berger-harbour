@@ -1,5 +1,7 @@
 using BergerHarbour.Application.Abstractions;
+using BergerHarbour.Application.Customers;
 using BergerHarbour.Application.Notifications;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 using Microsoft.Extensions.Logging;
@@ -9,11 +11,14 @@ namespace BergerHarbour.Application.Payments;
 /// <summary>
 /// Handles Stripe checkout events. Every step is idempotent so Stripe can redeliver: payments are keyed on the
 /// PaymentIntent id and emails on the booking's sent-notification keys. Exceptions propagate so the webhook
-/// returns non-2xx and Stripe retries.
+/// returns non-2xx and Stripe retries. When a deposit activates an online booking, the Customer is created or updated
+/// from the details entered online and the booking draft is marked converted; neither happens if it can't activate.
 /// </summary>
 public sealed class StripeWebhookHandler(
     IBookingRepository bookings,
+    IBookingDraftRepository drafts,
     IBoatScheduleLock scheduleLock,
+    CustomerService customerService,
     NotificationService notifications,
     IClock clock,
     ILogger<StripeWebhookHandler> logger)
@@ -108,13 +113,79 @@ public sealed class StripeWebhookHandler(
 
         if (outcome.Booking.Status == BookingStatus.Active)
         {
-            await notifications.SendBookingConfirmedAsync(outcome.Booking, ct);
-            await notifications.SendStaffNewOnlineBookingAsync(outcome.Booking, ct);
+            var active = await LinkCustomerAsync(outcome.Booking, ct);
+            await ConvertDraftAsync(active, ct);
+            await notifications.SendBookingConfirmedAsync(active, ct);
+            await notifications.SendStaffNewOnlineBookingAsync(active, ct);
         }
 
         foreach (var standby in outcome.Superseded)
         {
             await notifications.SendStaffStandbySupersededAsync(standby, ct);
+        }
+    }
+
+    /// <summary>
+    /// Creates or updates the Customer from the booking's details and links it. Idempotent, so a webhook replay
+    /// finishes the job if an earlier attempt failed after activation.
+    /// </summary>
+    private async Task<Booking> LinkCustomerAsync(Booking booking, CancellationToken ct)
+    {
+        if (booking.CustomerId is not null || booking.CustomerDetails is not { } details)
+        {
+            return booking;
+        }
+
+        var customer = await customerService.UpsertAsync(details.FullName, details.Email, details.MobileNumber, ct);
+        for (var attempt = 1; ; attempt++)
+        {
+            booking.ChangeCustomer(customer.Id, clock.UtcNow);
+            try
+            {
+                await bookings.SaveAsync(booking, ct);
+                return booking;
+            }
+            catch (ConcurrencyConflictException) when (attempt < 5)
+            {
+                booking = await bookings.GetAsync(booking.Id, ct) ?? throw new InvalidOperationException("Booking vanished.");
+                if (booking.CustomerId is not null)
+                {
+                    return booking;
+                }
+            }
+        }
+    }
+
+    private async Task ConvertDraftAsync(Booking booking, CancellationToken ct)
+    {
+        if (booking.BookingDraftId is not { } draftId)
+        {
+            return;
+        }
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var draft = await drafts.GetAsync(draftId, ct);
+            if (draft is null || draft.ConvertedBookingId == booking.Id)
+            {
+                return;
+            }
+
+            if (draft.IsConverted)
+            {
+                logger.LogWarning("Draft for {Reference} was already converted by another booking", booking.Reference.Value);
+                return;
+            }
+
+            draft.MarkConverted(booking.Id, clock.UtcNow);
+            try
+            {
+                await drafts.SaveAsync(draft, ct);
+                return;
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+            }
         }
     }
 

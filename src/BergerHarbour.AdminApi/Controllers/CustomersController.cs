@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.AdminApi.Controllers;
 
-/// <summary>Read-only in v1. Contact details are updated from the booking dialog.</summary>
+/// <summary>
+/// Read-only in v1, apart from opening and re-booking bookings. Contact details are updated from the booking dialog.
+/// </summary>
 [ApiController]
 [Route("api/customers")]
 public sealed class CustomersController(CustomerQueries customers) : ControllerBase
@@ -16,4 +18,8 @@ public sealed class CustomersController(CustomerQueries customers) : ControllerB
     [HttpGet("by-email")]
     public async Task<CustomerDto> ByEmail([FromQuery] string email, CancellationToken ct) =>
         await customers.GetByEmailAsync(email, ct) ?? throw new NotFoundException("No customer with that email.");
+
+    /// <summary>All of the customer's bookings, any status, newest stay first.</summary>
+    [HttpGet("{id}/bookings")]
+    public Task<IReadOnlyList<CustomerBookingDto>> Bookings(string id, CancellationToken ct) => customers.ListBookingsAsync(id, ct);
 }

@@ -50,12 +50,13 @@ public sealed class PaymentLinkService(
         }
 
         var boat = await boats.GetAsync(booking.BoatId, ct);
-        var customer = await customers.GetAsync(booking.CustomerId, ct)
-                       ?? throw new NotFoundException("Booking not found.");
+        var email = (booking.CustomerId is { } customerId ? (await customers.GetAsync(customerId, ct))?.Email.Value : null)
+                    ?? booking.CustomerDetails?.Email
+                    ?? throw new NotFoundException("Booking not found.");
         var session = await paymentGateway.CreateEmbeddedCheckoutSessionAsync(new CheckoutSessionRequest(
             booking.Id, booking.Reference.Value, CheckoutPurpose.Payment, amount,
             $"Payment for {boat?.Name} {Format.Date(booking.StartDate)} ({booking.Reference.Value})",
-            customer.Email.Value,
+            email,
             clock.UtcNow + bookingOptions.Value.CheckoutSessionLifetime + TimeSpan.FromMinutes(1)), ct);
         return new PayCheckoutResult(session.ClientSecret, session.SessionId, amount);
     }

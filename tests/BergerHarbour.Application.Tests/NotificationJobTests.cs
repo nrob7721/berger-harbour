@@ -1,6 +1,9 @@
+using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Bookings;
 using BergerHarbour.Application.Common;
 using BergerHarbour.Application.Notifications;
+using BergerHarbour.Application.Payments;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 
@@ -8,6 +11,11 @@ namespace BergerHarbour.Application.Tests;
 
 public class NotificationJobTests
 {
+    private static AdminBookingRequest StaffRequest(DateOnly start, int nights = 4, bool standby = false,
+        decimal hirePrice = 4060m, string email = "jane@example.com", string name = "Jane Citizen") =>
+        new("pacific-blue", PeriodType.Custom, start, start.AddDays(nights), 3, 1, null, null, email, name, null, null,
+            standby, null, hirePrice, null);
+
     private static async Task<(TestApp App, BookingDetailDto Booking)> StaffBookingAsync(DateOnly? start = null,
         bool standby = false, decimal paid = 1000m, NotificationOptions? options = null, DateTimeOffset? now = null,
         int nights = 4, decimal hirePrice = 4060m)
@@ -15,8 +23,7 @@ public class NotificationJobTests
         var app = await TestApp.CreateAsync(online: false, notifications: options, now: now);
         var s = start ?? app.MondayAfter(60);
         var admin = app.Get<AdminBookingService>();
-        var booking = await admin.CreateAsync(new AdminBookingRequest("pacific-blue", PeriodType.Custom, s, s.AddDays(nights), 4,
-            "jane@example.com", "Jane Citizen", null, standby, null, hirePrice));
+        var booking = await admin.CreateAsync(StaffRequest(s, nights, standby, hirePrice));
         if (paid > 0)
         {
             booking = await admin.AddManualPaymentAsync(booking.Id,
@@ -95,10 +102,8 @@ public class NotificationJobTests
         var (app, standby) = await StaffBookingAsync(standby: true, paid: 0);
         var admin = app.Get<AdminBookingService>();
         var other = app.MondayAfter(90);
-        var cancelled = await admin.CreateAsync(new AdminBookingRequest("pacific-blue", PeriodType.Custom, other, other.AddDays(3), 2,
-            "bob@example.com", "Bob", null, false, null, 3000m));
-        await admin.UpdateAsync(cancelled.Id, new AdminBookingUpdateRequest(cancelled.Version, "pacific-blue", PeriodType.Custom,
-            other, other.AddDays(3), 2, "bob@example.com", "Bob", null, false, null, 3000m, BookingStatus.Cancelled));
+        var cancelled = await admin.CreateAsync(StaffRequest(other, 3, hirePrice: 3000m, email: "bob@example.com", name: "Bob"));
+        await admin.UpdateAsync(cancelled.Id, AdminBookingTests.Update(cancelled, BookingStatus.Cancelled));
         app.Emails.Sent.Clear();
 
         foreach (var at in new[] { 40, 20, 5, 1 })
@@ -113,16 +118,161 @@ public class NotificationJobTests
     }
 
     [Fact]
-    public async Task Booking_entered_after_the_due_date_gets_due_and_overdue_immediately()
+    public async Task Booking_made_after_the_balance_fell_due_gets_the_link_in_its_confirmation_and_no_payment_emails()
     {
-        var (app, booking) = await StaffBookingAsync(start: TestApp.DefaultNow.AddDays(20).ToSydneyDate());
+        var app = await TestApp.CreateAsync(online: false);
+        var start = TestApp.DefaultNow.AddDays(10).ToSydneyDate();
+        var booking = await app.Get<AdminBookingService>().CreateAsync(StaffRequest(start));
+
+        var confirmation = Assert.Single(app.Emails.Sent);
+        Assert.Contains("The balance of $4,060.00 is now due", confirmation.HtmlBody);
+        Assert.Contains("/pay/?token=", confirmation.HtmlBody);
+        app.Emails.Sent.Clear();
+
+        foreach (var hours in new[] { 0, 1, 24, 48 })
+        {
+            app.Clock.UtcNow = TestApp.DefaultNow.AddHours(hours);
+            await Run(app);
+        }
+
+        Assert.Empty(app.Emails.Sent); // no #4 and never #7 for a milestone already due at creation
+        Assert.DoesNotContain((await app.BookingAsync(booking.Reference)).SentNotifications, n => n.Key.StartsWith("Overdue"));
+
+        app.Clock.UtcNow = SydneyTime.CheckInInstant(start).AddDays(-7);
         await Run(app);
-        Assert.Equal(2, app.Emails.Sent.Count);
-        Assert.Single(app.Emails.Sent, m => m.To == "jane@example.com");
-        Assert.Single(app.Emails.Sent, m => m.To == "staff@example.test");
+        Assert.Contains("Getting ready", Assert.Single(app.Emails.Sent).Subject);
+    }
+
+    [Fact]
+    public async Task Booking_made_35_days_ahead_skips_the_passed_reminder_but_gets_the_due_email()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var admin = app.Get<AdminBookingService>();
+        var booking = await admin.CreateAsync(StaffRequest(TestApp.DefaultNow.AddDays(35).ToSydneyDate()));
+        Assert.DoesNotContain("is now due", Assert.Single(app.Emails.Sent).HtmlBody);
+        await admin.AddManualPaymentAsync(booking.Id, new ManualPaymentRequest(booking.Version, 1000m, app.Today, null));
+        app.Emails.Sent.Clear();
+        var due = SydneyTime.CheckInInstant(booking.StartDate).AddDays(-30);
+
         await Run(app);
-        Assert.Equal(2, app.Emails.Sent.Count);
-        Assert.NotNull(booking);
+        Assert.Empty(app.Emails.Sent); // the 7-day reminder fell before the booking was made
+
+        app.Clock.UtcNow = due;
+        await Run(app);
+        Assert.Contains("Payment due", Assert.Single(app.Emails.Sent).Subject);
+        app.Emails.Sent.Clear();
+
+        app.Clock.UtcNow = due.AddHours(1);
+        await Run(app);
+        Assert.Contains("Overdue balance", Assert.Single(app.Emails.Sent).Subject);
+    }
+
+    [Fact]
+    public async Task Booking_made_inside_the_pre_hire_window_gets_instructions_at_the_next_run()
+    {
+        var (app, _) = await StaffBookingAsync(start: TestApp.DefaultNow.AddDays(3).ToSydneyDate(), paid: 4060m);
+        await Run(app);
+        Assert.Contains("Getting ready", Assert.Single(app.Emails.Sent).Subject);
+    }
+
+    // ---- Abandoned online bookings (#10) -------------------------------------------------------------------------
+
+    private static readonly BookingOptions DraftTiming = new()
+    {
+        AbandonedDraftAfter = TimeSpan.FromHours(2),
+        DraftRetention = TimeSpan.FromDays(30),
+    };
+
+    [Fact]
+    public async Task Abandoned_draft_is_reported_to_staff_once_after_the_threshold()
+    {
+        var app = await TestApp.CreateAsync(booking: DraftTiming);
+        var start = app.MondayAfter(40);
+        var draftId = await app.DraftAsync(start);
+        await app.Get<OnlineBookingService>().UpdateDraftAsync(draftId, new UpdateBookingDraftRequest(PeriodType.Midweek, start,
+            "Jane Citizen", "jane@example.com", "0412 345 678", 4, 2, [new("ice", 2), new("outboard-motor", 1)], BookingStep.Addons));
+
+        app.Clock.Advance(TimeSpan.FromHours(2));
+        await Run(app);
+        Assert.Empty(app.Emails.Sent);
+
+        app.Clock.Advance(TimeSpan.FromMinutes(1));
+        await Run(app);
+        await Run(app);
+        var alert = Assert.Single(app.Emails.Sent);
+        Assert.Equal("staff@example.test", alert.To);
+        Assert.Contains("Unfinished online booking", alert.Subject);
+        foreach (var expected in new[] { "Jane Citizen", "jane@example.com", "0412 345 678", "Pacific Blue", "4 / 2", "Ice &#215; 2",
+                     "Outboard motor", "Add-ons" })
+        {
+            Assert.Contains(expected, alert.HtmlBody);
+        }
+
+        Assert.NotNull(BookingDraft.FromSnapshot(Assert.Single(app.Store.BookingDrafts.All())).AbandonedNotifiedAt);
+        Assert.Empty(app.Store.Customers.All());
+    }
+
+    [Fact]
+    public async Task Only_the_latest_draft_per_email_is_reported()
+    {
+        var app = await TestApp.CreateAsync(booking: DraftTiming);
+        await app.DraftAsync(app.MondayAfter(40));
+        app.Clock.Advance(TimeSpan.FromMinutes(10));
+        await app.DraftAsync(app.MondayAfter(50), " JANE@example.com ");
+
+        app.Clock.Advance(TimeSpan.FromHours(3));
+        await Run(app);
+        Assert.Single(app.Emails.Sent);
+    }
+
+    [Fact]
+    public async Task No_alert_once_that_email_has_booked_and_paid()
+    {
+        var app = await TestApp.CreateAsync(booking: DraftTiming);
+        var start = app.MondayAfter(40);
+        await app.DraftAsync(start); // abandoned attempt
+        app.Clock.Advance(TimeSpan.FromMinutes(5));
+        var draftId = await app.DraftAsync(app.MondayAfter(50));
+        var result = await app.Get<OnlineBookingService>().CreateAsync(new CreateOnlineBookingRequest(draftId, "pacific-blue",
+            PeriodType.Midweek, app.MondayAfter(50), 2, 0, "Jane Citizen", "jane@example.com", "0412 345 678", [], false, null, true));
+        var hold = await app.BookingAsync(result.Reference);
+        await app.Get<StripeWebhookHandler>().HandleCompletedAsync(new CheckoutSessionCompleted("evt", hold.StripeCheckoutSessionId!,
+            hold.Id.Value, CheckoutPurpose.Deposit, "pi_1", 1000m, app.Clock.UtcNow));
+        app.Emails.Sent.Clear();
+
+        app.Clock.Advance(TimeSpan.FromHours(3));
+        await Run(app);
+        Assert.Empty(app.Emails.Sent);
+    }
+
+    [Fact]
+    public async Task An_unpaid_hold_still_counts_as_abandoned()
+    {
+        var app = await TestApp.CreateAsync(booking: DraftTiming);
+        var start = app.MondayAfter(40);
+        var draftId = await app.DraftAsync(start);
+        await app.Get<OnlineBookingService>().CreateAsync(new CreateOnlineBookingRequest(draftId, "pacific-blue",
+            PeriodType.Midweek, start, 2, 0, "Jane Citizen", "jane@example.com", "0412 345 678", [], false, null, true));
+
+        app.Clock.Advance(TimeSpan.FromHours(3));
+        await Run(app);
+        var alert = Assert.Single(app.Emails.Sent, m => m.Subject.Contains("Unfinished"));
+        Assert.Contains("Payment", alert.HtmlBody);
+    }
+
+    [Fact]
+    public async Task Drafts_are_deleted_after_the_retention_period()
+    {
+        var app = await TestApp.CreateAsync(booking: DraftTiming);
+        await app.DraftAsync(app.MondayAfter(40));
+        app.Clock.Advance(TimeSpan.FromDays(30));
+        var result = await Run(app);
+        Assert.Equal(0, result.DraftsDeleted);
+        Assert.Single(app.Store.BookingDrafts.All());
+
+        app.Clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.Equal(1, (await Run(app)).DraftsDeleted);
+        Assert.Empty(app.Store.BookingDrafts.All());
     }
 
     [Fact]

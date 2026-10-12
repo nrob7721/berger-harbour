@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/addons/{addonId}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    startDate?: string;
+                    endDate?: string;
+                };
+                header?: never;
+                path: {
+                    addonId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PublicAddonAvailabilityDto"];
+                        "application/json": components["schemas"]["PublicAddonAvailabilityDto"];
+                        "text/json": components["schemas"]["PublicAddonAvailabilityDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boats/{slug}": {
         parameters: {
             query?: never;
@@ -124,6 +166,90 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/booking-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateBookingDraftRequest"];
+                    "text/json": components["schemas"]["CreateBookingDraftRequest"];
+                    "application/*+json": components["schemas"]["CreateBookingDraftRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BookingDraftCreatedDto"];
+                        "application/json": components["schemas"]["BookingDraftCreatedDto"];
+                        "text/json": components["schemas"]["BookingDraftCreatedDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/booking-drafts/{draftId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draftId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateBookingDraftRequest"];
+                    "text/json": components["schemas"]["UpdateBookingDraftRequest"];
+                    "application/*+json": components["schemas"]["UpdateBookingDraftRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -313,6 +439,9 @@ export interface components {
             /** Format: int32 */
             quantity: number;
         };
+        BookingDraftCreatedDto: {
+            draftId: string;
+        };
         /** @enum {unknown} */
         BookingStatus: "PendingPayment" | "Active" | "Superseded" | "Cancelled" | "Expired";
         BookingStatusDto: {
@@ -327,22 +456,35 @@ export interface components {
             /** Format: double */
             amountPaid: number;
         };
+        /** @enum {unknown} */
+        BookingStep: "Details" | "Guests" | "Addons" | "Summary" | "Payment";
+        CreateBookingDraftRequest: {
+            slug: string;
+            periodType: components["schemas"]["PeriodType"];
+            /** Format: date */
+            startDate: string;
+            fullName: null | string;
+            email: null | string;
+            mobile: null | string;
+            turnstileToken: null | string;
+        };
         CreateOnlineBookingRequest: {
+            draftId: null | string;
             slug: string;
             periodType: components["schemas"]["PeriodType"];
             /** Format: date */
             startDate: string;
             /** Format: int32 */
-            numberOfGuests: number;
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
             fullName: null | string;
             email: null | string;
             mobile: null | string;
             addons: null | components["schemas"]["BookingAddonRequest"][];
             roomingWarningAccepted: boolean;
             roomingWarningText: null | string;
-            groupRestrictionApplies: null | boolean;
             termsAccepted: boolean;
-            turnstileToken: null | string;
         };
         CreateOnlineBookingResult: {
             reference: string;
@@ -373,6 +515,7 @@ export interface components {
             requiredCumulative: number;
             /** Format: date */
             dueDate: null | string;
+            dueNow: boolean;
         };
         /** @enum {unknown} */
         MilestoneKind: "Deposit" | "Balance" | "FirstInstalment" | "Final";
@@ -403,6 +546,10 @@ export interface components {
         };
         /** @enum {unknown} */
         PeriodType: "Midweek" | "Weekend" | "Week" | "LongWeekend" | "Custom";
+        PublicAddonAvailabilityDto: {
+            /** Format: int32 */
+            remaining: number;
+        };
         PublicAddonDto: {
             id: string;
             name: string;
@@ -410,6 +557,8 @@ export interface components {
             priceOnRequest: boolean;
             quantityApplies: boolean;
             prices: null | components["schemas"]["AddonPricesDto"];
+            hasCapacity: boolean;
+            capacityUnitLabel: null | string;
         };
         PublicBoatDto: {
             slug: string;
@@ -417,10 +566,14 @@ export interface components {
             /** Format: int32 */
             maxNoOfGuests: number;
             /** Format: int32 */
-            noOfBeds: null | number;
+            adultBeds: null | number;
+            /** Format: int32 */
+            kidsBeds: null | number;
             beddingDescription: null | string;
             /** Format: double */
             securityBond: number;
+            /** Format: double */
+            depositAmount: number;
             isActive: boolean;
             addons: components["schemas"]["PublicAddonDto"][];
             settings: components["schemas"]["PublicBookingSettingsDto"];
@@ -436,6 +589,7 @@ export interface components {
             /** Format: date */
             today: string;
             checkInTime: string;
+            checkInWindowEnd: string;
             checkOutTime: string;
         };
         QuoteAddonDto: {
@@ -446,7 +600,7 @@ export interface components {
             /** Format: double */
             unitPrice: null | number;
             /** Format: double */
-            estimatedTotal: null | number;
+            lineTotal: null | number;
         };
         QuoteDto: {
             boatName: string;
@@ -456,18 +610,23 @@ export interface components {
             /** Format: date */
             endDate: string;
             checkInTime: string;
+            checkInWindowEnd: string;
             checkOutTime: string;
+            timeZoneLabel: string;
             /** Format: int32 */
-            numberOfGuests: number;
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
             seasonName: string;
             /** Format: double */
             hirePrice: number;
             addons: components["schemas"]["QuoteAddonDto"][];
             /** Format: double */
+            totalPrice: number;
+            /** Format: double */
             depositAmount: number;
             /** Format: double */
             amountDueAtCheckout: number;
-            fullPaymentAtCheckout: boolean;
             paymentSchedule: components["schemas"]["PaymentSchedule"];
             milestones: components["schemas"]["MilestoneDto"][];
             roomingWarningText: null | string;
@@ -479,8 +638,24 @@ export interface components {
             /** Format: date */
             startDate: string;
             /** Format: int32 */
-            numberOfGuests: number;
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
             addons: null | components["schemas"]["BookingAddonRequest"][];
+        };
+        UpdateBookingDraftRequest: {
+            periodType: components["schemas"]["PeriodType"];
+            /** Format: date */
+            startDate: string;
+            fullName: null | string;
+            email: null | string;
+            mobile: null | string;
+            /** Format: int32 */
+            numberOfAdults: null | number;
+            /** Format: int32 */
+            numberOfChildren: null | number;
+            addons: null | components["schemas"]["BookingAddonRequest"][];
+            lastStepReached: components["schemas"]["BookingStep"];
         };
     };
     responses: never;

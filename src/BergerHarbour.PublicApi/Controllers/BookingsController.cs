@@ -1,5 +1,4 @@
 using BergerHarbour.Application.Bookings;
-using BergerHarbour.Infrastructure.Web;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.PublicApi.Controllers;
@@ -8,10 +7,13 @@ namespace BergerHarbour.PublicApi.Controllers;
 [Route("api/bookings")]
 public sealed class BookingsController(OnlineBookingService bookings) : ControllerBase
 {
-    /// <summary>Creates a PendingPayment hold and an Embedded Checkout session for the amount payable now.</summary>
+    /// <summary>
+    /// Creates a PendingPayment hold (no customer yet) and an Embedded Checkout session for the deposit. Requires a
+    /// valid, unconverted booking draft.
+    /// </summary>
     [HttpPost]
     public Task<CreateOnlineBookingResult> Create(CreateOnlineBookingRequest request, CancellationToken ct) =>
-        bookings.CreateAsync(request, HttpContext.ClientIp(), ct);
+        bookings.CreateAsync(request, ct);
 
     /// <summary>Completion screen polling. Only answers when session_id matches the booking's deposit checkout.</summary>
     [HttpGet("{reference}/status")]

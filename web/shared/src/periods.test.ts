@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateDay, stayForClick, type AvailabilityData, type BookingWindow } from './periods';
+import { dayClasses, evaluateDay, stayForClick, type AvailabilityData, type BookingWindow } from './periods';
 import { sydneyToday } from './dates';
 
 // Week of Mon 12/10/2026 … Sun 18/10/2026.
@@ -119,5 +119,26 @@ describe('sydneyToday', () => {
   it('uses the Sydney date, not the browser date', () => {
     // 2026-10-05T14:30Z is already 6 October in Sydney (AEDT, UTC+11).
     expect(sydneyToday(new Date('2026-10-05T14:30:00Z'))).toBe('2026-10-06');
+  });
+});
+
+describe('selection highlighting', () => {
+  const window: BookingWindow = { earliestStart: d(1), bookingsOpenUntil: d(31, 12) };
+  const none: AvailabilityData = { unavailable: [], enquireOnly: [] };
+  const selection = { start: d(12), end: d(19) }; // Week Mon → Mon
+
+  it('days inside a Week selection that are not clickable in Week mode still use the selection style', () => {
+    for (const day of [13, 14, 15, 17, 18]) {
+      const state = evaluateDay('Week', d(day), none, window);
+      expect(state.clickable).toBe(false);
+      expect(dayClasses(d(day), state, selection)).toContain('day--selected');
+    }
+  });
+
+  it('marks check-in and check-out and leaves days outside alone', () => {
+    expect(dayClasses(d(12), evaluateDay('Week', d(12), none, window), selection)).toEqual(
+      expect.arrayContaining(['day--selected', 'day--check-in']));
+    expect(dayClasses(d(19), evaluateDay('Week', d(19), none, window), selection)).toContain('day--check-out');
+    expect(dayClasses(d(20), evaluateDay('Week', d(20), none, window), selection)).not.toContain('day--selected');
   });
 });

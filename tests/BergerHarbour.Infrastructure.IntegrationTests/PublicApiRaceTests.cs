@@ -60,25 +60,42 @@ public class PublicApiRaceTests : IClassFixture<EmulatorFixture>
         client.DefaultRequestHeaders.Add("X-Edge-Proxy-Secret", "it-secret");
         var start = NextMonday(DateTime.UtcNow.AddDays(45));
 
-        object Body(string email) => new
+        async Task<string> DraftAsync(string email)
         {
+            var response = await client.PostAsJsonAsync("/api/booking-drafts", new
+            {
+                slug = "pacific-blue",
+                periodType = "Midweek",
+                startDate = start.ToString("yyyy-MM-dd"),
+                fullName = "Racer",
+                email,
+                mobile = "+61412345678",
+                turnstileToken = "token",
+            });
+            response.EnsureSuccessStatusCode();
+            return (await response.Content.ReadFromJsonAsync<DraftCreated>())!.DraftId;
+        }
+
+        object Body(string draftId, string email) => new
+        {
+            draftId,
             slug = "pacific-blue",
             periodType = "Midweek",
             startDate = start.ToString("yyyy-MM-dd"),
-            numberOfGuests = 4,
+            numberOfAdults = 3,
+            numberOfChildren = 1,
             fullName = "Racer",
             email,
-            mobile = "0400 000 000",
+            mobile = "+61412345678",
             addons = Array.Empty<object>(),
             roomingWarningAccepted = false,
-            groupRestrictionApplies = false,
             termsAccepted = true,
-            turnstileToken = "token",
         };
 
+        var drafts = await Task.WhenAll(DraftAsync("a@example.com"), DraftAsync("b@example.com"));
         var responses = await Task.WhenAll(
-            client.PostAsJsonAsync("/api/bookings", Body("a@example.com")),
-            client.PostAsJsonAsync("/api/bookings", Body("b@example.com")));
+            client.PostAsJsonAsync("/api/bookings", Body(drafts[0], "a@example.com")),
+            client.PostAsJsonAsync("/api/bookings", Body(drafts[1], "b@example.com")));
 
         Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
         var loser = Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
@@ -96,6 +113,8 @@ public class PublicApiRaceTests : IClassFixture<EmulatorFixture>
         var response = await factory.CreateClient().GetAsync("/api/boats/pacific-blue");
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
+
+    private sealed record DraftCreated(string DraftId);
 
     private static DateOnly NextMonday(DateTime from)
     {

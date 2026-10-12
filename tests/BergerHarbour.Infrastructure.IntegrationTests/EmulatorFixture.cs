@@ -50,6 +50,6 @@ internal static class Make
 
     public static Booking StaffBooking(BoatId boat, DateOnly start, int nights = 4, bool standby = false, DateTimeOffset? now = null) =>
         Booking.CreateByStaff(BookingReference.Create(2026, 5000 + Interlocked.Increment(ref _sequence)), CustomerId.New(), boat,
-            PeriodType.Custom, new Stay(start, start.AddDays(nights)), 4, standby, null, 4060m, 1000m,
-            PaymentSchedule.Standard, "hash-" + Guid.NewGuid().ToString("N"), now ?? DateTimeOffset.UtcNow);
+            PeriodType.Custom, new Stay(start, start.AddDays(nights)), 3, 1, Stay.CheckInTime, Stay.CheckOutTime, standby, null,
+            4060m, 1000m, PaymentSchedule.Standard, "hash-" + Guid.NewGuid().ToString("N"), now ?? DateTimeOffset.UtcNow);
 }

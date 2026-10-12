@@ -36,13 +36,6 @@ public enum PaymentStatus
     FullyPaid,
 }
 
-public enum AddonLineStatus
-{
-    Requested,
-    Confirmed,
-    Declined,
-}
-
 public enum PaymentMethod
 {
     Stripe,

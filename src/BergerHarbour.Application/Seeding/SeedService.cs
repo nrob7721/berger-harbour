@@ -42,20 +42,21 @@ public sealed class SeedService(
         ("Runaway Bear", "runaway-bear", 2),
     ];
 
-    private static readonly (string Id, string Name, bool QuantityApplies, AddonPrices? Prices)[] Addons =
+    /// <summary>Seeded in this order. Car parking is shared by every booking: 11 spots in total.</summary>
+    private static readonly (string Id, string Name, bool QuantityApplies, AddonPrices? Prices, int? Capacity, string? Unit)[] Addons =
     [
-        ("yabby-pumps", "Yabby pumps", false, null),
-        ("ice", "Ice", true, null),
-        ("bait", "Bait", true, null),
-        ("pizza-oven", "Pizza oven", false, null),
-        ("fishing-gear", "Fishing gear", false, null),
-        ("welcome-hamper", "Welcome hamper", false, null),
-        ("outboard-motor", "Outboard motor", false, new AddonPrices(95m, 95m, 130m)),
-        ("car-parking", "Car parking", false, null),
-        ("grocery-service", "Grocery service", false, null),
-        ("on-mooring-jetty-stays", "On mooring jetty stays", false, null),
-        ("skipper", "Skipper", false, null),
-        ("outdoor-heater", "Outdoor heater", false, null),
+        ("yabby-pumps", "Yabby pumps", false, null, null, null),
+        ("ice", "Ice", true, null, null, null),
+        ("bait", "Bait", true, null, null, null),
+        ("pizza-oven", "Pizza oven", false, null, null, null),
+        ("fishing-gear", "Fishing gear", false, null, null, null),
+        ("car-parking", "Car parking", true, null, 11, "car spots"),
+        ("grocery-service", "Grocery service", false, null, null, null),
+        ("on-mooring-jetty-stays", "On mooring jetty stays", false, null, null, null),
+        ("outdoor-heater", "Outdoor heater", false, null, null, null),
+        ("outboard-motor", "Outboard motor", false, new AddonPrices(95m, 95m, 130m), null, null),
+        ("welcome-hamper", "Welcome hamper", false, null, null, null),
+        ("skipper", "Skipper", false, null, null, null),
     ];
 
     public sealed record SeedOptions(string StaffAlertEmail, string ContactPhone, string ContactEmail);
@@ -96,12 +97,13 @@ public sealed class SeedService(
         }
 
         var existingAddons = (await addons.ListAsync(ct)).Select(a => a.Id).ToHashSet();
-        foreach (var (id, name, quantityApplies, prices) in Addons)
+        for (var position = 0; position < Addons.Length; position++)
         {
+            var (id, name, quantityApplies, prices, capacity, unit) = Addons[position];
             if (!existingAddons.Contains(new AddonId(id)))
             {
                 await addons.SaveAsync(AddonDefinition.CreateWithId(new AddonId(id), name, null, prices is null, prices,
-                    quantityApplies), ct);
+                    quantityApplies, capacity, unit, position), ct);
                 created++;
             }
         }
@@ -138,8 +140,9 @@ public sealed class SeedService(
     /// <summary>Pacific Blue is seeded complete and active as the reference boat.</summary>
     private static void CompletePacificBlue(Boat boat, IReadOnlyList<Season> allSeasons, DateTimeOffset now)
     {
-        boat.UpdateDetails(boat.Name, boat.Slug, 12, 8,
-            "4 queen bedrooms, bunk area (2 singles), single in lounge, single in dining area", 2000m, now);
+        // 6 adult beds (4 queens + 2 singles) and 2 kids beds (bunks); the deposit is left to the Settings default.
+        boat.UpdateDetails(boat.Name, boat.Slug, 12, 6, 2,
+            "4 queen bedrooms, bunk area (2 singles), single in lounge, single in dining area", 2000m, null, now);
         // (Weekend, Midweek, LongWeekend, Week)
         var table = new Dictionary<SeasonId, (decimal Weekend, decimal Midweek, decimal LongWeekend, decimal Week)>
         {

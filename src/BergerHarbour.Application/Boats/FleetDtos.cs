@@ -9,11 +9,13 @@ public sealed record BoatSummaryDto(
     string Slug,
     BoatType Type,
     int MaxNoOfGuests,
-    int? NoOfBeds,
+    int? AdultBeds,
+    int? KidsBeds,
     bool IsActive);
 
 public sealed record BoatRateDto(string SeasonId, PeriodType PeriodType, decimal Price);
 
+/// <param name="DepositAmount">Empty: the default deposit from Settings applies.</param>
 public sealed record BoatDetailDto(
     string Id,
     int Version,
@@ -21,9 +23,11 @@ public sealed record BoatDetailDto(
     string Slug,
     BoatType Type,
     int MaxNoOfGuests,
-    int? NoOfBeds,
+    int? AdultBeds,
+    int? KidsBeds,
     string? BeddingDescription,
     decimal SecurityBond,
+    decimal? DepositAmount,
     IReadOnlyList<BoatRateDto> Rates,
     IReadOnlyList<string> AllowedAddonIds,
     bool IsActive,
@@ -36,9 +40,11 @@ public sealed record BoatUpsertRequest(
     string Name,
     string Slug,
     int MaxNoOfGuests,
-    int? NoOfBeds,
+    int? AdultBeds,
+    int? KidsBeds,
     string? BeddingDescription,
     decimal SecurityBond,
+    decimal? DepositAmount,
     IReadOnlyList<BoatRateDto>? Rates,
     IReadOnlyList<string>? AllowedAddonIds,
     bool IsActive);

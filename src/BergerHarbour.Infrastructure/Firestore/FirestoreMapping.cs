@@ -1,4 +1,5 @@
 using System.Globalization;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -23,6 +24,12 @@ internal static class FirestoreMapping
 
     public static DateOnly Date(string value) => DateOnly.ParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    public static string Time(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>HH:mm, or the fallback when the field is missing.</summary>
+    public static TimeOnly Time(string? value, TimeOnly fallback) =>
+        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) ? time : fallback;
+
     public static Timestamp Ts(DateTimeOffset instant) => Timestamp.FromDateTimeOffset(instant);
 
     public static Timestamp? Ts(DateTimeOffset? instant) => instant is { } i ? Timestamp.FromDateTimeOffset(i) : null;
@@ -43,11 +50,18 @@ internal static class FirestoreMapping
         IsStandby = s.IsStandby,
         Status = s.Status.ToString(),
         CustomerId = s.CustomerId,
+        CustomerDetails = s.CustomerDetails is { } d
+            ? new CustomerDetailsDocument { FullName = d.FullName, Email = d.Email, MobileNumber = d.MobileNumber }
+            : null,
+        BookingDraftId = s.BookingDraftId,
         BoatId = s.BoatId,
         PeriodType = s.PeriodType.ToString(),
         StartDate = Date(s.StartDate),
         EndDate = Date(s.EndDate),
-        NumberOfGuests = s.NumberOfGuests,
+        NumberOfAdults = s.NumberOfAdults,
+        NumberOfChildren = s.NumberOfChildren,
+        CheckInTime = Time(s.CheckInTime),
+        CheckOutTime = Time(s.CheckOutTime),
         Comments = s.Comments,
         HirePriceCents = Cents(s.HirePrice),
         DepositAmountCents = Cents(s.DepositAmount),
@@ -59,8 +73,8 @@ internal static class FirestoreMapping
             NameSnapshot = l.NameSnapshot,
             Quantity = l.Quantity,
             UnitPriceCents = l.UnitPrice is { } p ? Cents(p) : null,
-            Status = l.Status.ToString(),
         }).ToList(),
+        AddonIds = s.AddonLines.Select(l => l.AddonId).Distinct().ToList(),
         Payments = s.Payments.Select(p => new PaymentDocument
         {
             Id = p.Id,
@@ -76,7 +90,6 @@ internal static class FirestoreMapping
         RoomingWarningAcceptedAt = Ts(s.RoomingWarningAcceptedAt),
         RoomingWarningText = s.RoomingWarningText,
         TermsAcceptedAt = Ts(s.TermsAcceptedAt),
-        GroupRestrictionDeclaredNotApplicable = s.GroupRestrictionDeclaredNotApplicable,
         PaymentLinkTokenHash = s.PaymentLinkTokenHash,
         SentNotifications = s.SentNotifications.Select(n => new SentNotificationDocument { Key = n.Key, SentAt = Ts(n.SentAt) }).ToList(),
         CreatedDate = Ts(s.CreatedDate),
@@ -85,16 +98,48 @@ internal static class FirestoreMapping
 
     public static Booking ToBooking(string id, BookingDocument d) => Booking.FromSnapshot(new BookingSnapshot(
         id, d.Version, d.Reference, Enum<BookingCreatedBy>(d.CreatedBy), d.IsStandby, Enum<BookingStatus>(d.Status),
-        d.CustomerId, d.BoatId, Enum<PeriodType>(d.PeriodType), Date(d.StartDate), Date(d.EndDate), d.NumberOfGuests,
-        d.Comments, Money(d.HirePriceCents), Money(d.DepositAmountCents), Enum<PaymentSchedule>(d.PaymentSchedule),
-        d.AddonLines.Select(l => new AddonLineSnapshot(l.Id, l.AddonId, l.NameSnapshot, l.Quantity, Money(l.UnitPriceCents),
-            Enum<AddonLineStatus>(l.Status))).ToList(),
+        string.IsNullOrEmpty(d.CustomerId) ? null : d.CustomerId,
+        d.CustomerDetails is { } c ? new BookingCustomerDetailsSnapshot(c.FullName, c.Email, c.MobileNumber) : null,
+        d.BookingDraftId, d.BoatId, Enum<PeriodType>(d.PeriodType), Date(d.StartDate), Date(d.EndDate), d.NumberOfAdults,
+        d.NumberOfChildren, Time(d.CheckInTime, Stay.CheckInTime), Time(d.CheckOutTime, Stay.CheckOutTime), d.Comments,
+        Money(d.HirePriceCents), Money(d.DepositAmountCents), Enum<PaymentSchedule>(d.PaymentSchedule),
+        d.AddonLines.Select(l => new AddonLineSnapshot(l.Id, l.AddonId, l.NameSnapshot, l.Quantity, Money(l.UnitPriceCents))).ToList(),
         d.Payments.Select(p => new PaymentSnapshot(p.Id, Money(p.AmountCents), Enum<PaymentMethod>(p.Method),
             p.StripePaymentIntentId, Instant(p.PaidAt), p.Note, Enum<PaymentRecordedBy>(p.RecordedBy))).ToList(),
         Instant(d.HoldExpiresAt), d.StripeCheckoutSessionId, Instant(d.RoomingWarningAcceptedAt), d.RoomingWarningText,
-        Instant(d.TermsAcceptedAt), d.GroupRestrictionDeclaredNotApplicable, d.PaymentLinkTokenHash,
+        Instant(d.TermsAcceptedAt), d.PaymentLinkTokenHash,
         d.SentNotifications.Select(n => new SentNotification(n.Key, Instant(n.SentAt))).ToList(),
         Instant(d.CreatedDate), Instant(d.ModifiedDate)));
+
+    // ---- Booking draft --------------------------------------------------------------------------------------------
+
+    public static BookingDraftDocument ToDocument(BookingDraftSnapshot s, int version) => new()
+    {
+        Version = version,
+        BoatId = s.BoatId,
+        PeriodType = s.PeriodType.ToString(),
+        StartDate = Date(s.StartDate),
+        EndDate = Date(s.EndDate),
+        FullName = s.FullName,
+        Email = s.Email,
+        MobileNumber = s.MobileNumber,
+        NumberOfAdults = s.NumberOfAdults,
+        NumberOfChildren = s.NumberOfChildren,
+        AddonRequests = s.AddonRequests.Select(a => new DraftAddonRequestDocument { AddonId = a.AddonId, Quantity = a.Quantity }).ToList(),
+        LastStepReached = s.LastStepReached.ToString(),
+        LastActivityAt = Ts(s.LastActivityAt),
+        ConvertedBookingId = s.ConvertedBookingId,
+        ConvertedAt = Ts(s.ConvertedAt),
+        AbandonedNotifiedAt = Ts(s.AbandonedNotifiedAt),
+        CreatedDate = Ts(s.CreatedDate),
+    };
+
+    public static BookingDraft ToBookingDraft(string id, BookingDraftDocument d) => BookingDraft.FromSnapshot(new BookingDraftSnapshot(
+        id, d.Version, d.BoatId, Enum<PeriodType>(d.PeriodType), Date(d.StartDate), Date(d.EndDate), d.FullName, d.Email,
+        d.MobileNumber, d.NumberOfAdults, d.NumberOfChildren,
+        d.AddonRequests.Select(a => new DraftAddonRequestSnapshot(a.AddonId, a.Quantity)).ToList(),
+        Enum<BookingStep>(d.LastStepReached), Instant(d.LastActivityAt), d.ConvertedBookingId, Instant(d.ConvertedAt),
+        Instant(d.AbandonedNotifiedAt), Instant(d.CreatedDate)));
 
     // ---- Boat -----------------------------------------------------------------------------------------------------
 
@@ -105,9 +150,11 @@ internal static class FirestoreMapping
         Slug = s.Slug,
         Type = s.Type.ToString(),
         MaxNoOfGuests = s.MaxNoOfGuests,
-        NoOfBeds = s.NoOfBeds,
+        AdultBeds = s.AdultBeds,
+        KidsBeds = s.KidsBeds,
         BeddingDescription = s.BeddingDescription,
         SecurityBondCents = Cents(s.SecurityBond),
+        DepositAmountCents = s.DepositAmount is { } deposit ? Cents(deposit) : null,
         Rates = s.Rates.Select(r => new BoatRateDocument
         {
             SeasonId = r.SeasonId,
@@ -121,8 +168,8 @@ internal static class FirestoreMapping
     };
 
     public static Boat ToBoat(string id, BoatDocument d) => Boat.FromSnapshot(new BoatSnapshot(
-        id, d.Version, d.Name, d.Slug, Enum<BoatType>(d.Type), d.MaxNoOfGuests, d.NoOfBeds, d.BeddingDescription,
-        Money(d.SecurityBondCents),
+        id, d.Version, d.Name, d.Slug, Enum<BoatType>(d.Type), d.MaxNoOfGuests, d.AdultBeds, d.KidsBeds,
+        d.BeddingDescription, Money(d.SecurityBondCents), Money(d.DepositAmountCents),
         d.Rates.Select(r => new BoatRateSnapshot(r.SeasonId, Enum<PeriodType>(r.PeriodType), Money(r.PriceCents))).ToList(),
         d.AllowedAddonIds, d.IsActive, Instant(d.CreatedDate), Instant(d.ModifiedDate)));
 
@@ -134,12 +181,13 @@ internal static class FirestoreMapping
         FullName = s.FullName,
         Email = s.Email,
         MobileNumber = s.MobileNumber,
+        SecondaryPhone = s.SecondaryPhone,
         CreatedDate = Ts(s.CreatedDate),
         ModifiedDate = Ts(s.ModifiedDate),
     };
 
     public static Customer ToCustomer(string id, CustomerDocument d) => Customer.FromSnapshot(new CustomerSnapshot(
-        id, d.Version, d.FullName, d.Email, d.MobileNumber, Instant(d.CreatedDate), Instant(d.ModifiedDate)));
+        id, d.Version, d.FullName, d.Email, d.MobileNumber, d.SecondaryPhone, Instant(d.CreatedDate), Instant(d.ModifiedDate)));
 
     // ---- Unavailability -------------------------------------------------------------------------------------------
 
@@ -192,12 +240,15 @@ internal static class FirestoreMapping
         WeekendPriceCents = s.WeekendPrice is { } w ? Cents(w) : null,
         WeekPriceCents = s.WeekPrice is { } k ? Cents(k) : null,
         QuantityApplies = s.QuantityApplies,
+        Capacity = s.Capacity,
+        CapacityUnitLabel = s.CapacityUnitLabel,
+        SortOrder = s.SortOrder,
         IsActive = s.IsActive,
     };
 
     public static AddonDefinition ToAddon(string id, AddonDocument d) => AddonDefinition.FromSnapshot(new AddonDefinitionSnapshot(
         id, d.Version, d.Name, d.Description, d.PriceOnRequest, Money(d.MidweekPriceCents), Money(d.WeekendPriceCents),
-        Money(d.WeekPriceCents), d.QuantityApplies, d.IsActive));
+        Money(d.WeekPriceCents), d.QuantityApplies, d.Capacity, d.CapacityUnitLabel, d.SortOrder, d.IsActive));
 
     public static EmailTemplateDocument ToDocument(EmailTemplateSnapshot s, int version) =>
         new() { Version = version, Subject = s.Subject, HtmlBody = s.HtmlBody };

@@ -1,6 +1,6 @@
 import { addDays, addMonths, dayOfWeek, daysInMonth, firstOfMonth, monthTitle, parseIso, type IsoDate } from '@shared/dates';
 import { clear, h } from '@shared/dom';
-import type { DayState, Stay } from '@shared/periods';
+import { dayClasses, isInSelection, type DayState, type Stay } from '@shared/periods';
 
 export interface CalendarOptions {
   container: HTMLElement;
@@ -114,18 +114,15 @@ export class Calendar {
   }
 
   private dayButton(day: IsoDate, state: DayState, selection: Stay | null, focusable: boolean): HTMLButtonElement {
-    const classes = ['day', `day--${state.status}`];
-    if (state.insideBlockedPeriod) classes.push('day--blocked');
+    const classes = dayClasses(day, state, selection);
     const isStart = selection?.start === day;
     const isEnd = selection?.end === day;
-    const inSelection = !!selection && day >= selection.start && day <= selection.end;
-    if (inSelection) classes.push('day--selected');
-    if (isStart) classes.push('day--check-in');
-    if (isEnd) classes.push('day--check-out');
+    const inSelection = isInSelection(day, selection);
 
     const date = parseIso(day);
     let label = `${WEEKDAY_NAMES[date.getUTCDay()]} ${date.getUTCDate()} ${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCFullYear()}, `;
-    label += state.insideBlockedPeriod && state.status !== 'enquire' ? 'phone or email to book' : STATUS_TEXT[state.status];
+    if (inSelection) label += 'part of your stay';
+    else label += state.insideBlockedPeriod && state.status !== 'enquire' ? 'phone or email to book' : STATUS_TEXT[state.status];
     if (isStart) label += ', check-in';
     if (isEnd) label += ', check-out';
 

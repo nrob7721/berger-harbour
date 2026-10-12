@@ -502,10 +502,68 @@ input[type='number'].input-sm {
   gap: 0 16px;
 }
 
-.field--warning {
+/* A checkbox or plain value sitting in a form-grid cell lines up with the selects/inputs beside it. */
+.toggle--field,
+.field__static {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.form-warning {
+  margin: 0 0 14px;
+}
+
+.form-warning[hidden] {
+  display: none;
+}
+
+.addon-capacity {
+  display: block;
+}
+
+.addon-capacity--over,
+.row--attention td:last-child {
   color: var(--c-warning);
   font-weight: 600;
-  align-self: center;
+}
+
+.expander {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.1rem;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+  color: var(--c-ink);
+}
+
+.customer-bookings > td {
+  background: var(--c-bg);
+  padding: 8px 12px 12px 44px;
+}
+
+.link-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--c-brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.icon-button--small {
+  font-size: 0.9rem;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.icon-button--small:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .price-row {

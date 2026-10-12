@@ -11,7 +11,6 @@ export type AdminBookingUpdateRequest = S['AdminBookingUpdateRequest'];
 export type AdminQuote = S['AdminQuoteDto'];
 export type BookingStatus = S['BookingStatus'];
 export type PeriodType = S['PeriodType'];
-export type AddonLineStatus = S['AddonLineStatus'];
 export type BoatSummary = S['BoatSummaryDto'];
 export type BoatDetail = S['BoatDetailDto'];
 export type BoatUpsert = S['BoatUpsertRequest'];
@@ -19,6 +18,10 @@ export type BoatRate = S['BoatRateDto'];
 export type Unavailability = S['UnavailabilityDto'];
 export type UnavailabilityRequest = S['UnavailabilityRequest'];
 export type Customer = S['CustomerDto'];
+export type CustomerBooking = S['CustomerBookingDto'];
+export type Rebook = S['RebookDto'];
+export type AdminAddonLineRequest = S['AdminAddonLineRequest'];
+export type AddonAvailability = S['AddonAvailabilityDto'];
 export type BusinessSettings = S['BusinessSettingsDto'];
 export type Season = S['SeasonDto'];
 export type SeasonRequest = S['SeasonRequest'];
@@ -45,7 +48,7 @@ export const adminApi = {
     api<BookingDetail>(`/api/bookings/${enc(id)}/recalculate-price`, { body: { version } }),
   addAddonLine: (id: string, version: number, addonId: string, quantity: number) =>
     api<BookingDetail>(`/api/bookings/${enc(id)}/addons`, { body: { version, addonId, quantity } }),
-  updateAddonLine: (id: string, lineId: string, body: { version: number; quantity: number; unitPrice: number | null; status: AddonLineStatus }) =>
+  updateAddonLine: (id: string, lineId: string, body: { version: number; quantity: number; unitPrice: number | null }) =>
     put<BookingDetail>(`/api/bookings/${enc(id)}/addons/${enc(lineId)}`, body),
   removeAddonLine: (id: string, lineId: string, version: number) =>
     api<BookingDetail>(`/api/bookings/${enc(id)}/addons/${enc(lineId)}${query({ version })}`, { method: 'DELETE' }),
@@ -55,6 +58,9 @@ export const adminApi = {
     api<{ sentTo: string; amountDue: number }>(`/api/bookings/${enc(id)}/send-payment-link`, { method: 'POST' }),
   quote: (boatId: string, periodType: PeriodType, startDate: string) =>
     api<AdminQuote>(`/api/bookings/quote${query({ boatId, periodType, startDate })}`),
+  rebook: (id: string) => api<Rebook>(`/api/bookings/${enc(id)}/rebook`),
+  addonAvailability: (addonId: string, startDate: string, endDate: string, excludeBookingId?: string) =>
+    api<AddonAvailability>(`/api/addons/${enc(addonId)}/availability${query({ startDate, endDate, excludeBookingId })}`),
 
   boats: () => api<BoatSummary[]>('/api/boats'),
   boat: (id: string) => api<BoatDetail>(`/api/boats/${enc(id)}`),
@@ -70,6 +76,7 @@ export const adminApi = {
 
   customers: (q?: string) => api<Customer[]>(`/api/customers${query({ q })}`),
   customerByEmail: (email: string) => api<Customer>(`/api/customers/by-email${query({ email })}`),
+  customerBookings: (id: string) => api<CustomerBooking[]>(`/api/customers/${enc(id)}/bookings`),
 
   business: () => api<BusinessSettings>('/api/settings/business'),
   updateBusiness: (body: BusinessSettings) => put<BusinessSettings>('/api/settings/business', body),
@@ -85,6 +92,7 @@ export const adminApi = {
   createAddon: (body: AddonRequest) => api<Addon>('/api/settings/addons', { body }),
   updateAddon: (id: string, body: AddonRequest) => put<Addon>(`/api/settings/addons/${enc(id)}`, body),
   deactivateAddon: (id: string, version: number) => del(`/api/settings/addons/${enc(id)}${query({ version })}`),
+  reorderAddons: (addonIds: string[]) => put<Addon[]>('/api/settings/addons/order', { addonIds }),
   templates: () => api<EmailTemplates>('/api/settings/email-templates'),
   updateTemplate: (key: EmailTemplateKey, body: { version: number; subject: string; htmlBody: string }) =>
     put<EmailTemplate>(`/api/settings/email-templates/${enc(key)}`, body),

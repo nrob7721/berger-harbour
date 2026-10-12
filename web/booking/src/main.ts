@@ -3,28 +3,31 @@ import { $, $$, clear, h, openDialog } from '@shared/dom';
 import { formatMoney } from '@shared/format';
 import { ApiError } from '@shared/http';
 import { evaluateDay, type AvailabilityData, type BookingWindow, type DayState, type OnlinePeriodType, type Stay } from '@shared/periods';
-import { publicApi, type CreateBookingResult, type PublicBoat, type Quote } from './api';
+import { phoneField } from '@shared/phone';
+import { publicApi, type BookingStep, type CreateBookingResult, type PublicBoat, type Quote } from './api';
 import { Calendar } from './calendar';
 import { isEmbedded, requestClose } from './embed';
+import { adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning } from './rules';
 import { mountCheckout } from './stripe';
 import { TurnstileWidget } from './turnstile';
 
-type Step = 'loading' | 'dates' | 'guests' | 'addons' | 'details' | 'summary' | 'payment' | 'complete' | 'error';
-const FLOW: Step[] = ['dates', 'guests', 'addons', 'details', 'summary', 'payment'];
+type Step = 'loading' | 'dates' | 'details' | 'guests' | 'addons' | 'summary' | 'payment' | 'complete' | 'error';
+const FLOW: Step[] = ['dates', 'details', 'guests', 'addons', 'summary', 'payment'];
 
 /** Which step owns each API validation field, so errors send the customer back to the right place. */
 const FIELD_STEP: Record<string, Step> = {
   periodType: 'dates',
   startDate: 'dates',
-  numberOfGuests: 'guests',
-  roomingWarningAccepted: 'guests',
-  groupRestrictionApplies: 'guests',
-  addons: 'addons',
   fullName: 'details',
   email: 'details',
   mobile: 'details',
-  termsAccepted: 'details',
   turnstileToken: 'details',
+  draftId: 'details',
+  numberOfAdults: 'guests',
+  numberOfChildren: 'guests',
+  roomingWarningAccepted: 'guests',
+  addons: 'addons',
+  termsAccepted: 'summary',
 };
 
 const state = {
@@ -35,10 +38,14 @@ const state = {
   availability: { unavailable: [], enquireOnly: [] } as AvailabilityData,
   loadedMonths: new Set<string>(),
   window: { earliestStart: '9999-12-31', bookingsOpenUntil: '0000-01-01' } as BookingWindow,
-  guests: null as number | null,
+  adults: null as number | null,
+  children: 0,
   roomingText: null as string | null,
-  groupAnswer: null as 'yes' | 'no' | null,
   addons: new Map<string, number>(),
+  /** What is left of each capacity-limited add-on for `remainingFor` (the selected stay). */
+  remaining: new Map<string, number>(),
+  remainingFor: null as string | null,
+  draftId: null as string | null,
   quote: null as Quote | null,
   booking: null as CreateBookingResult | null,
   step: 'loading' as Step,
@@ -46,6 +53,7 @@ const state = {
 
 let calendar: Calendar;
 const turnstile = new TurnstileWidget(() => clearFieldError('turnstileToken'));
+const mobile = phoneField({ name: 'mobile', label: 'Mobile number', required: true });
 
 // ---- Step navigation ---------------------------------------------------------------------------------------------
 
@@ -81,6 +89,53 @@ function contactText(): string {
   return `${s.contactPhone} / ${s.contactEmail}`;
 }
 
+// ---- Booking draft -----------------------------------------------------------------------------------------------
+
+const draftKey = () => `bh-booking-draft:${state.slug}`;
+
+function rememberDraft(draftId: string | null): void {
+  state.draftId = draftId;
+  try {
+    if (draftId) sessionStorage.setItem(draftKey(), draftId);
+    else sessionStorage.removeItem(draftKey());
+  } catch {
+    // storage may be unavailable (private mode, blocked cookies); the draft then lives for this page only
+  }
+}
+
+function recallDraft(): string | null {
+  try {
+    return sessionStorage.getItem(draftKey());
+  } catch {
+    return null;
+  }
+}
+
+function addonRequests() {
+  return [...state.addons].map(([addonId, quantity]) => ({ addonId, quantity }));
+}
+
+/** Records progress on the draft (moving forward a step). Failures never block the customer. */
+async function saveDraft(step: BookingStep): Promise<void> {
+  if (!state.draftId || !state.selection) return;
+  const d = details();
+  try {
+    await publicApi.updateDraft(state.draftId, {
+      periodType: state.periodType,
+      startDate: state.selection.start,
+      fullName: d.fullName,
+      email: d.email,
+      mobile: d.mobile ?? null,
+      numberOfAdults: state.adults,
+      numberOfChildren: state.adults === null ? null : state.children,
+      addons: addonRequests(),
+      lastStepReached: step,
+    });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) rememberDraft(null);
+  }
+}
+
 // ---- Loading -----------------------------------------------------------------------------------------------------
 
 async function init(): Promise<void> {
@@ -103,13 +158,12 @@ async function init(): Promise<void> {
   const settings = boat.settings;
   document.title = `Book ${boat.name} — Berger Houseboats`;
   $('#boat-name').textContent = `Book ${boat.name}`;
-  $('#check-in-time').textContent = settings.checkInTime;
-  $('#check-out-time').textContent = settings.checkOutTime;
   ($('#terms-link') as HTMLAnchorElement).href = settings.hireTermsUrl;
   state.window = {
     earliestStart: addDays(settings.today, settings.minimumLeadTimeDays),
     bookingsOpenUntil: settings.bookingsOpenUntil,
   };
+  state.draftId = recallDraft();
 
   calendar = new Calendar({
     container: $('#calendar'),
@@ -118,14 +172,18 @@ async function init(): Promise<void> {
     dayState,
     selection: () => state.selection,
     onActivate,
-    onMonthChange: (month) => void loadAvailability(month),
+    onMonthChange: (month) => {
+      updateTimes();
+      void loadAvailability(month);
+    },
   });
 
   setUpDates();
+  setUpDetails();
   setUpGuests();
   setUpAddons();
-  setUpDetails();
   setUpSummary();
+  updateTimes();
   show('dates');
 
   if (!boat.isActive) {
@@ -182,6 +240,13 @@ async function reloadAvailability(): Promise<void> {
   await loadAvailability(calendar.visibleMonth, true);
 }
 
+/** "Check-in 11am – 2pm · Check-out by 8am (AEDT)" for the selected dates, or the visible month. */
+function updateTimes(): void {
+  const s = state.boat!.settings;
+  const from = state.selection?.start ?? calendar?.visibleMonth ?? s.today;
+  $('#times').textContent = checkInOutText(s, from, state.selection?.end ?? from);
+}
+
 function setUpDates(): void {
   for (const radio of $$<HTMLInputElement>('#period-options input')) {
     radio.addEventListener('change', () => {
@@ -193,7 +258,7 @@ function setUpDates(): void {
   $('[data-next]', section).addEventListener('click', () => {
     if (state.selection) {
       pageNotice(null);
-      show('guests');
+      show('details');
     }
   });
 }
@@ -213,66 +278,175 @@ function onActivate(_day: IsoDate, dayInfo: DayState): void {
 function setSelection(stay: Stay | null): void {
   state.selection = stay;
   state.quote = null;
-  const summary = $('#selection-summary');
   const settings = state.boat!.settings;
-  summary.textContent = stay
-    ? `Selected: check-in ${formatLongDate(stay.start)} from ${settings.checkInTime}, check-out ${formatLongDate(stay.end)} by ${settings.checkOutTime}.`
+  $('#selection-summary').textContent = stay
+    ? `Selected: check-in ${formatLongDate(stay.start)} (${settings.checkInTime} – ${settings.checkInWindowEnd}), ` +
+      `check-out ${formatLongDate(stay.end)} by ${settings.checkOutTime}.`
     : '';
   ($('section[data-step="dates"] [data-next]') as HTMLButtonElement).disabled = !stay;
+  updateTimes();
   calendar.render();
+}
+
+// ---- Your details ------------------------------------------------------------------------------------------------
+
+function setUpDetails(): void {
+  $('#mobile-field').replaceWith(mobile.element);
+  const section = $('section[data-step="details"]');
+  new MutationObserver(() => {
+    if (section.classList.contains('step--active')) {
+      turnstile.render($('#turnstile')).catch(() => setFieldError('turnstileToken', 'The security check could not load. Please refresh the page.'));
+    }
+  }).observe(section, { attributes: true, attributeFilter: ['class'] });
+
+  for (const input of $$<HTMLInputElement>('#details-form input')) {
+    input.addEventListener('input', () => clearFieldError(input.closest<HTMLElement>('[data-field]')?.dataset.field ?? ''));
+  }
+  $('[data-back]', section).addEventListener('click', () => show('dates'));
+  $('[data-next]', section).addEventListener('click', () => void continueFromDetails());
+}
+
+function details() {
+  return {
+    fullName: $<HTMLInputElement>('#fullName').value.trim(),
+    email: $<HTMLInputElement>('#email').value.trim(),
+    mobile: mobile.value(),
+  };
+}
+
+function validateDetails(needsTurnstile: boolean): boolean {
+  const d = details();
+  const errors: [string, string][] = [];
+  if (!d.fullName) errors.push(['fullName', 'Please enter your full name.']);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) errors.push(['email', 'Please enter a valid email address.']);
+  if (d.mobile === null) errors.push(['mobile', 'Please enter your mobile number.']);
+  else if (d.mobile === undefined) errors.push(['mobile', 'Please enter a valid mobile number for the selected country.']);
+  if (needsTurnstile && !turnstile.value) errors.push(['turnstileToken', 'Please complete the security check.']);
+  for (const field of ['fullName', 'email', 'mobile', 'turnstileToken']) clearFieldError(field);
+  for (const [field, message] of errors) setFieldError(field, message);
+  if (errors.length > 0) {
+    document.querySelector<HTMLElement>(`[data-field="${errors[0]![0]}"] input:not(.phone__country)`)?.focus();
+  }
+  return errors.length === 0;
+}
+
+/** Creates the booking draft the first time (Turnstile checked then), afterwards updates it. */
+async function continueFromDetails(): Promise<void> {
+  if (!validateDetails(!state.draftId)) return;
+  const button = $<HTMLButtonElement>('section[data-step="details"] [data-next]');
+  button.disabled = true;
+  try {
+    if (state.draftId) {
+      await saveDraft('Guests');
+    }
+    if (!state.draftId) {
+      // No draft yet, or the old one was completed or deleted.
+      if (!validateDetails(true)) return;
+      const d = details();
+      const created = await publicApi.createDraft({
+        slug: state.slug,
+        periodType: state.periodType,
+        startDate: state.selection!.start,
+        fullName: d.fullName,
+        email: d.email,
+        mobile: d.mobile!,
+        turnstileToken: turnstile.value,
+      });
+      rememberDraft(created.draftId);
+      turnstile.reset();
+      void saveDraft('Guests');
+    }
+    pageNotice(null);
+    show('guests');
+  } catch (e) {
+    turnstile.reset();
+    handleBookingError(e);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function setFieldError(field: string, message: string): void {
+  const wrapper = document.querySelector<HTMLElement>(`[data-field="${field}"]`);
+  if (!wrapper) return;
+  clearFieldError(field);
+  wrapper.classList.add('field--invalid');
+  const id = `${field}-error`;
+  wrapper.append(h('span', { class: 'field__error', id }, message));
+  const control = wrapper.querySelector('input[name], select, input');
+  control?.setAttribute('aria-describedby', id);
+  control?.setAttribute('aria-invalid', 'true');
+}
+
+function clearFieldError(field: string): void {
+  const wrapper = document.querySelector<HTMLElement>(`[data-field="${field}"]`);
+  if (!wrapper) return;
+  wrapper.classList.remove('field--invalid');
+  wrapper.querySelector('.field__error')?.remove();
+  wrapper.querySelector('[aria-invalid]')?.removeAttribute('aria-invalid');
 }
 
 // ---- Guests ------------------------------------------------------------------------------------------------------
 
 function setUpGuests(): void {
   const boat = state.boat!;
-  const select = $<HTMLSelectElement>('#guests');
-  for (let n = 1; n <= boat.maxNoOfGuests; n++) select.append(h('option', { value: n }, String(n)));
-  $('#bedding-hint').textContent = boat.noOfBeds
-    ? `${boat.name} sleeps up to ${boat.maxNoOfGuests} in ${boat.noOfBeds} beds: ${boat.beddingDescription ?? ''}`
-    : '';
+  const adultsSelect = $<HTMLSelectElement>('#adults');
+  const childrenSelect = $<HTMLSelectElement>('#children');
+  for (const n of adultOptions(boat.maxNoOfGuests)) adultsSelect.append(h('option', { value: n }, String(n)));
+  renderChildOptions();
+  $('#bedding-hint').textContent = boat.adultBeds !== null
+    ? `${boat.name} takes up to ${boat.maxNoOfGuests} guests and has ${boat.adultBeds} adult beds and ${boat.kidsBeds ?? 0} kids beds` +
+      `${boat.beddingDescription ? `: ${boat.beddingDescription}` : '.'}`
+    : `${boat.name} takes up to ${boat.maxNoOfGuests} guests.`;
 
-  select.addEventListener('change', async () => {
-    const n = Number(select.value) || null;
-    state.guests = n;
+  const onChange = async (select: HTMLSelectElement) => {
+    state.adults = Number(adultsSelect.value) || null;
+    if (select === adultsSelect) renderChildOptions();
+    state.children = Number(childrenSelect.value) || 0;
     state.roomingText = null;
-    if (n && boat.noOfBeds && n > boat.noOfBeds) {
-      const accepted = await confirmRooming(n);
-      if (!accepted) {
-        select.value = '';
-        state.guests = null;
+    clearFieldError('numberOfAdults');
+    clearFieldError('numberOfChildren');
+    if (state.adults && needsRoomingWarning(state.adults, state.children, boat.adultBeds, boat.kidsBeds)) {
+      if (!(await confirmRooming(state.adults, state.children))) {
+        select.value = select === adultsSelect ? '' : '0';
+        if (select === adultsSelect) state.adults = null;
+        else state.children = 0;
+        renderChildOptions();
         select.focus();
       }
     }
     updateGuestsNext();
-  });
-
-  for (const radio of $$<HTMLInputElement>('#group-question input')) {
-    radio.addEventListener('change', () => {
-      state.groupAnswer = radio.value as 'yes' | 'no';
-      const message = $('#group-message');
-      clear(message);
-      if (state.groupAnswer === 'yes') {
-        message.append(h('div', { class: 'notice notice--warning', role: 'alert' },
-          `Groups of under-30s or all-male groups require prior approval — please contact us on ${contactText()}.`));
-      }
-      updateGuestsNext();
-    });
-  }
+  };
+  adultsSelect.addEventListener('change', () => void onChange(adultsSelect));
+  childrenSelect.addEventListener('change', () => void onChange(childrenSelect));
 
   const section = $('section[data-step="guests"]');
-  $('[data-back]', section).addEventListener('click', () => show('dates'));
-  $('[data-next]', section).addEventListener('click', () => show('addons'));
+  $('[data-back]', section).addEventListener('click', () => show('details'));
+  $('[data-next]', section).addEventListener('click', () => {
+    void saveDraft('Addons');
+    show('addons');
+  });
+}
+
+/** Children: 0 … max guests − adults; changing adults clamps the children already chosen. */
+function renderChildOptions(): void {
+  const max = state.boat!.maxNoOfGuests;
+  const select = $<HTMLSelectElement>('#children');
+  const adults = state.adults ?? 1;
+  state.children = clampChildren(max, adults, state.children);
+  clear(select);
+  for (const n of childOptions(max, adults)) select.append(h('option', { value: n, selected: n === state.children }, String(n)));
 }
 
 /** Shows the rooming warning (text generated by the server) and records the exact text accepted. */
-async function confirmRooming(guests: number): Promise<boolean> {
+async function confirmRooming(adults: number, children: number): Promise<boolean> {
   let text: string | null;
   try {
     const quote = await publicApi.quote(state.slug, {
       periodType: state.periodType,
       startDate: state.selection!.start,
-      numberOfGuests: guests,
+      numberOfAdults: adults,
+      numberOfChildren: children,
       addons: [],
     });
     text = quote.roomingWarningText;
@@ -296,8 +470,8 @@ async function confirmRooming(guests: number): Promise<boolean> {
 
 function updateGuestsNext(): void {
   const boat = state.boat!;
-  const needsRooming = !!state.guests && !!boat.noOfBeds && state.guests > boat.noOfBeds;
-  const ok = !!state.guests && (!needsRooming || !!state.roomingText) && state.groupAnswer === 'no';
+  const needsRooming = !!state.adults && needsRoomingWarning(state.adults, state.children, boat.adultBeds, boat.kidsBeds);
+  const ok = !!state.adults && (!needsRooming || !!state.roomingText);
   ($('section[data-step="guests"] [data-next]') as HTMLButtonElement).disabled = !ok;
 }
 
@@ -306,10 +480,13 @@ function updateGuestsNext(): void {
 function setUpAddons(): void {
   const section = $('section[data-step="addons"]');
   $('[data-back]', section).addEventListener('click', () => show('guests'));
-  $('[data-next]', section).addEventListener('click', () => show('details'));
-  // Prices depend on the period type, so the list is rebuilt whenever the step is shown.
+  $('[data-next]', section).addEventListener('click', () => {
+    void saveDraft('Summary');
+    void goToSummary();
+  });
+  // Prices depend on the period type and capacity on the dates, so the list is rebuilt whenever the step is shown.
   new MutationObserver(() => {
-    if (section.classList.contains('step--active')) renderAddons();
+    if (section.classList.contains('step--active')) void renderAddons();
   }).observe(section, { attributes: true, attributeFilter: ['class'] });
 }
 
@@ -318,30 +495,58 @@ function addonPrice(prices: { midweek: number; weekend: number; week: number } |
   return state.periodType === 'Midweek' ? prices.midweek : state.periodType === 'Weekend' ? prices.weekend : prices.week;
 }
 
-function renderAddons(): void {
+/** Remaining capacity of the capacity-limited add-ons for the selected stay (cached per stay). */
+async function loadRemaining(): Promise<void> {
+  const stay = state.selection!;
+  const key = `${stay.start}|${stay.end}`;
+  if (state.remainingFor === key) return;
+  state.remaining.clear();
+  await Promise.all(state.boat!.addons.filter((a) => a.hasCapacity).map(async (a) => {
+    try {
+      state.remaining.set(a.id, (await publicApi.addonAvailability(a.id, stay.start, stay.end)).remaining);
+    } catch {
+      // shown without a limit; the server still enforces it
+    }
+  }));
+  state.remainingFor = key;
+}
+
+async function renderAddons(): Promise<void> {
   const list = $('#addon-list');
-  clear(list);
   const addons = state.boat!.addons;
-  if (addons.length === 0) {
+  if (addons.some((a) => a.hasCapacity)) {
+    list.setAttribute('aria-busy', 'true');
+    await loadRemaining();
+    list.setAttribute('aria-busy', 'false');
+  }
+  clear(list);
+  const shown = addons.map((addon) => ({ addon, view: capacityView(addon, state.remaining.get(addon.id)) }))
+    .filter(({ addon, view }) => {
+      if (view.hidden) state.addons.delete(addon.id); // fully booked for these dates: not offered at all
+      return !view.hidden;
+    });
+  if (shown.length === 0) {
     list.append(h('li', { class: 'muted' }, 'No add-ons are available for this boat.'));
     return;
   }
-  for (const addon of addons) {
+  for (const { addon, view } of shown) {
     const id = `addon-${addon.id}`;
     const price = addonPrice(addon.prices);
     const checked = state.addons.has(addon.id);
+    if (checked && state.addons.get(addon.id)! > view.max) state.addons.set(addon.id, view.max);
     const quantity = h('input', {
-      type: 'number', min: 1, max: 99, value: state.addons.get(addon.id) ?? 1, id: `${id}-qty`,
+      type: 'number', min: 1, max: view.max, value: state.addons.get(addon.id) ?? 1, id: `${id}-qty`,
       class: 'addon__qty', 'aria-label': `Quantity of ${addon.name}`, disabled: !checked,
     });
     const checkbox = h('input', { type: 'checkbox', id, checked });
     checkbox.addEventListener('change', () => {
-      if (checkbox.checked) state.addons.set(addon.id, Math.max(1, Number(quantity.value) || 1));
+      if (checkbox.checked) state.addons.set(addon.id, Math.min(view.max, Math.max(1, Number(quantity.value) || 1)));
       else state.addons.delete(addon.id);
       quantity.disabled = !checkbox.checked;
+      clearFieldError('addons');
     });
     quantity.addEventListener('change', () => {
-      const n = Math.min(99, Math.max(1, Math.round(Number(quantity.value) || 1)));
+      const n = Math.min(view.max, Math.max(1, Math.round(Number(quantity.value) || 1)));
       quantity.value = String(n);
       if (checkbox.checked) state.addons.set(addon.id, n);
     });
@@ -349,7 +554,8 @@ function renderAddons(): void {
       checkbox,
       h('label', { for: id, class: 'addon__label' },
         h('strong', {}, addon.name),
-        addon.description ? h('span', { class: 'muted' }, addon.description) : null),
+        addon.description ? h('span', { class: 'muted' }, addon.description) : null,
+        view.text ? h('span', { class: 'addon__remaining' }, view.text) : null),
       h('span', { class: 'addon__price' },
         addon.priceOnRequest || price === null ? 'Price on request' : `${formatMoney(price)}${addon.quantityApplies ? ' each' : ''}`),
       addon.quantityApplies ? quantity : null,
@@ -357,87 +563,29 @@ function renderAddons(): void {
   }
 }
 
-// ---- Details -----------------------------------------------------------------------------------------------------
-
-function setUpDetails(): void {
-  const section = $('section[data-step="details"]');
-  new MutationObserver(() => {
-    if (section.classList.contains('step--active')) {
-      turnstile.render($('#turnstile')).catch(() => setFieldError('turnstileToken', 'The security check could not load. Please refresh the page.'));
-    }
-  }).observe(section, { attributes: true, attributeFilter: ['class'] });
-
-  for (const input of $$<HTMLInputElement>('#details-form input')) {
-    input.addEventListener('input', () => clearFieldError(input.closest<HTMLElement>('[data-field]')?.dataset.field ?? ''));
-  }
-  $('[data-back]', section).addEventListener('click', () => show('addons'));
-  $('[data-next]', section).addEventListener('click', () => {
-    if (validateDetails()) void goToSummary();
-  });
-}
-
-function details() {
-  return {
-    fullName: $<HTMLInputElement>('#fullName').value.trim(),
-    email: $<HTMLInputElement>('#email').value.trim(),
-    mobile: $<HTMLInputElement>('#mobile').value.trim(),
-    termsAccepted: $<HTMLInputElement>('#terms').checked,
-  };
-}
-
-function validateDetails(): boolean {
-  const d = details();
-  const errors: [string, string][] = [];
-  if (!d.fullName) errors.push(['fullName', 'Please enter your full name.']);
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) errors.push(['email', 'Please enter a valid email address.']);
-  const digits = d.mobile.replace(/\D/g, '');
-  if (digits.length < 8 || digits.length > 15) errors.push(['mobile', 'Please enter a valid mobile number.']);
-  if (!d.termsAccepted) errors.push(['termsAccepted', 'Please accept the Hire Terms and Procedures.']);
-  if (!turnstile.value) errors.push(['turnstileToken', 'Please complete the security check.']);
-  for (const field of ['fullName', 'email', 'mobile', 'termsAccepted', 'turnstileToken']) clearFieldError(field);
-  for (const [field, message] of errors) setFieldError(field, message);
-  if (errors.length > 0) {
-    document.querySelector<HTMLElement>(`[data-field="${errors[0]![0]}"] input`)?.focus();
-  }
-  return errors.length === 0;
-}
-
-function setFieldError(field: string, message: string): void {
-  const wrapper = document.querySelector<HTMLElement>(`[data-field="${field}"]`);
-  if (!wrapper) return;
-  clearFieldError(field);
-  wrapper.classList.add('field--invalid');
-  const id = `${field}-error`;
-  wrapper.append(h('span', { class: 'field__error', id }, message));
-  wrapper.querySelector('input')?.setAttribute('aria-describedby', id);
-  wrapper.querySelector('input')?.setAttribute('aria-invalid', 'true');
-}
-
-function clearFieldError(field: string): void {
-  const wrapper = document.querySelector<HTMLElement>(`[data-field="${field}"]`);
-  if (!wrapper) return;
-  wrapper.classList.remove('field--invalid');
-  wrapper.querySelector('.field__error')?.remove();
-  wrapper.querySelector('input')?.removeAttribute('aria-invalid');
-}
-
 // ---- Summary -----------------------------------------------------------------------------------------------------
 
 function setUpSummary(): void {
   const section = $('section[data-step="summary"]');
-  $('[data-back]', section).addEventListener('click', () => show('details'));
+  const terms = $<HTMLInputElement>('#terms');
+  terms.addEventListener('change', () => {
+    clearFieldError('termsAccepted');
+    $<HTMLButtonElement>('#pay-button').disabled = !terms.checked;
+  });
+  $('[data-back]', section).addEventListener('click', () => show('addons'));
   $('#pay-button').addEventListener('click', () => void pay());
 }
 
 async function goToSummary(): Promise<void> {
-  const button = $<HTMLButtonElement>('section[data-step="details"] [data-next]');
+  const button = $<HTMLButtonElement>('section[data-step="addons"] [data-next]');
   button.disabled = true;
   try {
     state.quote = await publicApi.quote(state.slug, {
       periodType: state.periodType,
       startDate: state.selection!.start,
-      numberOfGuests: state.guests!,
-      addons: [...state.addons].map(([addonId, quantity]) => ({ addonId, quantity })),
+      numberOfAdults: state.adults!,
+      numberOfChildren: state.children,
+      addons: addonRequests(),
     });
     renderSummary(state.quote);
     pageNotice(null);
@@ -456,62 +604,69 @@ function renderSummary(quote: Quote): void {
   const addons = quote.addons.length === 0
     ? 'None'
     : h('ul', { class: 'plain-list' }, ...quote.addons.map((a) => h('li', {},
-      `${a.name}${a.quantity > 1 ? ` × ${a.quantity}` : ''} — ${a.estimatedTotal !== null ? `est. ${formatMoney(a.estimatedTotal)}` : 'price to be confirmed'}`)));
-  const schedule = h('ul', { class: 'plain-list' }, ...quote.milestones.map((m) =>
-    h('li', {}, `${m.label}: ${formatMoney(m.amount)}${m.dueDate ? ` by ${formatLongDate(m.dueDate)}` : ''}`)));
+      `${a.name}${a.quantity > 1 ? ` × ${a.quantity}` : ''} — ${a.lineTotal !== null ? formatMoney(a.lineTotal) : 'price on request'}`)));
+  const schedule = h('ul', { class: 'plain-list' }, ...quote.milestones.map((m) => h('li', {},
+    `${m.label}: ${formatMoney(m.amount)}` +
+    (m.kind === 'Deposit' ? '' : m.dueNow ? ' — due now; we will email you a payment link' : m.dueDate ? ` by ${formatLongDate(m.dueDate)}` : ''))));
+  const guests = `${quote.numberOfAdults} adult${quote.numberOfAdults === 1 ? '' : 's'}, ` +
+    `${quote.numberOfChildren} child${quote.numberOfChildren === 1 ? '' : 'ren'} (under 12)`;
 
   container.append(
     h('dl', { class: 'summary' },
       row('Boat', quote.boatName),
-      row('Check-in', `${formatLongDate(quote.startDate)} from ${quote.checkInTime}`),
+      row('Check-in', `${formatLongDate(quote.startDate)}, ${quote.checkInTime} – ${quote.checkInWindowEnd} ${quote.timeZoneLabel}`),
       row('Check-out', `${formatLongDate(quote.endDate)} by ${quote.checkOutTime}`),
-      row('Guests', String(quote.numberOfGuests)),
+      row('Guests', guests),
       row('Season', quote.seasonName),
       row('Hire price', formatMoney(quote.hirePrice)),
       row('Requested add-ons', addons),
+      row('Total', formatMoney(quote.totalPrice)),
       row('Payment schedule', schedule),
     ),
     h('p', { class: 'muted', hidden: quote.addons.length === 0 },
-      'Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance.'),
-    h('p', { class: 'summary__due' }, 'Amount payable now: ', h('strong', {}, formatMoney(quote.amountDueAtCheckout)),
-      quote.fullPaymentAtCheckout ? ' (full payment, as the balance is already due)' : ''),
+      'Add-ons are requests and will be confirmed by our staff. Add-ons priced "on request" are added to your balance once confirmed.'),
+    h('p', { class: 'summary__due' }, 'Amount payable now (deposit): ', h('strong', {}, formatMoney(quote.amountDueAtCheckout))),
     h('p', { class: 'notice' }, `A ${formatMoney(quote.securityBond)} security bond applies — details will be provided.`),
   );
   $('#pay-button').textContent = `Pay ${formatMoney(quote.amountDueAtCheckout)}`;
+  $<HTMLButtonElement>('#pay-button').disabled = !$<HTMLInputElement>('#terms').checked;
 }
 
 // ---- Payment -----------------------------------------------------------------------------------------------------
 
 async function pay(): Promise<void> {
   const button = $<HTMLButtonElement>('#pay-button');
-  if (!turnstile.value) {
+  if (!$<HTMLInputElement>('#terms').checked) {
+    setFieldError('termsAccepted', 'Please accept the Hire Terms and Procedures.');
+    return;
+  }
+  if (!state.draftId) {
     show('details');
-    setFieldError('turnstileToken', 'Please complete the security check again.');
+    pageNotice('Please confirm your details again.');
     return;
   }
   button.disabled = true;
   const d = details();
   try {
     state.booking = await publicApi.createBooking({
+      draftId: state.draftId,
       slug: state.slug,
       periodType: state.periodType,
       startDate: state.selection!.start,
-      numberOfGuests: state.guests!,
+      numberOfAdults: state.adults!,
+      numberOfChildren: state.children,
       fullName: d.fullName,
       email: d.email,
-      mobile: d.mobile,
-      addons: [...state.addons].map(([addonId, quantity]) => ({ addonId, quantity })),
+      mobile: d.mobile ?? null,
+      addons: addonRequests(),
       roomingWarningAccepted: !!state.roomingText,
       roomingWarningText: state.roomingText,
-      groupRestrictionApplies: false,
-      termsAccepted: d.termsAccepted,
-      turnstileToken: turnstile.value,
+      termsAccepted: true,
     });
   } catch (e) {
     handleBookingError(e);
     return;
   } finally {
-    turnstile.reset();
     button.disabled = false;
   }
 
@@ -520,6 +675,7 @@ async function pay(): Promise<void> {
   show('payment');
   try {
     await mountCheckout($('#checkout'), state.booking.clientSecret);
+    rememberDraft(null);
     show('complete');
     void confirmCompletion();
   } catch (e) {
@@ -540,6 +696,8 @@ function handleBookingError(e: unknown): void {
     return;
   }
   const fields = Object.keys(e.fieldErrors);
+  if (fields.includes('draftId')) rememberDraft(null);
+  if (fields.includes('addons')) state.remainingFor = null; // show refreshed remaining figures
   const firstStep = FLOW.find((s) => fields.some((f) => FIELD_STEP[f] === s));
   for (const [field, messages] of Object.entries(e.fieldErrors)) setFieldError(field, messages.join(' '));
   if (firstStep) show(firstStep);

@@ -39,7 +39,7 @@ public sealed class NotificationOptions
     }
 }
 
-/// <summary>Hold timing, from environment variables (Booking__*).</summary>
+/// <summary>Hold and booking-draft timing, from environment variables (Booking__*).</summary>
 public sealed class BookingOptions
 {
     public const string Section = "Booking";
@@ -50,6 +50,12 @@ public sealed class BookingOptions
     public TimeSpan PendingHoldDuration { get; set; } = TimeSpan.FromMinutes(30);
 
     public TimeSpan PendingHoldGrace { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>Inactivity before a booking draft counts as abandoned; longer than the maximum hold.</summary>
+    public TimeSpan AbandonedDraftAfter { get; set; } = TimeSpan.FromHours(2);
+
+    /// <summary>Booking drafts are deleted this long after they were created.</summary>
+    public TimeSpan DraftRetention { get; set; } = TimeSpan.FromDays(30);
 
     /// <summary>How long the Stripe checkout session lives: max(PendingHoldDuration, 30 min).</summary>
     public TimeSpan CheckoutSessionLifetime =>
@@ -73,6 +79,16 @@ public sealed class BookingOptions
         if (PendingHoldGrace < TimeSpan.FromMinutes(2))
         {
             yield return "Booking__PendingHoldGrace must be at least 2 minutes.";
+        }
+
+        if (AbandonedDraftAfter <= HoldDuration)
+        {
+            yield return "Booking__AbandonedDraftAfter must be longer than the hold (PendingHoldDuration + PendingHoldGrace).";
+        }
+
+        if (DraftRetention <= AbandonedDraftAfter)
+        {
+            yield return "Booking__DraftRetention must be longer than Booking__AbandonedDraftAfter.";
         }
     }
 }

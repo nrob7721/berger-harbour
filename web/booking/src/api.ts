@@ -12,6 +12,9 @@ export type CreateBookingResult = S['CreateOnlineBookingResult'];
 export type BookingStatus = S['BookingStatusDto'];
 export type PayPage = S['PayPageDto'];
 export type PayCheckout = S['PayCheckoutResult'];
+export type CreateDraftRequest = S['CreateBookingDraftRequest'];
+export type UpdateDraftRequest = S['UpdateBookingDraftRequest'];
+export type BookingStep = S['BookingStep'];
 
 const enc = encodeURIComponent;
 
@@ -20,6 +23,11 @@ export const publicApi = {
   availability: (slug: string, from: IsoDate, to: IsoDate) =>
     api<Availability>(`/api/boats/${enc(slug)}/availability${query({ from, to })}`),
   quote: (slug: string, body: QuoteRequest) => api<Quote>(`/api/boats/${enc(slug)}/quote`, { body }),
+  addonAvailability: (addonId: string, startDate: IsoDate, endDate: IsoDate) =>
+    api<{ remaining: number }>(`/api/addons/${enc(addonId)}/availability${query({ startDate, endDate })}`),
+  createDraft: (body: CreateDraftRequest) => api<{ draftId: string }>('/api/booking-drafts', { body }),
+  updateDraft: (draftId: string, body: UpdateDraftRequest) =>
+    api<void>(`/api/booking-drafts/${enc(draftId)}`, { method: 'PUT', body }),
   createBooking: (body: CreateBookingRequest) => api<CreateBookingResult>('/api/bookings', { body }),
   status: (reference: string, sessionId: string) =>
     api<BookingStatus>(`/api/bookings/${enc(reference)}/status${query({ session_id: sessionId })}`),

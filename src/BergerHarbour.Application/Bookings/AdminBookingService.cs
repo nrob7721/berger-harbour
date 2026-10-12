@@ -7,12 +7,13 @@ using BergerHarbour.Application.Payments;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
+using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 using BergerHarbour.Domain.Unavailabilities;
 
 namespace BergerHarbour.Application.Bookings;
 
-/// <summary>Staff booking use cases for the admin Bookings page.</summary>
+/// <summary>Staff booking use cases for the admin Bookings and Customers pages.</summary>
 public sealed class AdminBookingService(
     IBookingRepository bookings,
     IBoatRepository boats,
@@ -21,6 +22,7 @@ public sealed class AdminBookingService(
     BookingCatalogueLoader catalogueLoader,
     IBookingRequestValidationStrategy validation,
     PaymentScheduleService paymentSchedule,
+    AddonCapacityQueries capacity,
     CustomerService customerService,
     IBookingReferenceGenerator references,
     IBoatScheduleLock scheduleLock,
@@ -52,18 +54,20 @@ public sealed class AdminBookingService(
         var names = await CustomerNamesAsync(list, ct);
         var window = new Stay(from, to);
         return new TimelineDto(from, to,
-            boatsTask.Result.Where(b => b.Type == BoatType.House).OrderBy(b => b.Name)
-                .Select(b => new TimelineBoatDto(b.Id.Value, b.Name, b.IsActive)).ToList(),
+            Boat.InDisplayOrder(boatsTask.Result.Where(b => b.Type == BoatType.House))
+                .Select(b => new TimelineBoatDto(b.Id.Value, b.Name, b.MaxNoOfGuests, b.IsActive)).ToList(),
             list.OrderBy(b => b.StartDate).Select(b => new TimelineBookingDto(b.Id.Value, b.Reference.Value, b.BoatId.Value,
-                b.StartDate, b.EndDate, b.PeriodType, b.Status, b.IsStandby, b.PaymentStatus,
-                names.GetValueOrDefault(b.CustomerId, "?"))).ToList(),
+                b.StartDate, b.EndDate, b.PeriodType, b.Status, b.IsStandby, b.PaymentStatus, NameOf(b, names))).ToList(),
             unavailableTask.Result.Select(u => new TimelineUnavailabilityDto(u.Id.Value, u.BoatId.Value, u.Nights.FirstNight,
                 u.Nights.LastNight, u.Comments)).ToList(),
             catalogueTask.Result.BlockedPeriods.Where(p => window.Overlaps(p.Nights)).Select(p =>
                 new TimelineBlockedPeriodDto(p.Id.Value, p.Name, p.Nights.FirstNight, p.Nights.LastNight)).ToList());
     }
 
-    /// <summary>Search by customer name, email or booking reference.</summary>
+    /// <summary>
+    /// Search by customer name, email or booking reference, including the details entered on online bookings that
+    /// have no customer record (holds that never became Active).
+    /// </summary>
     public async Task<IReadOnlyList<BookingSearchResultDto>> SearchAsync(string? q, CancellationToken ct = default)
     {
         var term = q?.Trim() ?? string.Empty;
@@ -88,14 +92,22 @@ public sealed class AdminBookingService(
             }
         }
 
-        var customerById = (await customers.GetManyAsync(found.Values.Select(b => b.CustomerId).Distinct(), ct))
-            .ToDictionary(c => c.Id);
+        foreach (var status in new[] { BookingStatus.PendingPayment, BookingStatus.Expired })
+        {
+            foreach (var b in (await bookings.ListByStatusAsync(status, ct)).Where(b => b.CustomerId is null && DetailsMatch(b, term)))
+            {
+                found[b.Id] = b;
+            }
+        }
+
+        var customerById = (await customers.GetManyAsync(CustomerIds(found.Values), ct)).ToDictionary(c => c.Id);
         var boatNames = (await boats.ListAsync(ct)).ToDictionary(b => b.Id, b => b.Name);
         return found.Values.OrderByDescending(b => b.StartDate).Take(50).Select(b =>
         {
-            var customer = customerById.GetValueOrDefault(b.CustomerId);
+            var customer = b.CustomerId is { } id ? customerById.GetValueOrDefault(id) : null;
             return new BookingSearchResultDto(b.Id.Value, b.Reference.Value, boatNames.GetValueOrDefault(b.BoatId, "?"),
-                b.StartDate, b.EndDate, b.Status, b.IsStandby, customer?.FullName ?? "?", customer?.Email.Value ?? string.Empty);
+                b.StartDate, b.EndDate, b.Status, b.IsStandby, customer?.FullName ?? b.CustomerDetails?.FullName ?? "?",
+                customer?.Email.Value ?? b.CustomerDetails?.Email ?? string.Empty);
         }).ToList();
     }
 
@@ -125,19 +137,56 @@ public sealed class AdminBookingService(
         }
     }
 
+    /// <summary>
+    /// What "Re-book" pre-fills: the same day and month next time round, the same guests, times, customer and add-on
+    /// lines, with prices from the current rates where they apply.
+    /// </summary>
+    public async Task<RebookDto> GetRebookAsync(string id, CancellationToken ct = default)
+    {
+        var original = await LoadAsync(id, ct);
+        var boat = await boats.GetAsync(original.BoatId, ct) ?? throw new NotFoundException("Boat not found.");
+        var catalogue = await catalogueLoader.LoadAsync(ct);
+        var plan = RebookPlanner.Plan(original.PeriodType, original.Stay, clock.Today());
+
+        decimal? hirePrice = original.HirePrice;
+        if (plan.PeriodType != PeriodType.Custom)
+        {
+            try
+            {
+                hirePrice = PricingService.QuoteHirePrice(boat, catalogue.Seasons, plan.PeriodType, plan.Stay.StartDate).Price;
+            }
+            catch (DomainValidationException)
+            {
+                hirePrice = null;
+            }
+        }
+
+        var addons = AddonCatalogue.InDisplayOrder(catalogue.Addons.Where(a => a.IsActive))
+            .SelectMany(definition => original.AddonLines.Where(l => l.AddonId == definition.Id).Select(line =>
+                new RebookAddonDto(definition.Id.Value, definition.Name, line.Quantity,
+                    PricingService.AddonUnitPrice(definition, plan.PeriodType) ?? line.UnitPrice)))
+            .ToList();
+        var contact = await ContactAsync(original, ct);
+        return new RebookDto(original.Reference.Value, boat.Id.Value, plan.PeriodType, plan.Stay.StartDate, plan.Stay.EndDate,
+            original.NumberOfAdults, original.NumberOfChildren, original.CheckInTime, original.CheckOutTime, contact.Email,
+            contact.FullName, contact.Phone, contact.SecondaryPhone, hirePrice, addons);
+    }
+
     // ---- Create and update ----------------------------------------------------------------------------------------
 
     public async Task<BookingDetailDto> CreateAsync(AdminBookingRequest request, CancellationToken ct = default)
     {
         var boat = await boats.GetAsync(new BoatId(request.BoatId ?? string.Empty), ct);
         var catalogue = await catalogueLoader.LoadAsync(ct);
-        Validate(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfGuests, request.FullName,
-            request.Email, boat, catalogue);
+        var lines = ResolveAddonLines(request.Addons ?? [], request.PeriodType, catalogue);
+        Validate(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
+            request.FullName, request.Email, request.Phone, request.SecondaryPhone, boat, catalogue);
         EnsureBookable(boat);
 
         var stay = new Stay(request.StartDate, request.EndDate!.Value);
         var hirePrice = request.HirePrice ?? PriceFromRates(boat!, catalogue, request.PeriodType, request.StartDate);
-        var customer = await customerService.UpsertAsync(request.FullName!, request.Email!, request.Phone, ct);
+        var customer = await customerService.UpsertFromStaffAsync(request.FullName!, request.Email!, request.Phone,
+            request.SecondaryPhone, ct);
         var now = clock.UtcNow;
         var reference = await references.NextAsync(SydneyTime.ToLocal(now).Year, ct);
         var schedule = PaymentScheduleService.DetermineSchedule(stay, catalogue.BlockedPeriods);
@@ -148,8 +197,14 @@ public sealed class AdminBookingService(
             var occupying = await session.GetOccupyingBookingsAsync(stay);
             BookingAvailabilityService.EnsureAvailable(boat.Id, stay, occupying, await session.GetUnavailabilitiesAsync(stay), now);
             var created = Booking.CreateByStaff(reference, customer.Id, boat.Id, request.PeriodType, stay,
-                request.NumberOfGuests, request.IsStandby, request.Comments, hirePrice, catalogue.Settings.DepositAmount,
-                schedule, paymentLinks.HashFor(id), now, id);
+                request.NumberOfAdults, request.NumberOfChildren, request.CheckInTime ?? Stay.CheckInTime,
+                request.CheckOutTime ?? Stay.CheckOutTime, request.IsStandby, request.Comments, hirePrice,
+                boat.EffectiveDeposit(catalogue.Settings.DepositAmount), schedule, paymentLinks.HashFor(id), now, id);
+            foreach (var line in lines)
+            {
+                created.AddAddon(line, now);
+            }
+
             session.Save(created);
             return (created, SupersedeStandbys(session, created, occupying, now));
         }, ct);
@@ -164,21 +219,24 @@ public sealed class AdminBookingService(
         existing.EnsureVersion(request.Version);
         var boat = await boats.GetAsync(new BoatId(request.BoatId ?? string.Empty), ct);
         var catalogue = await catalogueLoader.LoadAsync(ct);
-        Validate(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfGuests, request.FullName,
-            request.Email, boat, catalogue);
+        Validate(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
+            request.FullName, request.Email, request.Phone, request.SecondaryPhone, boat, catalogue);
         if (boat!.Id != existing.BoatId)
         {
             EnsureBookable(boat);
         }
 
         var stay = new Stay(request.StartDate, request.EndDate!.Value);
-        var customer = await customerService.UpsertAsync(request.FullName!, request.Email!, request.Phone, ct);
+        var checkIn = request.CheckInTime ?? existing.CheckInTime;
+        var checkOut = request.CheckOutTime ?? existing.CheckOutTime;
         var schedule = PaymentScheduleService.DetermineSchedule(stay, catalogue.BlockedPeriods);
 
         if (!existing.IsEditableByStaff)
         {
             var unchanged = boat.Id == existing.BoatId && stay == existing.Stay && request.PeriodType == existing.PeriodType &&
-                            request.NumberOfGuests == existing.NumberOfGuests && request.IsStandby == existing.IsStandby &&
+                            request.NumberOfAdults == existing.NumberOfAdults &&
+                            request.NumberOfChildren == existing.NumberOfChildren && checkIn == existing.CheckInTime &&
+                            checkOut == existing.CheckOutTime && request.IsStandby == existing.IsStandby &&
                             request.HirePrice == existing.HirePrice && request.Status == existing.Status;
             if (!unchanged)
             {
@@ -187,19 +245,28 @@ public sealed class AdminBookingService(
             }
 
             existing.UpdateComments(request.Comments, clock.UtcNow);
-            existing.ChangeCustomer(customer.Id, clock.UtcNow);
+            if (existing.CustomerId is not null)
+            {
+                // Online holds that never became Active have no customer, and never create one.
+                var linked = await customerService.UpsertFromStaffAsync(request.FullName!, request.Email!, request.Phone,
+                    request.SecondaryPhone, ct);
+                existing.ChangeCustomer(linked.Id, clock.UtcNow);
+            }
+
             await bookings.SaveAsync(existing, ct);
             return await ToDetailAsync(existing, ct);
         }
 
+        var customer = await customerService.UpsertFromStaffAsync(request.FullName!, request.Email!, request.Phone,
+            request.SecondaryPhone, ct);
         var (booking, superseded) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
             var now = clock.UtcNow;
             var b = await session.GetBookingAsync(existing.Id) ?? throw new NotFoundException("Booking not found.");
             b.EnsureVersion(request.Version);
             ApplyStatus(b, request.Status, now);
-            b.ChangeDetails(boat.Id, request.PeriodType, stay, request.NumberOfGuests, request.IsStandby, request.Comments,
-                request.HirePrice, schedule, now);
+            b.ChangeDetails(boat.Id, request.PeriodType, stay, request.NumberOfAdults, request.NumberOfChildren, checkIn,
+                checkOut, request.IsStandby, request.Comments, request.HirePrice, schedule, now);
             b.ChangeCustomer(customer.Id, now);
 
             IReadOnlyList<Booking> superseded = [];
@@ -245,17 +312,18 @@ public sealed class AdminBookingService(
         return await ToDetailAsync(booking, ct);
     }
 
-    /// <summary>Staff confirm or decline add-ons and contact the customer by hand; no email is sent.</summary>
+    /// <summary>Staff set the quantity or price and contact the customer by hand; no email is sent.</summary>
     public async Task<BookingDetailDto> UpdateAddonAsync(string id, string lineId, UpdateAddonLineRequest request,
         CancellationToken ct = default)
     {
         var booking = await LoadAsync(id, ct);
         booking.EnsureVersion(request.Version);
-        booking.UpdateAddonLine(lineId, request.Quantity, request.UnitPrice, request.Status, clock.UtcNow);
+        booking.UpdateAddonLine(lineId, request.Quantity, request.UnitPrice, clock.UtcNow);
         await bookings.SaveAsync(booking, ct);
         return await ToDetailAsync(booking, ct);
     }
 
+    /// <summary>Staff decline an add-on by removing its line; no email is sent.</summary>
     public async Task<BookingDetailDto> RemoveAddonAsync(string id, string lineId, int version, CancellationToken ct = default)
     {
         var booking = await LoadAsync(id, ct);
@@ -294,16 +362,15 @@ public sealed class AdminBookingService(
         }
 
         await notifications.SendPaymentDueAsync(booking, null, null, ct);
-        var customer = await customers.GetAsync(booking.CustomerId, ct);
-        return new SendPaymentLinkResult(customer?.Email.Value ?? string.Empty, due);
+        return new SendPaymentLinkResult((await ContactAsync(booking, ct)).Email ?? string.Empty, due);
     }
 
     // ---- Helpers --------------------------------------------------------------------------------------------------
 
-    private void Validate(PeriodType periodType, DateOnly start, DateOnly? end, int guests, string? fullName, string? email,
-        Boat? boat, BookingCatalogue catalogue)
+    private void Validate(PeriodType periodType, DateOnly start, DateOnly? end, int adults, int children, string? fullName,
+        string? email, string? phone, string? secondaryPhone, Boat? boat, BookingCatalogue catalogue)
     {
-        var request = new BookingRequest(periodType, start, end, guests, fullName, email, null, []);
+        var request = new BookingRequest(periodType, start, end, adults, children, fullName, email, phone, []);
         var errors = validation.Validate(request,
             new BookingValidationContext(boat, catalogue.Settings, catalogue.BlockedPeriods, catalogue.Addons, clock.Today()));
         if (boat is null)
@@ -311,7 +378,28 @@ public sealed class AdminBookingService(
             errors.Add("boatId", "Choose a boat.");
         }
 
+        if (!string.IsNullOrWhiteSpace(secondaryPhone) && !PhoneNumber.IsValid(secondaryPhone))
+        {
+            errors.Add("secondaryPhone", "Enter a valid phone number, including the country code for overseas numbers.");
+        }
+
         errors.ThrowIfInvalid();
+    }
+
+    /// <summary>Lines for a new booking (e.g. from Re-book): active add-ons only; a null price uses the current price.</summary>
+    private static List<RequestedAddon> ResolveAddonLines(IEnumerable<AdminAddonLineRequest> requested, PeriodType periodType,
+        BookingCatalogue catalogue)
+    {
+        var lines = new List<RequestedAddon>();
+        foreach (var r in requested)
+        {
+            var addon = catalogue.Addons.FirstOrDefault(a => a.Id.Value == r.AddonId && a.IsActive)
+                        ?? throw RequestValidationException.For("addons", "One of the add-ons is no longer available.");
+            lines.Add(new RequestedAddon(addon.Id, addon.Name, addon.NormaliseQuantity(r.Quantity),
+                r.UnitPrice ?? PricingService.AddonUnitPrice(addon, periodType)));
+        }
+
+        return lines;
     }
 
     /// <summary>Inactive boats cannot be booked by staff either.</summary>
@@ -386,27 +474,80 @@ public sealed class AdminBookingService(
     private async Task<Booking> LoadAsync(string id, CancellationToken ct) =>
         await bookings.GetAsync(new BookingId(id ?? string.Empty), ct) ?? throw new NotFoundException("Booking not found.");
 
+    private static IEnumerable<CustomerId> CustomerIds(IEnumerable<Booking> list) =>
+        list.Where(b => b.CustomerId is not null).Select(b => b.CustomerId!.Value).Distinct();
+
     private async Task<Dictionary<CustomerId, string>> CustomerNamesAsync(IEnumerable<Booking> list, CancellationToken ct) =>
-        (await customers.GetManyAsync(list.Select(b => b.CustomerId).Distinct(), ct)).ToDictionary(c => c.Id, c => c.FullName);
+        (await customers.GetManyAsync(CustomerIds(list), ct)).ToDictionary(c => c.Id, c => c.FullName);
+
+    private static string NameOf(Booking b, IReadOnlyDictionary<CustomerId, string> names) =>
+        (b.CustomerId is { } id ? names.GetValueOrDefault(id) : null) ?? b.CustomerDetails?.FullName ?? "?";
+
+    private static bool DetailsMatch(Booking b, string term) =>
+        b.CustomerDetails is { } d && (d.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                       d.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+    private sealed record Contact(string? FullName, string? Email, string? Phone, string? SecondaryPhone);
+
+    private async Task<Contact> ContactAsync(Booking b, CancellationToken ct)
+    {
+        if (b.CustomerId is { } id && await customers.GetAsync(id, ct) is { } customer)
+        {
+            return new Contact(customer.FullName, customer.Email.Value, customer.MobileNumber, customer.SecondaryPhone);
+        }
+
+        return new Contact(b.CustomerDetails?.FullName, b.CustomerDetails?.Email, b.CustomerDetails?.MobileNumber, null);
+    }
 
     private async Task<BookingDetailDto> ToDetailAsync(Booking b, CancellationToken ct)
     {
         var boat = await boats.GetAsync(b.BoatId, ct);
-        var customer = await customers.GetAsync(b.CustomerId, ct);
+        var customer = b.CustomerId is { } customerId ? await customers.GetAsync(customerId, ct) : null;
+        var catalogue = await catalogueLoader.LoadAsync(ct);
         var now = clock.UtcNow;
         var milestones = paymentSchedule.Milestones(b);
+
+        var lineAddons = b.AddonLines.Select(l => l.AddonId).Distinct()
+            .Select(addonId => catalogue.Addons.FirstOrDefault(a => a.Id == addonId)).OfType<AddonDefinition>().ToList();
+        var capacityBookings = new List<Booking>();
+        foreach (var addon in lineAddons.Where(a => a.HasCapacity))
+        {
+            capacityBookings.AddRange(await capacity.BookingsWithAsync(addon.Id, b.Stay, ct));
+        }
+
+        capacityBookings = capacityBookings.DistinctBy(x => x.Id).ToList();
+        IReadOnlyList<string> warnings = [];
+        if (boat is not null && b.Status == BookingStatus.Active)
+        {
+            var around = await bookings.ListOverlappingAsync(b.StartDate.AddDays(-1), b.EndDate.AddDays(1), OccupyingStatuses,
+                b.BoatId, ct);
+            warnings = StaffBookingWarnings.For(boat, b.Stay, b.NumberOfAdults, b.NumberOfChildren, b.CheckInTime, b.CheckOutTime,
+                lineAddons.Select(a => (a, b.QuantityOf(a.Id))), around, capacityBookings, now, b.Id);
+        }
+
         return new BookingDetailDto(b.Id.Value, b.Version, b.Reference.Value, b.CreatedBy, b.IsStandby, b.Status,
-            b.BoatId.Value, boat?.Name ?? "?", b.PeriodType, b.StartDate, b.EndDate, b.NumberOfGuests, b.Comments,
-            b.HirePrice, b.DepositAmount, b.PaymentSchedule,
-            customer is null ? new CustomerDto(b.CustomerId.Value, "?", string.Empty, null, b.CreatedDate) : CustomerQueries.ToDto(customer),
-            b.AddonLines.Select(l => new AddonLineDto(l.Id, l.AddonId.Value, l.NameSnapshot, l.Quantity, l.UnitPrice, l.Status,
-                l.EstimatedAmount)).ToList(),
+            b.BoatId.Value, boat?.Name ?? "?", b.PeriodType, b.StartDate, b.EndDate, b.NumberOfAdults, b.NumberOfChildren,
+            b.NumberOfGuests, b.CheckInTime, b.CheckOutTime, b.Comments, b.HirePrice, b.DepositAmount, b.PaymentSchedule,
+            customer is null ? null : CustomerQueries.ToDto(customer),
+            b.CustomerDetails is { } d ? new BookingCustomerDetailsDto(d.FullName, d.Email, d.MobileNumber) : null,
+            AddonCatalogue.InDisplayOrder(lineAddons).Select(a => a.Id)
+                .Concat(b.AddonLines.Select(l => l.AddonId)).Distinct()
+                .SelectMany(addonId => b.AddonLines.Where(l => l.AddonId == addonId))
+                .Select(l =>
+                {
+                    var addon = lineAddons.FirstOrDefault(a => a.Id == l.AddonId);
+                    int? remaining = addon is { HasCapacity: true }
+                        ? AddonCapacityService.Remaining(addon, b.Stay, capacityBookings, now, b.Id)
+                        : null;
+                    return new AddonLineDto(l.Id, l.AddonId.Value, l.NameSnapshot, l.Quantity, l.UnitPrice, l.LineTotal,
+                        remaining, addon?.Capacity);
+                }).ToList(),
             b.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.Method, p.StripePaymentIntentId,
                 p.PaidAt, p.Note, p.RecordedBy)).ToList(),
             b.TotalPrice, b.AmountPaid, b.AmountOwing,
             b.Status == BookingStatus.Active ? paymentSchedule.AmountDueNow(b, now) : 0m,
-            b.PaymentStatus, MilestoneViews.Build(milestones, 0m, false), b.HoldExpiresAt, b.CreatedDate, b.ModifiedDate,
+            b.PaymentStatus, MilestoneViews.Build(milestones, 0m, false, now), b.HoldExpiresAt, b.CreatedDate, b.ModifiedDate,
             b.TermsAcceptedAt, b.RoomingWarningAcceptance?.AcceptedAt, b.RoomingWarningAcceptance?.WarningTextShown,
-            b.GroupRestrictionDeclaredNotApplicable, b.SentNotifications);
+            b.SentNotifications, warnings);
     }
 }

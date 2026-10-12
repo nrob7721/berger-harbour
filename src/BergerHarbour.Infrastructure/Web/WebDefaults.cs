@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.OpenApi;
 
 namespace BergerHarbour.Infrastructure.Web;
 
@@ -40,17 +41,32 @@ public static class WebDefaults
         builder.Services.AddControllers().AddJsonOptions(o =>
         {
             o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            o.JsonSerializerOptions.Converters.Add(new HourMinuteTimeConverter());
             o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
             o.JsonSerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.Services.ConfigureHttpJsonOptions(o =>
         {
             o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            o.SerializerOptions.Converters.Add(new HourMinuteTimeConverter());
             o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
         });
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-        builder.Services.AddOpenApi();
+        builder.Services.AddOpenApi(o => o.AddSchemaTransformer((schema, context, _) =>
+        {
+            // Times use HourMinuteTimeConverter, so the generator cannot infer their schema.
+            var type = context.JsonTypeInfo.Type;
+            if (type == typeof(TimeOnly) || type == typeof(TimeOnly?))
+            {
+                schema.Type = type == typeof(TimeOnly) ? JsonSchemaType.String : JsonSchemaType.String | JsonSchemaType.Null;
+                schema.Format = "time";
+                schema.Pattern = "^\\d{2}:\\d{2}$";
+                schema.Description ??= "HH:mm";
+            }
+
+            return Task.CompletedTask;
+        }));
 
         var origin = builder.Configuration["CORS_ALLOWED_ORIGIN"] ?? defaultCorsOrigin;
         builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p => p

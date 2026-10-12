@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace BergerHarbour.Domain.Shared;
 
 public static class IdGenerator
@@ -45,5 +47,14 @@ public readonly record struct BlockedPeriodId(string Value)
 public readonly record struct AddonId(string Value)
 {
     public static AddonId New() => new(IdGenerator.NewId());
+    public override string ToString() => Value;
+}
+
+/// <summary>Random and unguessable (192 bits, base64url): the booking app holds it as its only credential.</summary>
+public readonly record struct BookingDraftId(string Value)
+{
+    public static BookingDraftId New() =>
+        new(Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_'));
+
     public override string ToString() => Value;
 }

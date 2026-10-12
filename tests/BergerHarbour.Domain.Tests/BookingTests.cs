@@ -10,7 +10,7 @@ public class BookingTests
 
     [Theory]
     [InlineData(0, PaymentStatus.Outstanding)]
-    [InlineData(500, PaymentStatus.DepositPaid)]
+    [InlineData(500, PaymentStatus.PartPaid)]
     [InlineData(1000, PaymentStatus.DepositPaid)]
     [InlineData(1500, PaymentStatus.PartPaid)]
     [InlineData(4060, PaymentStatus.FullyPaid)]
@@ -95,19 +95,75 @@ public class BookingTests
         Assert.Throws<InvalidStateTransitionException>(() => standby.Supersede(Now));
         Assert.Throws<InvalidStateTransitionException>(() => standby.Cancel(Now));
         Assert.Throws<InvalidStateTransitionException>(() =>
-            standby.ChangeDetails(Boat, PeriodType.Custom, new Stay(D(2026, 12, 7), D(2026, 12, 9)), 2, true, null, 1m,
-                PaymentSchedule.Standard, Now));
+            standby.ChangeDetails(Boat, PeriodType.Custom, new Stay(D(2026, 12, 7), D(2026, 12, 9)), 2, 0, Stay.CheckInTime,
+                Stay.CheckOutTime, true, null, 1m, PaymentSchedule.Standard, Now));
     }
 
     [Fact]
     public void Hold_must_expire_in_the_future() =>
         Assert.Throws<DomainValidationException>(() => OnlineHold(Boat, D(2026, 12, 7), D(2026, 12, 11), Now));
 
-    [Fact]
-    public void Guests_must_be_at_least_one() =>
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(2, -1)]
+    public void At_least_one_adult_and_no_negative_children(int adults, int children) =>
         Assert.Throws<DomainValidationException>(() =>
             Booking.CreateByStaff(NextReference(), CustomerId.New(), Boat, PeriodType.Custom,
-                new Stay(D(2026, 12, 7), D(2026, 12, 11)), 0, false, null, 1m, 1000m, PaymentSchedule.Standard, "h", Now));
+                new Stay(D(2026, 12, 7), D(2026, 12, 11)), adults, children, Stay.CheckInTime, Stay.CheckOutTime, false, null,
+                1m, 1000m, PaymentSchedule.Standard, "h", Now));
+
+    [Fact]
+    public void Guests_are_adults_plus_children()
+    {
+        var booking = StaffBooking(Boat, D(2026, 12, 7), D(2026, 12, 11));
+        Assert.Equal(3, booking.NumberOfAdults);
+        Assert.Equal(1, booking.NumberOfChildren);
+        Assert.Equal(4, booking.NumberOfGuests);
+    }
+
+    [Fact]
+    public void Check_in_and_check_out_default_to_11am_and_8am_and_staff_can_change_them()
+    {
+        var booking = StaffBooking(Boat, D(2026, 12, 7), D(2026, 12, 11));
+        Assert.Equal(new TimeOnly(11, 0), booking.CheckInTime);
+        Assert.Equal(new TimeOnly(8, 0), booking.CheckOutTime);
+        Assert.False(booking.HasCustomTimes);
+
+        booking.ChangeDetails(Boat, PeriodType.Custom, booking.Stay, 3, 1, new TimeOnly(9, 30), new TimeOnly(10, 0), false,
+            null, booking.HirePrice, PaymentSchedule.Standard, Now);
+        Assert.Equal(new TimeOnly(9, 30), booking.CheckInTime);
+        Assert.True(booking.HasCustomTimes);
+    }
+
+    [Fact]
+    public void Total_counts_every_priced_add_on_line_and_excludes_unpriced_ones()
+    {
+        var booking = StaffBooking(Boat, D(2026, 12, 7), D(2026, 12, 11));
+        booking.AddAddon(new RequestedAddon(AddonId.New(), "Outboard motor", 1, 95m), Now);
+        var ice = booking.AddAddon(new RequestedAddon(AddonId.New(), "Ice", 3, 10m), Now);
+        var hamper = booking.AddAddon(new RequestedAddon(AddonId.New(), "Welcome hamper", 1, null), Now);
+        Assert.Equal(4060m + 95m + 30m, booking.TotalPrice);
+
+        booking.UpdateAddonLine(hamper.Id, 1, 150m, Now);
+        Assert.Equal(4060m + 95m + 30m + 150m, booking.TotalPrice);
+
+        booking.RemoveAddonLine(ice.Id, Now);
+        Assert.Equal(4060m + 95m + 150m, booking.TotalPrice);
+    }
+
+    [Fact]
+    public void Online_holds_keep_the_details_entered_and_have_no_customer_until_linked()
+    {
+        var booking = OnlineHold(Boat, D(2026, 12, 7), D(2026, 12, 11), Now.AddMinutes(40));
+        Assert.Null(booking.CustomerId);
+        Assert.Equal("jane@example.com", booking.CustomerDetails!.Email);
+        Assert.Equal("+61412345678", booking.CustomerDetails.MobileNumber);
+        Assert.NotNull(booking.BookingDraftId);
+
+        var customerId = CustomerId.New();
+        booking.ChangeCustomer(customerId, Now);
+        Assert.Equal(customerId, booking.CustomerId);
+    }
 
     [Fact]
     public void Active_non_standby_supersedes_overlapping_active_standbys_only()
@@ -164,6 +220,7 @@ public class BookingTests
     public void Snapshot_round_trip()
     {
         var booking = OnlineHold(Boat, D(2026, 12, 7), D(2026, 12, 11), Now.AddMinutes(40));
+        booking.ChangeCustomer(CustomerId.New(), Now);
         booking.AddAddon(new RequestedAddon(AddonId.New(), "Ice", 3, null), Now);
         booking.RecordStripePayment(1000m, "pi_1", Now, Now);
         booking.RecordNotificationSent("x", Now);

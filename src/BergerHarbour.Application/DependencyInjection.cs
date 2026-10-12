@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<BookingCatalogueLoader>();
         services.AddScoped<CustomerService>();
         services.AddScoped<CustomerQueries>();
+        services.AddScoped<AddonCapacityQueries>();
         services.AddScoped<NotificationService>();
         services.AddScoped<NotificationJob>();
         services.AddScoped<OnlineBookingService>();

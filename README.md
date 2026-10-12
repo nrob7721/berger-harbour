@@ -18,12 +18,12 @@ WordPress boat page ── "Book Now" ──► book.bergerhouseboats.com.au (Cl
 
 | Path | What |
 |---|---|
-| `src/BergerHarbour.Domain` | Aggregates (`Boat`, `Booking`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`), value objects, domain services (`BookingAvailabilityService`, `PricingService`, `PaymentScheduleService`, `StayPeriodFactory`) and repository interfaces next to each aggregate. |
+| `src/BergerHarbour.Domain` | Aggregates (`Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`), value objects (incl. E.164 `PhoneNumber`), domain services (`BookingAvailabilityService`, `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory`, `RebookPlanner`) and repository interfaces next to each aggregate. |
 | `src/BergerHarbour.Application` | Use cases, the booking validation strategies (`OnlineBookingValidationStrategy`, `InternalBookingValidationStrategy`), notifications and the hourly job, seed, and ports (`IBoatScheduleLock`, `IPaymentGateway`, `IEmailSender`, `IClock`, `ITurnstileVerifier`, `IBookingReferenceGenerator`). |
 | `src/BergerHarbour.Infrastructure` | Firestore repositories and the per-boat lock (`Firestore/`), Stripe, Brevo, Turnstile, Cloudflare Access JWT and Google OIDC validation, shared web hosting conventions. |
 | `src/BergerHarbour.PublicApi` / `AdminApi` | ASP.NET Core controllers. `dotnet BergerHarbour.AdminApi.dll seed` runs the idempotent seed. |
 | `tests/` | Domain and application unit tests; integration tests against the Firestore emulator. |
-| `web/` | npm workspace: `shared` (generated API types, date/period logic, tokens), `booking` and `admin` Vite apps (TypeScript, no UI framework) with their Pages Functions. |
+| `web/` | npm workspace: `shared` (generated API types, date/period logic, phone input, tokens), `booking` and `admin` Vite apps (TypeScript, no UI framework) with their Pages Functions. |
 | `wordpress/book-now-block.html` | The HTML block pasted into each boat page. |
 | `firestore.indexes.json`, `.github/workflows/` | Composite indexes; CI (PR) and deploy (main). |
 
@@ -44,8 +44,8 @@ starts the Firestore emulator, both APIs (admin-api seeds on startup), and both 
 - Turnstile uses Cloudflare's always-pass test keys.
 - Payments: set `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` (test mode) for public-api and
   `VITE_STRIPE_PUBLISHABLE_KEY` for the booking app, then `stripe listen --forward-to localhost:5080/api/stripe/webhook`.
-- Shorten notification timing for manual testing with e.g. `Notifications__BalanceDueBeforeHire=00:30:00`
-  (all offsets are `TimeSpan` strings, see `prompt.md` §10.2). Trigger the job with
+- Shorten notification timing for manual testing with e.g. `Notifications__BalanceDueBeforeHire=00:30:00` or
+  `Booking__AbandonedDraftAfter=00:45:00` (all offsets are `TimeSpan` strings, see `prompt.md` §10.2). Trigger the job with
   `curl -X POST localhost:5081/api/jobs/process-notifications` (OIDC is bypassed in Development).
 
 ## Tests

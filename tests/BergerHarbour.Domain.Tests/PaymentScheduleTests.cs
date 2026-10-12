@@ -26,13 +26,21 @@ public class PaymentScheduleTests
     }
 
     [Fact]
-    public void Check_in_is_1pm_sydney_time()
+    public void Milestones_are_anchored_at_the_11am_start_of_the_check_in_window()
     {
         // 7 December 2026 is daylight saving (AEDT, UTC+11).
-        Assert.Equal(new DateTimeOffset(2026, 12, 7, 2, 0, 0, TimeSpan.Zero), SydneyTime.CheckInInstant(D(2026, 12, 7)));
+        Assert.Equal(new DateTimeOffset(2026, 12, 7, 0, 0, 0, TimeSpan.Zero), SydneyTime.CheckInInstant(D(2026, 12, 7)));
         // 7 July 2027 is standard time (AEST, UTC+10).
-        Assert.Equal(new DateTimeOffset(2027, 7, 7, 3, 0, 0, TimeSpan.Zero), SydneyTime.CheckInInstant(D(2027, 7, 7)));
+        Assert.Equal(new DateTimeOffset(2027, 7, 7, 1, 0, 0, TimeSpan.Zero), SydneyTime.CheckInInstant(D(2027, 7, 7)));
     }
+
+    [Theory]
+    [InlineData(2026, 12, 7, "AEDT")]
+    [InlineData(2027, 7, 7, "AEST")]
+    [InlineData(2026, 10, 4, "AEDT")]
+    [InlineData(2026, 4, 5, "AEST")]
+    public void Time_zone_label_follows_daylight_saving(int year, int month, int day, string expected) =>
+        Assert.Equal(expected, SydneyTime.ZoneLabel(D(year, month, day), Stay.CheckInTime));
 
     [Fact]
     public void Standard_schedule_milestones()
@@ -120,24 +128,35 @@ public class PaymentScheduleTests
         Assert.Equal(0m, _service.AmountDueNow(booking, checkIn.AddDays(-97)));
     }
 
+    [Theory]
+    [InlineData(4060, 1000, 1000)]
+    [InlineData(800, 1000, 800)]
+    [InlineData(4060, 1500, 1500)]
+    public void Online_checkout_always_charges_only_the_deposit_capped_at_the_hire_price(int hire, int deposit, int expected) =>
+        Assert.Equal(expected, PaymentScheduleService.OnlineCheckoutAmount(hire, deposit));
+
     [Fact]
-    public void Online_checkout_charges_the_deposit_when_the_balance_is_not_yet_due()
+    public void A_booking_made_after_its_balance_fell_due_has_that_milestone_already_due_at_creation()
     {
-        // Now is 05/10/2026 11:00 Sydney. Balance for a 05/11 check-in is due 06/10.
-        Assert.Equal(1000m, _service.OnlineCheckoutAmount(PaymentSchedule.Standard, D(2026, 11, 5), 4060m, 1000m, Now));
+        // Created 05/10/2026; balance for a 15/10 check-in fell due 15/09.
+        var late = StaffBooking(BoatId.New(), D(2026, 10, 15), D(2026, 10, 19));
+        late.RecordManualPayment(1000m, Now, null, Now);
+        var balance = _service.Milestones(late).Single(m => m.Kind == MilestoneKind.Balance);
+        Assert.True(PaymentScheduleService.WasDueAtCreation(balance, late));
+        Assert.Equal([MilestoneKind.Balance], _service.UnpaidMilestonesDueAtCreation(late).Select(m => m.Kind));
+
+        var early = StaffBooking(BoatId.New(), D(2027, 3, 1), D(2027, 3, 5));
+        Assert.Empty(_service.UnpaidMilestonesDueAtCreation(early));
+        Assert.False(PaymentScheduleService.WasDueAtCreation(_service.Milestones(early)[0], early)); // the deposit never is
     }
 
     [Fact]
-    public void Online_checkout_charges_the_full_hire_price_when_the_balance_is_due_today()
+    public void A_fully_paid_late_booking_has_nothing_unpaid_due_at_creation()
     {
-        // Balance for a 04/11 check-in is due 05/10 13:00 Sydney — today, even though that instant is still ahead.
-        Assert.Equal(4060m, _service.OnlineCheckoutAmount(PaymentSchedule.Standard, D(2026, 11, 4), 4060m, 1000m, Now));
-        Assert.Equal(4060m, _service.OnlineCheckoutAmount(PaymentSchedule.Standard, D(2026, 10, 20), 4060m, 1000m, Now));
+        var late = StaffBooking(BoatId.New(), D(2026, 10, 15), D(2026, 10, 19));
+        late.RecordManualPayment(4060m, Now, null, Now);
+        Assert.Empty(_service.UnpaidMilestonesDueAtCreation(late));
     }
-
-    [Fact]
-    public void Online_checkout_never_charges_more_than_the_hire_price() =>
-        Assert.Equal(800m, _service.OnlineCheckoutAmount(PaymentSchedule.Standard, D(2027, 3, 1), 800m, 1000m, Now));
 
     [Fact]
     public void Shortened_offsets_for_testing()

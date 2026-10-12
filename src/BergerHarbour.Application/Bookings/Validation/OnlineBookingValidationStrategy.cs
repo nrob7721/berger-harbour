@@ -1,15 +1,14 @@
 using BergerHarbour.Application.Common;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
-using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Validation;
 
 /// <summary>
-/// The rules for customer bookings: period shape, lead time, open-until, blocked periods, guest limits, rooming
-/// warning acceptance, group restriction answer, terms acceptance and allowed add-ons. Turnstile is verified in the
-/// use case before this runs.
+/// The rules for customer bookings: period shape, lead time, open-until, blocked periods, adult/child limits,
+/// rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
+/// Turnstile was verified when the draft was created.
 /// </summary>
 public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationStrategy
 {
@@ -78,13 +77,22 @@ public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationS
             }
         }
 
-        // 6. Guest limits.
-        if (request.NumberOfGuests < 1 || request.NumberOfGuests > boat.MaxNoOfGuests)
+        // 6. Adults and children: at least one adult, and no more guests in total than the boat takes.
+        if (request.NumberOfAdults < 1)
         {
-            errors.Add("numberOfGuests", $"Choose between 1 and {boat.MaxNoOfGuests} guests.");
+            errors.Add("numberOfAdults", "At least one adult must be on board.");
         }
 
-        // 10. Add-ons: active, allowed for this boat, sensible quantities.
+        if (request.NumberOfChildren < 0)
+        {
+            errors.Add("numberOfChildren", "Number of children cannot be negative.");
+        }
+        else if (request.NumberOfAdults >= 1 && request.NumberOfGuests > boat.MaxNoOfGuests)
+        {
+            errors.Add("numberOfChildren", $"{boat.Name} takes at most {boat.MaxNoOfGuests} guests (adults and children).");
+        }
+
+        // 9. Add-ons: active, allowed for this boat, sensible quantities, within capacity.
         ValidateAddons(request, context, boat, errors);
 
         if (context.Scope == BookingValidationScope.Quote)
@@ -93,7 +101,7 @@ public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationS
         }
 
         // 7. Rooming warning acceptance must match the text the server would show.
-        if (boat.RequiresRoomingWarning(request.NumberOfGuests) && !errors.Has("numberOfGuests"))
+        if (boat.RequiresRoomingWarning(request.NumberOfGuests) && !errors.Has("numberOfAdults") && !errors.Has("numberOfChildren"))
         {
             var expected = boat.RoomingWarningText(request.NumberOfGuests);
             if (!request.RoomingWarningAccepted || !string.Equals(request.RoomingWarningText?.Trim(), expected, StringComparison.Ordinal))
@@ -102,46 +110,25 @@ public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationS
             }
         }
 
-        // 8. Group restriction declared not applicable.
-        if (request.GroupRestrictionApplies is not false)
-        {
-            errors.Add("groupRestrictionApplies",
-                $"Groups of under-30s or all-male groups require prior approval — please contact us on {contact}.");
-        }
-
-        // 9. Terms accepted.
+        // 8. Terms accepted.
         if (!request.TermsAccepted)
         {
             errors.Add("termsAccepted", "Please accept the Hire Terms and Procedures.");
         }
 
-        // 11. Contact details.
-        if (string.IsNullOrWhiteSpace(request.FullName))
-        {
-            errors.Add("fullName", "Full name is required.");
-        }
-        else if (request.FullName.Trim().Length > 200)
-        {
-            errors.Add("fullName", "Full name must be 200 characters or fewer.");
-        }
+        // 10. Contact details.
+        ContactValidation.Validate(errors, request.FullName, request.Email, request.Mobile);
 
-        if (string.IsNullOrWhiteSpace(request.Email))
+        // 11. A valid, unconverted booking draft for this boat.
+        var draft = context.Draft;
+        if (string.IsNullOrWhiteSpace(request.DraftId) || draft is null || draft.Id.Value != request.DraftId ||
+            draft.BoatId != boat.Id)
         {
-            errors.Add("email", "Email is required.");
+            errors.Add("draftId", "Your booking session has expired. Please start again.");
         }
-        else if (!EmailAddress.IsValid(request.Email))
+        else if (draft.IsConverted)
         {
-            errors.Add("email", "Enter a valid email address.");
-        }
-
-        var mobileDigits = new string((request.Mobile ?? string.Empty).Where(char.IsDigit).ToArray());
-        if (string.IsNullOrWhiteSpace(request.Mobile))
-        {
-            errors.Add("mobile", "Mobile number is required.");
-        }
-        else if (mobileDigits.Length is < 8 or > 15 || request.Mobile.Trim().Length > 30)
-        {
-            errors.Add("mobile", "Enter a valid mobile number.");
+            errors.Add("draftId", "This booking has already been completed.");
         }
 
         return errors;
@@ -172,6 +159,14 @@ public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationS
             else if (!definition.QuantityApplies && requested.Quantity != 1)
             {
                 errors.Add("addons", $"{definition.Name} can only be requested once.");
+            }
+            else if (definition.HasCapacity && context.AddonRemaining?.GetValueOrDefault(definition.Id) is { } remaining &&
+                     requested.Quantity > remaining)
+            {
+                // A hard limit online, checked without a lock: a truly simultaneous race may oversell.
+                errors.Add("addons", remaining == 0
+                    ? $"{definition.Name} is fully booked for your dates."
+                    : $"Only {remaining} {definition.CapacityUnitLabel ?? "of " + definition.Name} remain for your dates.");
             }
         }
     }

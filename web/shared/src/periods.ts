@@ -1,7 +1,7 @@
 import { addDays, dayOfWeek, type IsoDate } from './dates';
 
 // Mirrors BergerHarbour.Domain.Bookings.StayPeriodFactory. A stay is the half-open range [start, end):
-// check-in on start (1:00pm), check-out on end (8:00am).
+// check-in on start (11am – 2pm), check-out on end (by 8am).
 
 export type OnlinePeriodType = 'Midweek' | 'Weekend' | 'Week';
 
@@ -118,4 +118,17 @@ export function evaluateDay(type: OnlinePeriodType, day: IsoDate, availability: 
 /** True when the day is part of the selected stay (check-in through check-out day). */
 export function isInSelection(day: IsoDate, selection: Stay | null): boolean {
   return !!selection && day >= selection.start && day <= selection.end;
+}
+
+/**
+ * CSS classes for a calendar day. Every day inside the selection gets the active selection style — including days that
+ * are not clickable in the current mode (e.g. Tue–Thu inside a Week selection) — so the stay reads as one block.
+ */
+export function dayClasses(day: IsoDate, state: DayState, selection: Stay | null): string[] {
+  const classes = ['day', `day--${state.status}`];
+  if (state.insideBlockedPeriod) classes.push('day--blocked');
+  if (isInSelection(day, selection)) classes.push('day--selected');
+  if (selection?.start === day) classes.push('day--check-in');
+  if (selection?.end === day) classes.push('day--check-out');
+  return classes;
 }

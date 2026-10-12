@@ -1,3 +1,4 @@
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -26,8 +27,14 @@ public sealed class InMemoryBookingRepository(InMemoryStore store) : IBookingRep
                                                                  (statuses is null || statuses.Contains(b.Status)) &&
                                                                  (boatId is null || b.BoatId == boatId)).ToList());
 
+    public Task<IReadOnlyList<Booking>> ListWithAddonOverlappingAsync(AddonId addonId, DateOnly from, DateOnly to,
+        CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<Booking>>(All().Where(b => b.AddonIds.Contains(addonId) && b.StartDate < to &&
+                                                                 b.EndDate > from &&
+                                                                 b.Status is BookingStatus.Active or BookingStatus.PendingPayment).ToList());
+
     public Task<IReadOnlyList<Booking>> ListByCustomerAsync(IReadOnlyCollection<CustomerId> customerIds, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<Booking>>(All().Where(b => customerIds.Contains(b.CustomerId)).ToList());
+        Task.FromResult<IReadOnlyList<Booking>>(All().Where(b => b.CustomerId is { } id && customerIds.Contains(id)).ToList());
 
     public Task<IReadOnlyList<Booking>> ListByStatusAsync(BookingStatus status, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<Booking>>(All().Where(b => b.Status == status).ToList());
@@ -212,6 +219,36 @@ public sealed class InMemoryBusinessSettingsRepository(InMemoryStore store) : IB
     {
         store.Business.Save(BusinessSettings.SingletonId, settings.Version, v => settings.ToSnapshot() with { Version = v });
         settings.MarkPersisted();
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class InMemoryBookingDraftRepository(InMemoryStore store) : IBookingDraftRepository
+{
+    private IEnumerable<BookingDraft> All() => store.BookingDrafts.All().Select(BookingDraft.FromSnapshot);
+
+    public Task<BookingDraft?> GetAsync(BookingDraftId id, CancellationToken ct = default) =>
+        Task.FromResult(store.BookingDrafts.Get(id.Value) is { } s ? BookingDraft.FromSnapshot(s) : null);
+
+    public Task<IReadOnlyList<BookingDraft>> ListByEmailAsync(EmailAddress email, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<BookingDraft>>(All().Where(d => d.Email == email).OrderByDescending(d => d.LastActivityAt).ToList());
+
+    public Task<IReadOnlyList<BookingDraft>> ListInactiveSinceAsync(DateTimeOffset lastActivityBefore, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<BookingDraft>>(All().Where(d => d.LastActivityAt < lastActivityBefore).ToList());
+
+    public Task<IReadOnlyList<BookingDraft>> ListCreatedBeforeAsync(DateTimeOffset createdBefore, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<BookingDraft>>(All().Where(d => d.CreatedDate < createdBefore).ToList());
+
+    public Task SaveAsync(BookingDraft draft, CancellationToken ct = default)
+    {
+        store.BookingDrafts.Save(draft.Id.Value, draft.Version, v => draft.ToSnapshot() with { Version = v });
+        draft.MarkPersisted();
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(BookingDraft draft, CancellationToken ct = default)
+    {
+        store.BookingDrafts.Remove(draft.Id.Value);
         return Task.CompletedTask;
     }
 }

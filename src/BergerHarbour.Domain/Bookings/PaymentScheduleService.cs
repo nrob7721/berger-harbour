@@ -72,8 +72,22 @@ public sealed class PaymentScheduleService(PaymentScheduleOffsets offsets)
     public DateTimeOffset ReminderAt(PaymentMilestone milestone) => milestone.DueAt - Offsets.PaymentReminderBeforeDue;
 
     /// <summary>
+    /// A milestone whose due instant is at or before the booking's creation was already due when it was made (e.g.
+    /// a booking made 10 days before check-in). Payment emails whose trigger had passed at creation are never sent.
+    /// </summary>
+    public static bool WasDueAtCreation(PaymentMilestone milestone, Booking booking) =>
+        milestone.Kind != MilestoneKind.Deposit && milestone.DueAt <= booking.CreatedDate;
+
+    /// <summary>True when a scheduled email's trigger instant had already passed when the booking was created.</summary>
+    public static bool TriggerPassedAtCreation(DateTimeOffset trigger, Booking booking) => trigger <= booking.CreatedDate;
+
+    /// <summary>The non-deposit milestones already due at creation that are not yet paid.</summary>
+    public IReadOnlyList<PaymentMilestone> UnpaidMilestonesDueAtCreation(Booking booking) =>
+        Milestones(booking).Where(m => WasDueAtCreation(m, booking) && booking.AmountPaid < m.RequiredCumulative).ToList();
+
+    /// <summary>
     /// The largest shortfall among milestones whose reminder window has opened; when there is none, the whole
-    /// amount owing (which covers ad-hoc links, e.g. after a price-on-request add-on is confirmed).
+    /// amount owing (which covers ad-hoc links, e.g. after a price-on-request add-on is priced).
     /// </summary>
     public decimal AmountDueNow(Booking booking, DateTimeOffset now)
     {
@@ -88,13 +102,8 @@ public sealed class PaymentScheduleService(PaymentScheduleOffsets offsets)
     }
 
     /// <summary>
-    /// What an online booking pays at checkout: min(deposit, hire price), or the full hire price when the final
-    /// milestone falls due today or earlier (Australia/Sydney).
+    /// What an online booking pays at checkout: always min(deposit, hire price), even when the balance is already
+    /// due. The rest is requested through the payment link in the confirmation email.
     /// </summary>
-    public decimal OnlineCheckoutAmount(PaymentSchedule schedule, DateOnly startDate, decimal hirePrice,
-        decimal depositAmount, DateTimeOffset now)
-    {
-        var final = Milestones(schedule, startDate, hirePrice, depositAmount, now)[^1];
-        return final.DueDate <= SydneyTime.Today(now) ? hirePrice : Math.Min(depositAmount, hirePrice);
-    }
+    public static decimal OnlineCheckoutAmount(decimal hirePrice, decimal depositAmount) => Math.Min(depositAmount, hirePrice);
 }

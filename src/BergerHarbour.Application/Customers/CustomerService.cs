@@ -9,7 +9,17 @@ public sealed class CustomerService(ICustomerRepository customers, IClock clock)
 {
     private const int MaxAttempts = 8;
 
-    public async Task<Customer> UpsertAsync(string fullName, string email, string? mobile, CancellationToken ct = default)
+    /// <summary>Online: called when the booking becomes Active, from the details the customer entered.</summary>
+    public Task<Customer> UpsertAsync(string fullName, string email, string? mobile, CancellationToken ct = default) =>
+        UpsertAsync(fullName, email, mobile, null, false, ct);
+
+    /// <summary>Staff: the booking dialog also sets (or clears) the secondary phone.</summary>
+    public Task<Customer> UpsertFromStaffAsync(string fullName, string email, string? phone, string? secondaryPhone,
+        CancellationToken ct = default) =>
+        UpsertAsync(fullName, email, phone, secondaryPhone, true, ct);
+
+    private async Task<Customer> UpsertAsync(string fullName, string email, string? mobile, string? secondaryPhone,
+        bool setSecondaryPhone, CancellationToken ct)
     {
         var address = EmailAddress.Create(email);
         for (var attempt = 1; ; attempt++)
@@ -20,11 +30,22 @@ public sealed class CustomerService(ICustomerRepository customers, IClock clock)
                 if (existing is null)
                 {
                     var created = Customer.Create(fullName, address.Value, mobile, clock.UtcNow);
+                    if (setSecondaryPhone)
+                    {
+                        created.ChangeSecondaryPhone(secondaryPhone, clock.UtcNow);
+                    }
+
                     await customers.SaveAsync(created, ct);
                     return created;
                 }
 
-                if (existing.UpdateContactDetails(fullName, mobile, clock.UtcNow))
+                var changed = existing.UpdateContactDetails(fullName, mobile, clock.UtcNow);
+                if (setSecondaryPhone)
+                {
+                    changed |= existing.ChangeSecondaryPhone(secondaryPhone, clock.UtcNow);
+                }
+
+                if (changed)
                 {
                     await customers.SaveAsync(existing, ct);
                 }

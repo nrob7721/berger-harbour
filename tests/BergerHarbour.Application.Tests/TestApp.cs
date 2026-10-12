@@ -3,6 +3,7 @@ using BergerHarbour.Application.Bookings.Validation;
 using BergerHarbour.Application.Common;
 using BergerHarbour.Application.Seeding;
 using BergerHarbour.Application.Tests.Fakes;
+using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
@@ -40,7 +41,7 @@ public sealed class TestApp
     public static readonly BoatId PacificBlue = new("pacific-blue");
 
     public static async Task<TestApp> CreateAsync(bool online = true, NotificationOptions? notifications = null,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null, BookingOptions? booking = null)
     {
         var clock = new FakeClock(now ?? DefaultNow);
         var store = new InMemoryStore();
@@ -59,7 +60,14 @@ public sealed class TestApp
             o.PaymentReminderBeforeDue = n.PaymentReminderBeforeDue;
             o.PreHireInstructionsBeforeHire = n.PreHireInstructionsBeforeHire;
         });
-        services.Configure<BookingOptions>(_ => { });
+        services.Configure<BookingOptions>(o =>
+        {
+            var b = booking ?? new BookingOptions();
+            o.PendingHoldDuration = b.PendingHoldDuration;
+            o.PendingHoldGrace = b.PendingHoldGrace;
+            o.AbandonedDraftAfter = b.AbandonedDraftAfter;
+            o.DraftRetention = b.DraftRetention;
+        });
         services.Configure<PaymentLinkOptions>(o =>
         {
             o.PublicBookingBaseUrl = "https://book.example.test";
@@ -75,6 +83,7 @@ public sealed class TestApp
         services.AddSingleton<IBookingRepository>(sp => sp.GetRequiredService<InMemoryBookingRepository>());
         services.AddSingleton<InMemoryUnavailabilityRepository>();
         services.AddSingleton<IBoatUnavailabilityRepository>(sp => sp.GetRequiredService<InMemoryUnavailabilityRepository>());
+        services.AddSingleton<IBookingDraftRepository, InMemoryBookingDraftRepository>();
         services.AddSingleton<IBoatRepository, InMemoryBoatRepository>();
         services.AddSingleton<ICustomerRepository, InMemoryCustomerRepository>();
         services.AddSingleton<ISeasonRepository, InMemorySeasonRepository>();
@@ -104,6 +113,12 @@ public sealed class TestApp
         (await Get<IBookingRepository>().GetByReferenceAsync(BookingReference.Parse(reference)))!;
 
     public DateOnly Today => SydneyTime.Today(Clock.UtcNow);
+
+    /// <summary>A booking app session up to "Your details": returns the draft id.</summary>
+    public async Task<string> DraftAsync(DateOnly start, string email = "jane@example.com", string name = "Jane Citizen",
+        PeriodType periodType = PeriodType.Midweek) =>
+        (await Get<Bookings.OnlineBookingService>().CreateDraftAsync(new Bookings.CreateBookingDraftRequest("pacific-blue",
+            periodType, start, name, email, "0412 345 678", "turnstile-ok"), "1.2.3.4")).DraftId;
 
     /// <summary>The first Monday at least <paramref name="days"/> days from today.</summary>
     public DateOnly MondayAfter(int days)

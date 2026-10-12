@@ -18,6 +18,13 @@ public interface IBookingRepository
     Task<IReadOnlyList<Booking>> ListOverlappingAsync(DateOnly from, DateOnly to, IReadOnlyCollection<BookingStatus>? statuses = null,
         BoatId? boatId = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// Active and PendingPayment bookings of any boat that have the add-on and whose stay overlaps [from, to); used
+    /// for capacity, which is shared across all boats.
+    /// </summary>
+    Task<IReadOnlyList<Booking>> ListWithAddonOverlappingAsync(AddonId addonId, DateOnly from, DateOnly to,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<Booking>> ListByCustomerAsync(IReadOnlyCollection<CustomerId> customerIds, CancellationToken ct = default);
 
     Task<IReadOnlyList<Booking>> ListByStatusAsync(BookingStatus status, CancellationToken ct = default);

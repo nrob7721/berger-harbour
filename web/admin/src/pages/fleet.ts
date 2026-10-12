@@ -17,7 +17,8 @@ export async function renderFleet(page: HTMLElement): Promise<void> {
         grid.append(h('button', { type: 'button', class: 'boat-card', onclick: () => void openBoatDialog(boat.id, reload) },
           h('span', { class: 'boat-card__name' }, boat.name),
           h('span', { class: `badge ${boat.isActive ? 'badge--active' : 'badge--inactive'}` }, boat.isActive ? 'Active' : 'Inactive'),
-          h('span', { class: 'boat-card__meta' }, `Max ${boat.maxNoOfGuests} guests · ${boat.noOfBeds ?? '?'} beds`),
+          h('span', { class: 'boat-card__meta' },
+            `Max ${boat.maxNoOfGuests} guests · ${boat.adultBeds ?? '?'} adult + ${boat.kidsBeds ?? '?'} kids beds`),
           h('span', { class: 'boat-card__slug' }, boat.slug)));
       }
     } catch (e) {
@@ -38,8 +39,12 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
   let boat: BoatDetail | null;
   let seasons: Season[];
   let addons: Addon[];
+  let defaultDeposit: number;
   try {
-    [boat, seasons, addons] = await Promise.all([id ? adminApi.boat(id) : Promise.resolve(null), adminApi.seasons(), adminApi.addons()]);
+    let business;
+    [boat, seasons, addons, business] = await Promise.all([id ? adminApi.boat(id) : Promise.resolve(null), adminApi.seasons(),
+      adminApi.addons(), adminApi.business()]);
+    defaultDeposit = business.depositAmount;
   } catch (e) {
     clear(modal.body);
     showError(modal.body, e);
@@ -51,9 +56,11 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     name: boat?.name ?? '',
     slug: boat?.slug ?? '',
     maxNoOfGuests: boat?.maxNoOfGuests ?? 8,
-    noOfBeds: boat?.noOfBeds ?? null as number | null,
+    adultBeds: boat?.adultBeds ?? null as number | null,
+    kidsBeds: boat?.kidsBeds ?? null as number | null,
     beddingDescription: boat?.beddingDescription ?? '',
     securityBond: boat?.securityBond ?? 0,
+    depositAmount: boat?.depositAmount ?? null as number | null,
     isActive: boat?.isActive ?? false,
     rates: new Map<string, number>((boat?.rates ?? []).map((r) => [`${r.seasonId}|${r.periodType}`, r.price])),
     allowedAddonIds: new Set(boat?.allowedAddonIds ?? []),
@@ -86,8 +93,11 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
       field({ label: 'Name', name: 'name', required: true, value: draft.name }),
       field({ label: 'Slug', name: 'slug', required: true, value: draft.slug, hint: 'Must match the WordPress page URL, e.g. pacific-blue' }),
       field({ label: 'Max guests', name: 'maxNoOfGuests', type: 'number', required: true, value: draft.maxNoOfGuests, attrs: { min: 1 } }),
-      field({ label: 'Number of beds', name: 'noOfBeds', type: 'number', value: draft.noOfBeds, attrs: { min: 1 }, hint: 'A double or queen counts as one bed.' }),
+      field({ label: 'Number of adult beds', name: 'adultBeds', type: 'number', value: draft.adultBeds, attrs: { min: 1 }, hint: 'A double or queen counts as one bed.' }),
+      field({ label: 'Number of kids beds', name: 'kidsBeds', type: 'number', value: draft.kidsBeds, attrs: { min: 0 }, hint: 'e.g. bunks; enter 0 if none.' }),
       field({ label: 'Security bond (AUD)', name: 'securityBond', type: 'number', value: draft.securityBond, attrs: { min: 0, step: '0.01' } }),
+      field({ label: 'Deposit (AUD)', name: 'depositAmount', type: 'number', value: draft.depositAmount, attrs: { min: 1, step: '0.01' },
+        hint: `Leave empty to use the default deposit of ${formatMoney(defaultDeposit)} from Settings.` }),
     ),
     field({ label: 'Bedding description', name: 'beddingDescription', textarea: true, value: draft.beddingDescription,
       hint: 'Shown to customers in the rooming warning, e.g. "4 queen bedrooms, bunk area (2 singles)…"' }),
@@ -97,8 +107,10 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     bind(panel, 'name', (v) => (draft.name = v));
     bind(panel, 'slug', (v) => (draft.slug = v));
     bind(panel, 'maxNoOfGuests', (v) => (draft.maxNoOfGuests = Number(v) || 0));
-    bind(panel, 'noOfBeds', (v) => (draft.noOfBeds = numberOrNull(v)));
+    bind(panel, 'adultBeds', (v) => (draft.adultBeds = numberOrNull(v)));
+    bind(panel, 'kidsBeds', (v) => (draft.kidsBeds = numberOrNull(v)));
     bind(panel, 'securityBond', (v) => (draft.securityBond = Number(v) || 0));
+    bind(panel, 'depositAmount', (v) => (draft.depositAmount = numberOrNull(v)));
     bind(panel, 'beddingDescription', (v) => (draft.beddingDescription = v));
   };
 
@@ -122,7 +134,7 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
   };
 
   const addonsTab = (panel: HTMLElement) => {
-    panel.append(h('p', { class: 'field__hint' }, 'Add-ons customers can request for this boat.'),
+    panel.append(h('p', { class: 'field__hint' }, 'Add-ons customers can request for this boat (in the order set in Settings).'),
       h('ul', { class: 'check-list' }, ...addons.map((a) => h('li', {}, h('label', { class: 'toggle' },
         h('input', { type: 'checkbox', checked: draft.allowedAddonIds.has(a.id), onchange: (e: Event) => {
           if ((e.target as HTMLInputElement).checked) draft.allowedAddonIds.add(a.id);
@@ -147,9 +159,11 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
       name: draft.name,
       slug: draft.slug,
       maxNoOfGuests: draft.maxNoOfGuests,
-      noOfBeds: draft.noOfBeds,
+      adultBeds: draft.adultBeds,
+      kidsBeds: draft.kidsBeds,
       beddingDescription: draft.beddingDescription || null,
       securityBond: draft.securityBond,
+      depositAmount: draft.depositAmount,
       rates: [...draft.rates].map(([key, price]): BoatRate => {
         const [seasonId, periodType] = key.split('|') as [string, PeriodType];
         return { seasonId, periodType, price };

@@ -243,13 +243,22 @@
   cursor: help;
 }
 
-.day--selected {
+/* Every day of the selected stay looks active, even days not clickable in the current mode (Tue–Thu of a Week). */
+.day--selected,
+.day--selected[aria-disabled='true'] {
   background: var(--c-brand-tint);
   color: var(--c-ink);
 }
 
+.day--selected .day__number {
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .day--check-in,
-.day--check-out {
+.day--check-out,
+.day--check-in[aria-disabled='true'],
+.day--check-out[aria-disabled='true'] {
   background: var(--c-brand);
   color: #fff;
 }
@@ -369,6 +378,18 @@ fieldset.field {
   grid-area: label;
   display: flex;
   flex-direction: column;
+}
+
+.addon__remaining {
+  color: var(--c-brand);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.guest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0 16px;
 }
 
 .addon__price {
