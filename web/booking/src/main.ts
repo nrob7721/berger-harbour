@@ -325,7 +325,7 @@ function validateDetails(needsTurnstile: boolean): boolean {
   for (const field of ['fullName', 'email', 'mobile', 'turnstileToken']) clearFieldError(field);
   for (const [field, message] of errors) setFieldError(field, message);
   if (errors.length > 0) {
-    document.querySelector<HTMLElement>(`[data-field="${errors[0]![0]}"] input:not(.phone__country)`)?.focus();
+    document.querySelector<HTMLElement>(`[data-field="${errors[0]![0]}"] input:not(.phone-search)`)?.focus();
   }
   return errors.length === 0;
 }

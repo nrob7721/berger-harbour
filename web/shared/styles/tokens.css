@@ -155,17 +155,77 @@ h1, h2, h3 {
   border-color: var(--c-danger);
 }
 
-/* Phone field: searchable country code selector + number (shared/src/phone.ts). */
-.phone__row {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+/* Phone field: searchable country code selector + number (shared/src/phone-input.ts). */
+.phone-input {
+  position: relative;
+  display: flex;
   gap: 8px;
 }
 
-@media (max-width: 420px) {
-  .phone__row {
-    grid-template-columns: 1fr;
-  }
+.phone-country {
+  font: inherit;
+  min-width: 96px;
+  min-height: 44px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  color: var(--c-ink);
+  cursor: pointer;
+}
+
+.phone-country:disabled {
+  background: var(--c-disabled);
+  color: var(--c-disabled-ink);
+  cursor: not-allowed;
+}
+
+.phone-input .phone-number {
+  flex: 1;
+  min-width: 0;
+}
+
+.phone-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: min(320px, 100%);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px;
+}
+
+.phone-popover[hidden] {
+  display: none;
+}
+
+.phone-search {
+  width: 100%;
+  min-height: 40px;
+}
+
+.phone-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.phone-list li {
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.phone-list li[aria-selected="true"], .phone-list li:hover {
+  background: var(--c-brand-tint);
+}
+
+.phone-list .dial {
+  color: var(--c-muted);
 }
 
 .field__error {
