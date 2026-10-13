@@ -442,6 +442,7 @@ Staff-created bookings (`POST /api/bookings`):
 - **`checkout.session.expired`:** if the booking is still `PendingPayment` with that session id, set it to `Expired`.
 - The webhook returns 2xx only after persistence succeeds, so Stripe retries on failure.
 - Apple Pay / Google Pay should work inside the WordPress modal (iframe has `allow="payment"`; register the payment method domains in Stripe). Card payment must work regardless.
+- Set the Checkout session `locale` to `"auto"`. Stripe only accepts its own fixed list (e.g. `en`, `en-GB`)
 
 ## 9. Notifications
 
@@ -565,7 +566,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
 5. **Add-ons:**
    - Checkboxes for the allowed add-ons, in the admin-defined order, with a quantity input where `QuantityApplies`.
    - Each shows a price for the selected period type, or "Price on request".
-   - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates. Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"; "{X} available for your dates" when no unit label is set). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
+   - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates **every time the Add-ons step is shown** (never cache it: going back to change the dates, or returning from the Summary, must show current figures). Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"; "{X} available for your dates" when no unit label is set). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
    - Notice: "Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods."
 6. **Summary:**
    - Server quote showing boat, dates, check-in window and check-out time, adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
@@ -612,7 +613,7 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - Lines with name, quantity, unit price and a remove button, plus an "Add add-on" control (add-ons listed in the admin-defined order).
 - Unit price is editable. It must be entered for price-on-request add-ons (e.g. the welcome hamper) and for LongWeekend and Custom bookings; until then the line doesn't count toward the total.
 - There is no line status. Staff remove an add-on they decline; a line left on the booking is accepted.
-- Capacity-limited add-ons show the remaining capacity for the booking's dates (excluding this booking) and a non-blocking warning when exceeded.
+- Capacity-limited add-ons show the remaining capacity for the booking's dates (excluding this booking) and a non-blocking warning when exceeded. On the new-booking form the figure is re-fetched whenever the start date, end date, period type or picked add-on changes (including when choosing a period type rewrites the end date); a slower, older response must never overwrite a newer one.
 
 **Payments section:**
 - A list of payments, plus totals: Total, Paid, Owing, Payment status, and the schedule with due dates.

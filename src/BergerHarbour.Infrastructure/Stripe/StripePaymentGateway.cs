@@ -36,7 +36,7 @@ public sealed class StripePaymentGateway(IOptions<StripeOptions> options) : IPay
             CustomerEmail = request.CustomerEmail,
             ClientReferenceId = request.BookingReference,
             ExpiresAt = request.ExpiresAt.UtcDateTime,
-            Locale = "en-AU",
+            Locale = "auto",
             SubmitType = "pay",
             Metadata = metadata,
             PaymentIntentData = new SessionPaymentIntentDataOptions
