@@ -74,7 +74,7 @@ other settings are flat environment variables injected from Secret Manager on Cl
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | public | |
 | `BREVO_API_KEY` | both | `EMAIL_MODE=File` + `EMAIL_OUTPUT_DIR` writes emails to disk instead |
 | `TURNSTILE_SECRET` | public | |
-| `EDGE_PROXY_SECRET` | both | required on every route except the webhook and jobs endpoint |
+| `EDGE_PROXY_SECRET` | both | required on every route except the webhook and jobs endpoint; each service has its own value (`edge-proxy-secret-public` / `-admin`) |
 | `PAYMENT_LINK_SECRET` | both | derives each booking's stable payment-link token; never rotate after go-live |
 | `PUBLIC_BOOKING_BASE_URL` | both | base of payment links |
 | `CORS_ALLOWED_ORIGIN` | both | the service's own frontend origin |

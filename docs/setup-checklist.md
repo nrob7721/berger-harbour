@@ -91,10 +91,12 @@ characters).
 | `stripe-webhook-secret` | Stripe webhook signing secret (`whsec_…`) | public-api |
 | `brevo-api-key` | Brevo API key | both |
 | `turnstile-secret` | Turnstile secret key | public-api |
-| `edge-proxy-secret` | random 40+ characters (also goes into both Cloudflare Pages projects) | both |
+| `edge-proxy-secret-public` | random 40+ characters (also goes into the `berger-booking` Pages project) | public-api |
+| `edge-proxy-secret-admin` | a **different** random 40+ characters (also goes into the `berger-admin` Pages project) | admin-api |
 | `payment-link-secret` | random 40+ characters. **Never change it after go-live** — it would break emailed payment links. | both |
 | `admin-allowed-emails` | comma-separated staff Google accounts, e.g. `office@bergerhouseboats.com.au` | admin-api |
 
+Use two different edge proxy secrets: if the customer-facing one ever leaks, the admin API's origin stays protected.
 Grant `public-api@` and `admin-api@` **Secret Manager Secret Accessor** on the secrets marked for them.
 
 ### 2.3 Workload Identity Federation for GitHub (no JSON keys)
@@ -206,13 +208,19 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 - [ ] Same for `berger-admin` with custom domain `admin.bergerhouseboats.com.au`.
 - [ ] In each project → Settings → Variables and secrets (Production), add:
   - `API_ORIGIN` = the matching Cloud Run URL (`public-api` for booking, `admin-api` for admin)
-  - `EDGE_PROXY_SECRET` (type *Secret*) = the same value as the `edge-proxy-secret` GCP secret
+  - `EDGE_PROXY_SECRET` (type *Secret*) = the value of the matching GCP secret: `edge-proxy-secret-public` for
+    `berger-booking`, `edge-proxy-secret-admin` for `berger-admin`. The two projects must **not** share a value.
 - [ ] The `_headers` files in the repo set the security headers, including
       `frame-ancestors https://bergerhouseboats.com.au https://www.bergerhouseboats.com.au` for the booking app and
       no framing at all for the admin app. Nothing to configure.
 
 ### 5.2 Cloudflare Access (admin app)
 
+- [ ] **Enforce 2-step verification in Google Workspace** (Admin console → Security → Authentication → 2-step
+      verification → **Allow users to turn on 2-step verification** and **Enforcement: On**, for the organizational
+      unit holding the staff accounts; prefer security keys or passkeys over SMS). Cloudflare Access cannot see
+      whether a login used MFA when Google is the identity provider, so this is the only place it is enforced.
+      Do this before the Access policy below, and confirm each staff member has enrolled.
 - [ ] Zero Trust → Settings → Authentication → **Add new → Google Workspace** (follow the wizard; it creates a
       Google OAuth client). Note the **team domain** (`<team>.cloudflareaccess.com`) → GitHub variable
       `CF_ACCESS_TEAM_DOMAIN`.
