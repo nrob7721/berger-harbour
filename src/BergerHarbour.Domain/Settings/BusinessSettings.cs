@@ -7,8 +7,8 @@ namespace BergerHarbour.Domain.Settings;
 public sealed class BusinessSettings : AggregateRoot<string>
 {
     public const string SingletonId = "business";
-    public const decimal DefaultDepositAmount = 1000m;
-    public const int DefaultMinimumLeadTimeDays = 30;
+    public const decimal DefaultDepositAmount = 500m;
+    public const int DefaultMinimumLeadTimeDays = 0;
     public const string DefaultHireTermsUrl = "https://bergerhouseboats.com.au/hire-information/hire-terms-and-procedures/";
 
     private BusinessSettings(int version, decimal depositAmount, int minimumLeadTimeDays, DateOnly bookingsOpenUntil,
