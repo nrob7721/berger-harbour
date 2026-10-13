@@ -42,9 +42,6 @@ const state = {
   children: 0,
   roomingText: null as string | null,
   addons: new Map<string, number>(),
-  /** What is left of each capacity-limited add-on for `remainingFor` (the selected stay). */
-  remaining: new Map<string, number>(),
-  remainingFor: null as string | null,
   draftId: null as string | null,
   quote: null as Quote | null,
   booking: null as CreateBookingResult | null,
@@ -495,32 +492,35 @@ function addonPrice(prices: { midweek: number; weekend: number; week: number } |
   return state.periodType === 'Midweek' ? prices.midweek : state.periodType === 'Weekend' ? prices.weekend : prices.week;
 }
 
-/** Remaining capacity of the capacity-limited add-ons for the selected stay (cached per stay). */
-async function loadRemaining(): Promise<void> {
+/** Remaining capacity of the capacity-limited add-ons for the selected stay, fetched fresh every time. */
+async function loadRemaining(): Promise<Map<string, number>> {
   const stay = state.selection!;
-  const key = `${stay.start}|${stay.end}`;
-  if (state.remainingFor === key) return;
-  state.remaining.clear();
+  const remaining = new Map<string, number>();
   await Promise.all(state.boat!.addons.filter((a) => a.hasCapacity).map(async (a) => {
     try {
-      state.remaining.set(a.id, (await publicApi.addonAvailability(a.id, stay.start, stay.end)).remaining);
+      remaining.set(a.id, (await publicApi.addonAvailability(a.id, stay.start, stay.end)).remaining);
     } catch {
       // shown without a limit; the server still enforces it
     }
   }));
-  state.remainingFor = key;
+  return remaining;
 }
 
+let addonRender = 0;
+
 async function renderAddons(): Promise<void> {
+  const render = ++addonRender; // the step can be activated again while figures load; only the newest render may draw
   const list = $('#addon-list');
   const addons = state.boat!.addons;
+  let remaining = new Map<string, number>();
   if (addons.some((a) => a.hasCapacity)) {
     list.setAttribute('aria-busy', 'true');
-    await loadRemaining();
+    remaining = await loadRemaining();
+    if (render !== addonRender) return;
     list.setAttribute('aria-busy', 'false');
   }
   clear(list);
-  const shown = addons.map((addon) => ({ addon, view: capacityView(addon, state.remaining.get(addon.id)) }))
+  const shown = addons.map((addon) => ({ addon, view: capacityView(addon, remaining.get(addon.id)) }))
     .filter(({ addon, view }) => {
       if (view.hidden) state.addons.delete(addon.id); // fully booked for these dates: not offered at all
       return !view.hidden;
@@ -697,7 +697,6 @@ function handleBookingError(e: unknown): void {
   }
   const fields = Object.keys(e.fieldErrors);
   if (fields.includes('draftId')) rememberDraft(null);
-  if (fields.includes('addons')) state.remainingFor = null; // show refreshed remaining figures
   const firstStep = FLOW.find((s) => fields.some((f) => FIELD_STEP[f] === s));
   for (const [field, messages] of Object.entries(e.fieldErrors)) setFieldError(field, messages.join(' '));
   if (firstStep) show(firstStep);

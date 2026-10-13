@@ -303,15 +303,22 @@ export async function openBookingDialog(options: Options): Promise<void> {
   const addonPicker = () => h('select', { class: 'input-sm', 'aria-label': 'Add-on to add' },
     ...addons.filter((a) => a.isActive).map((a) => h('option', { value: a.id }, a.name)));
 
-  /** Shows what is left of a capacity-limited add-on for the dates (excluding this booking). */
-  const capacityHint = (picker: HTMLSelectElement, hint: HTMLElement, dates: () => { start: string; end: string } | null, excludeId?: string) => {
+  /**
+   * Shows what is left of a capacity-limited add-on for the dates (excluding this booking). Refreshes when the picked
+   * add-on changes and whenever `watch` (a form holding the date inputs) has its dates or period type changed.
+   */
+  const capacityHint = (picker: HTMLSelectElement, hint: HTMLElement, dates: () => { start: string; end: string } | null,
+    excludeId?: string, watch?: HTMLElement) => {
+    let latest = 0; // answers can arrive out of order; only the newest request may write the hint
     const update = async () => {
+      const request = ++latest;
       const addon = addons.find((a) => a.id === picker.value);
       const range = dates();
       hint.textContent = '';
-      if (!addon?.capacity || !range || range.end <= range.start) return;
+      if (!addon?.capacity || !range || !range.start || !range.end || range.end <= range.start) return;
       try {
         const result = await adminApi.addonAvailability(addon.id, range.start, range.end, excludeId);
+        if (request !== latest) return;
         const unit = addon.capacityUnitLabel ? ` ${addon.capacityUnitLabel}` : '';
         hint.textContent = `${result.remaining} of ${result.capacity}${unit} left for these dates.`;
       } catch {
@@ -319,6 +326,10 @@ export async function openBookingDialog(options: Options): Promise<void> {
       }
     };
     picker.addEventListener('change', () => void update());
+    // Changing the period type or start date also rewrites the end date in code, which fires no event of its own.
+    watch?.addEventListener('change', (e) => {
+      if (['startDate', 'endDate', 'periodType'].includes((e.target as HTMLInputElement).name)) void update();
+    });
     void update();
   };
 
@@ -350,7 +361,7 @@ export async function openBookingDialog(options: Options): Promise<void> {
     const choose = addonPicker();
     const qty = h('input', { type: 'number', min: 1, value: 1, class: 'input-sm', 'aria-label': 'Quantity' });
     const hint = h('p', { class: 'field__hint', 'aria-live': 'polite' });
-    capacityHint(choose, hint, () => ({ start: value(form, 'startDate'), end: value(form, 'endDate') }));
+    capacityHint(choose, hint, () => ({ start: value(form, 'startDate'), end: value(form, 'endDate') }), undefined, form);
     section.append(list,
       h('div', { class: 'inline-form' }, choose, qty,
         h('button', { type: 'button', class: 'button button--small', onclick: () => {
