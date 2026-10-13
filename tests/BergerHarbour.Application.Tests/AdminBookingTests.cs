@@ -3,8 +3,10 @@ using BergerHarbour.Application.Bookings;
 using BergerHarbour.Application.Common;
 using BergerHarbour.Application.Customers;
 using BergerHarbour.Application.Payments;
+using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Bookings;
+using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Tests;
@@ -403,6 +405,20 @@ public class AdminBookingTests
         var all = await admin.GetTimelineAsync(from, from.AddMonths(1), true);
         Assert.Equal("Jane Citizen", Assert.Single(all.Bookings).CustomerName);
         Assert.Equal(14, all.Boats.Count);
+    }
+
+    [Fact]
+    public async Task Every_seeded_boat_is_complete_and_only_the_listed_boats_have_their_own_deposit()
+    {
+        var app = await TestApp.CreateAsync(online: false);
+        var seasons = await app.Get<ISeasonRepository>().ListAsync();
+        var boats = await app.Get<IBoatRepository>().ListAsync();
+
+        Assert.All(boats, b => Assert.Empty(b.MissingActivationData(seasons)));
+        Assert.Equal(["pacific-blue"], boats.Where(b => b.IsActive).Select(b => b.Slug));
+        Assert.Equal(
+            new Dictionary<string, decimal?> { ["pacific-blue"] = 1000m, ["ocean-spirit"] = 1000m, ["island-dream"] = 1000m, ["runaway-bear"] = 250m },
+            boats.Where(b => b.DepositAmount is not null).ToDictionary(b => b.Slug, b => b.DepositAmount));
     }
 
     [Fact]

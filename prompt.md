@@ -668,7 +668,7 @@ Sections:
   - All add-ons except the outboard motor are seeded as `PriceOnRequest = true` until staff enter prices.
   - Ice, Bait and Car parking have `QuantityApplies = true`.
   - Car parking has `Capacity = 11` and `CapacityUnitLabel = "car spots"`.
-- **Boats** (inactive until completed in Fleet; staff must verify slugs against WordPress URLs):
+- **Boats** (all 14 are seeded with beds, bedding, bond, rates and every add-on allowed, taken from each boat's page on bergerhouseboats.com.au; only Pacific Blue is active, the rest stay inactive until staff verify them in Fleet; staff must verify slugs against WordPress URLs). Own deposits: Pacific Blue, Ocean Spirit and Island Dream $1000, Runaway Bear $250; every other boat uses the Settings default. The full data is in `SeedService.cs`; Pacific Blue is the reference:
 
 | Name | Slug | Max guests |
 |---|---|---|
