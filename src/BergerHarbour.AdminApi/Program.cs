@@ -6,7 +6,7 @@ using BergerHarbour.Infrastructure.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddBergerHarbourWeb(maxRequestBodyBytes: 1024 * 1024, defaultCorsOrigin: "https://admin.bergerhouseboats.com.au");
+builder.AddBergerHarbourWeb(maxRequestBodyBytes: 1024 * 1024, defaultCorsOrigin: "https://berger-admin.pages.dev");
 builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsDevelopment());
 
 // Staff bookings only check dates, guests and the customer; the availability invariant still applies.

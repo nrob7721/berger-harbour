@@ -5,13 +5,13 @@ internal admin app for bookings, fleet, customers and settings. The full specifi
 deployment is in [`docs/setup-checklist.md`](docs/setup-checklist.md).
 
 ```
-WordPress boat page ── "Book Now" ──► book.bergerhouseboats.com.au (Cloudflare Pages, /api/* → Pages Function proxy)
+WordPress boat page ── "Book Now" ──► bookings.example.com.au (Cloudflare Pages, /api/* → Pages Function proxy)
                                                     │
                                      Cloud Run public-api ◄── Stripe webhooks
                                                     │
                                                 Firestore ◄── Cloud Run admin-api ◄── Cloud Scheduler (OIDC, hourly)
                                                                     ▲
-                     admin.bergerhouseboats.com.au (Cloudflare Pages behind Cloudflare Access, /api/* proxy)
+                     berger-admin.pages.dev (Cloudflare Pages behind Cloudflare Access, /api/* proxy)
 ```
 
 ## Repository

@@ -7,8 +7,8 @@ You will create these things:
 
 | What | Where | Example name |
 |---|---|---|
-| Booking app (customers) | `https://book.bergerhouseboats.com.au` | Cloudflare Pages project `berger-booking` |
-| Admin app (staff) | `https://admin.bergerhouseboats.com.au` | Cloudflare Pages project `berger-admin` |
+| Booking app (customers) | `https://bookings.example.com.au` (placeholder: your new booking domain) | Cloudflare Pages project `berger-booking` |
+| Admin app (staff) | `https://berger-admin.pages.dev` (no custom domain; the name follows the project name) | Cloudflare Pages project `berger-admin` |
 | Customer API | Google Cloud Run service `public-api` | Sydney region |
 | Staff API | Google Cloud Run service `admin-api` | Sydney region |
 | Database | Google Firestore (Native mode) | Sydney region |
@@ -20,39 +20,28 @@ there; later steps paste them back in. Never email or chat these values.
 
 ---
 
-## 1. Move the domain's DNS to Cloudflare
+## 1. Booking domain on Cloudflare
 
-Today the nameservers for `bergerhouseboats.com.au` are at `partnerconsole.net`. Email is Google Workspace and
-must keep working throughout.
+The existing domain `bergerhouseboats.com.au` (WordPress and Google Workspace email) **stays where it is**; its DNS
+is not moved and email is not touched. Instead, buy a separate domain for the booking app and put only that on
+Cloudflare. Everywhere this checklist and the repository say `bookings.example.com.au`, use your real booking domain.
 
-- [ ] **Take a copy of the current DNS zone.** Log in to the current DNS host (partnerconsole.net) and export or
-      screenshot *every* record. You will compare against this list.
+The admin app has no domain at all. It lives at `https://berger-admin.pages.dev` (section 5.1) and is locked down by
+Cloudflare Access, so staff never need a nice URL.
+
+- [ ] **Choose and buy the booking domain**, something customers will trust at payment time (e.g.
+      `bergerhouseboatbookings.com.au`). A `.com.au` needs an Australian business presence (ABN), so register it at an
+      Australian registrar. Cloudflare's own registrar may not sell `.au` names.
 - [ ] Create a free Cloudflare account (use the business Google Workspace address) and choose
-      **Add a site → `bergerhouseboats.com.au` → Free plan**.
-- [ ] Cloudflare scans and imports the existing records. **Check every imported record against your copy.** In
-      particular confirm these exist and are identical:
-  - [ ] **MX** records for Google Workspace (e.g. `smtp.google.com` priority 1, or the older `aspmx.l.google.com`
-        set).
-  - [ ] **TXT** Google site verification (`google-site-verification=…`).
-  - [ ] **TXT** SPF (`v=spf1 include:_spf.google.com …`). It must still include every sender that is already there
-        (Brevo, Elastic Email). Do not create a second SPF record — there must be exactly one.
-  - [ ] **Brevo** TXT/CNAME records (`brevo-code:…`, DKIM such as `brevo1._domainkey` / `brevo2._domainkey`).
-  - [ ] **Elastic Email** TXT/CNAME records.
-  - [ ] Any **DKIM** (`google._domainkey`) and **DMARC** (`_dmarc`) records.
-  - [ ] The **WordPress** website records (`A` for `bergerhouseboats.com.au`, `CNAME` or `A` for `www`).
-  - [ ] Anything else in your copy (e.g. `autodiscover`, other subdomains).
-- [ ] Make sure every **mail-related record is "DNS only"** (grey cloud): MX, SPF/TXT, DKIM/DMARC, Brevo,
-      Elastic Email, and any `mail.` / `autodiscover` hosts.
-- [ ] The WordPress `A`/`CNAME` records may be **Proxied** (orange cloud). If you are unsure, leave them DNS only
-      for now; you can switch later.
-- [ ] **SSL/TLS → Overview**: if the WordPress host has a valid HTTPS certificate choose **Full (strict)**; if it
-      only has a self-signed certificate choose **Full**. Never choose **Flexible** (it causes redirect loops on
-      WordPress).
-- [ ] Cloudflare shows two nameservers (e.g. `xxx.ns.cloudflare.com`). At the **domain registrar** (where the
-      `.com.au` is registered — may also be partnerconsole.net), replace the existing nameservers with the two
-      Cloudflare ones.
+      **Add a site → your booking domain → Free plan**.
+- [ ] At the registrar, replace the domain's nameservers with the two Cloudflare ones shown (e.g.
+      `xxx.ns.cloudflare.com`). The domain is new and unused, so there is no email or website to break.
 - [ ] Wait until Cloudflare says the site is **Active** (minutes to 24 hours).
-- [ ] Test: send an email to and from a Workspace mailbox; open the website on `https://` and `https://www.`.
+- [ ] **SSL/TLS → Overview**: choose **Full (strict)** (Pages serves valid certificates).
+- [ ] Note the real booking domain: it replaces `bookings.example.com.au` in the steps below, in
+      `wordpress/book-now-block.html` (`APP_ORIGIN`), in `src/BergerHarbour.PublicApi/Program.cs`,
+      `src/BergerHarbour.Application/Common/Options.cs` and in `.github/workflows/deploy.yml` (`PUBLIC_BOOKING_BASE_URL`
+      and `CORS_ALLOWED_ORIGIN`).
 
 ## 2. Google Cloud (GCP)
 
@@ -177,13 +166,14 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
       GitHub variable `STRIPE_PUBLISHABLE_KEY` and the **secret key** (`sk_test_…`) into the `stripe-secret-key`
       secret.
 - [ ] Developers → Webhooks (Workbench → Event destinations) → **Add endpoint**:
-  - URL: `<public-api URL>/api/stripe/webhook` (the Cloud Run URL directly, not the `book.` domain)
+  - URL: `<public-api URL>/api/stripe/webhook` (the Cloud Run URL directly, not the booking domain)
   - Events: `checkout.session.completed` and `checkout.session.expired`
   - Copy the signing secret (`whsec_…`) into the `stripe-webhook-secret` secret.
 - [ ] Settings → Payment methods: keep **Cards** on; turn on **Apple Pay** and **Google Pay**. Leave delayed methods
       (bank debits, BNPL) off — the system only accepts card and wallet payments.
-- [ ] Settings → Payment method domains: add `book.bergerhouseboats.com.au` and `bergerhouseboats.com.au` (the
-      booking app runs inside the WordPress page on desktop). Follow Stripe's verification steps.
+- [ ] Settings → Payment method domains: add the booking domain (`bookings.example.com.au`) and
+      `bergerhouseboats.com.au` (the booking app runs inside the WordPress page on desktop). Follow Stripe's
+      verification steps.
 - [ ] Settings → Branding: logo and colours (used by the embedded checkout and receipts).
 - [ ] Settings → Customer emails: turn on **Successful payments** receipts (receipts are the customer's payment
       record; the system does not issue tax invoices).
@@ -192,8 +182,8 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 ## 4. Brevo (email)
 
 - [ ] In Brevo → Senders, Domains & Dedicated IPs → **Domains**: authenticate `bergerhouseboats.com.au`. Brevo shows
-      the DNS records to add (brevo-code TXT, DKIM, DMARC). Add them in Cloudflare DNS as **DNS only**. If records
-      already exist, compare and keep only one SPF record.
+      the DNS records to add (brevo-code TXT, DKIM, DMARC). Add them where `bergerhouseboats.com.au`'s DNS is hosted
+      today (partnerconsole.net), not in Cloudflare. If records already exist, compare and keep only one SPF record.
 - [ ] Add the sender `bookings@bergerhouseboats.com.au` (name "Berger Houseboats") and verify it.
 - [ ] SMTP & API → API keys → **Generate** a key; save it in the `brevo-api-key` secret.
 - [ ] Make sure replies to `bookings@bergerhouseboats.com.au` reach a monitored mailbox (Google Workspace group or
@@ -204,8 +194,10 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 ### 5.1 Pages projects
 
 - [ ] Workers & Pages → Create → Pages → **Direct upload** project `berger-booking` (the deploy workflow uploads it).
-      Custom domains → add `book.bergerhouseboats.com.au`.
-- [ ] Same for `berger-admin` with custom domain `admin.bergerhouseboats.com.au`.
+      Custom domains → add the booking domain (`bookings.example.com.au`).
+- [ ] Same for `berger-admin`, but **do not add a custom domain**: staff use `https://berger-admin.pages.dev`. If that
+      name is taken, choose another project name and use it in place of `berger-admin.pages.dev` everywhere (including
+      `.github/workflows/deploy.yml` and `src/BergerHarbour.AdminApi/Program.cs`).
 - [ ] In each project → Settings → Variables and secrets (Production), add:
   - `API_ORIGIN` = the matching Cloud Run URL (`public-api` for booking, `admin-api` for admin)
   - `EDGE_PROXY_SECRET` (type *Secret*) = the value of the matching GCP secret: `edge-proxy-secret-public` for
@@ -224,9 +216,13 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 - [ ] Zero Trust → Settings → Authentication → **Add new → Google Workspace** (follow the wizard; it creates a
       Google OAuth client). Note the **team domain** (`<team>.cloudflareaccess.com`) → GitHub variable
       `CF_ACCESS_TEAM_DOMAIN`.
-- [ ] Zero Trust → Access → Applications → **Add → Self-hosted**: domain `admin.bergerhouseboats.com.au`, identity
-      provider Google Workspace only, session duration e.g. 24 hours.
-- [ ] Policy "Staff": **Include** → Emails → the staff account(s); **Require** → Country → Australia.
+- [ ] Protect the admin app's `pages.dev` address. In the `berger-admin` Pages project → Settings → General →
+      **Enable access policy**. Cloudflare creates an Access application with a preview wildcard
+      (`*.berger-admin.pages.dev`). In Zero Trust → Access → Applications, edit it so the domain is exactly
+      `berger-admin.pages.dev` (remove the wildcard from the subdomain field), set the identity provider to Google
+      Workspace only, and set the session duration e.g. 24 hours. Never add a custom domain to this project without
+      also creating a separate self-hosted Access application for it.
+- [ ] Replace the default policy with "Staff": **Include** → Emails → the staff account(s); **Require** → Country → Australia.
       (Restricting to NSW only is not possible in Access and not required.)
 - [ ] Copy the application's **Application Audience (AUD) tag** → GitHub variable `CF_ACCESS_AUD`.
 - [ ] Put the same staff email(s) into the `admin-allowed-emails` secret (the API checks them again).
@@ -234,12 +230,12 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 
 ### 5.3 Turnstile
 
-- [ ] Turnstile → Add widget: name "Booking", hostname `book.bergerhouseboats.com.au`, mode **Managed**.
+- [ ] Turnstile → Add widget: name "Booking", hostname `bookings.example.com.au`, mode **Managed**.
 - [ ] Site key → GitHub variable `TURNSTILE_SITE_KEY`; secret key → `turnstile-secret` GCP secret.
 
 ### 5.4 Rate limiting
 
-- [ ] Security → WAF → Rate limiting rules → Create: *if* hostname equals `book.bergerhouseboats.com.au` *and* URI
+- [ ] Security → WAF → Rate limiting rules → Create: *if* hostname equals `bookings.example.com.au` *and* URI
       path starts with `/api/`, *then* **Block** for 1 minute when a client makes more than **60 requests per
       minute**. (Free plan allows one rule; this is it.)
 
@@ -253,7 +249,7 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
       dotnet run --project src/BergerHarbour.AdminApi -- seed
       ```
       (needs `gcloud auth application-default login` with an account that can write Firestore.)
-- [ ] Open `https://admin.bergerhouseboats.com.au` and sign in with Google.
+- [ ] Open `https://berger-admin.pages.dev` and sign in with Google.
 - [ ] **Settings → General**: check the default deposit ($1,000), lead time (30 days), bookings open until, staff
       alert email, contact phone and email, hire terms URL.
 - [ ] **Fleet**: for every boat, check the **slug matches its WordPress page URL**, then enter the number of adult

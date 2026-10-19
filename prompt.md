@@ -90,6 +90,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 11. Database: **Firestore**. Every Firestore-specific detail, including the per-boat lock document, lives in the Infrastructure layer so the database can be swapped later.
 12. Admin authentication: Cloudflare Access with Google SSO (one Google Workspace account in v1, more later) **and** Country = AU. The admin API also validates the Access JWT. NSW-only geo-restriction is not possible in Access policies and is not required.
 13. No Cloudflare Tunnel, because it is incompatible with Cloud Run scaling to zero. There are two Cloud Run services: `public-api` and `admin-api`.
+    **Domains:** the booking app is public (customers never log in or sign up) on a separate, newly bought domain (placeholder `bookings.example.com.au`) on Cloudflare. The admin app has no custom domain and is served at `berger-admin.pages.dev` behind Access. The existing `bergerhouseboats.com.au` DNS and email stay where they are.
 14. Customer email is **mandatory** everywhere, including staff-created bookings. Customers are matched by normalised email. For online bookings, a `Customer` record is created or updated **only when the deposit is paid** (the booking becomes Active). Until then the details live in the booking draft and on the PendingPayment booking.
 15. A booking that overlaps an Active or PendingPayment booking, or an unavailability, is **never** allowed, for staff or customers. Stand-by bookings are the exception: they ignore other stand-bys and are superseded rather than blocked.
 16. Frontend: TypeScript + Vite, **no UI framework**, separate HTML/CSS/TS files. Hosted on Cloudflare Pages.
@@ -106,7 +107,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 ```
 WordPress boat page ──(HTML block: "Book Now")──► modal <iframe> (desktop) / new tab (mobile)
                                                         │
-                                       book.bergerhouseboats.com.au  (Cloudflare Pages: booking app)
+                                       bookings.example.com.au  (Cloudflare Pages: booking app)
                                                         │  /api/* → Pages Function proxy
                                                         ▼
                                               Cloud Run: public-api  ◄── Stripe webhooks
@@ -114,7 +115,7 @@ WordPress boat page ──(HTML block: "Book Now")──► modal <iframe> (desk
                                                    Firestore  ◄── Cloud Run: admin-api ◄── Cloud Scheduler (OIDC)
                                                                         ▲
                                                         │  /api/* → Pages Function proxy
-                                       admin.bergerhouseboats.com.au  (Cloudflare Pages: admin app,
+                                       berger-admin.pages.dev  (Cloudflare Pages: admin app,
                                                                        behind Cloudflare Access)
 External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection)
 ```
@@ -126,7 +127,7 @@ External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection
   - forwards `CF-Connecting-IP`.
 
   This avoids Cloud Run custom domain mapping and lets the frontends call APIs same-origin.
-- **CORS:** both APIs only allow their own frontend origin (`https://book.bergerhouseboats.com.au` and `https://admin.bergerhouseboats.com.au` respectively). There are no wildcard origins and credentials are not allowed cross-origin. Since traffic is proxied same-origin, CORS is defence in depth.
+- **CORS:** both APIs only allow their own frontend origin (`https://bookings.example.com.au` and `https://berger-admin.pages.dev` respectively). There are no wildcard origins and credentials are not allowed cross-origin. Since traffic is proxied same-origin, CORS is defence in depth.
 - **Cold starts:** both services run with `min-instances=0` and are published with ReadyToRun. There is no separate "wake-up" endpoint. The booking app calls `GET /api/boats/{slug}` as soon as it loads, which wakes the service while a skeleton loader is shown.
 
 ## 6. Repository layout
@@ -150,7 +151,7 @@ External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection
 /wordpress
   book-now-block.html             # the HTML block pasted into each boat page
 /docs
-  setup-checklist.md              # GCP, Cloudflare, Stripe, Brevo, DNS migration, go-live
+  setup-checklist.md              # booking domain, GCP, Cloudflare, Stripe, Brevo, go-live
 firestore.indexes.json
 .github/workflows/
 ```
@@ -403,7 +404,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 
 **Abuse protection:**
 - Turnstile is required on `POST /api/booking-drafts`. `POST /api/bookings` requires a valid, unconverted draft id.
-- A Cloudflare rate-limiting rule applies to `book.bergerhouseboats.com.au/api/*`.
+- A Cloudflare rate-limiting rule applies to `bookings.example.com.au/api/*`.
 - The proxy secret is required (except on the webhook).
 - Strict CORS.
 - Request size limits.
@@ -471,7 +472,7 @@ Numbers 3 (add-on confirmed/declined) and 9 (cancellation) are **deliberately no
   - `{{CheckInTime}}` shows the standard window "11am – 2pm" and `{{CheckOutTime}}` shows "8am", each with the AEST/NSW or AEDT/NSW label for that date. If staff changed a booking's time from its default, the custom time is shown instead.
   - `{{RequestedAddons}}` lists lines in the admin-defined add-on order.
   - Values are HTML-encoded. Dates are `dd/MM/yyyy`. Money is `$1,234.00`.
-- **Payment link:** `https://book.bergerhouseboats.com.au/pay/?token=<token>`. The token is 32 random bytes, base64url. Only its SHA-256 hash is stored. It is generated with the booking and is stable for the booking's life.
+- **Payment link:** `https://bookings.example.com.au/pay/?token=<token>`. The token is 32 random bytes, base64url. Only its SHA-256 hash is stored. It is generated with the booking and is stable for the booking's life.
 
 **Scheduled job** `process-notifications`:
 - Cloud Scheduler runs it **hourly** (OIDC-authenticated HTTP call to admin-api).
@@ -515,15 +516,15 @@ Stored in Secret Manager and injected as env vars:
 
 The frontends need the Stripe publishable key and the Turnstile site key at build time.
 
-## 11. Customer booking app (`book.bergerhouseboats.com.au`)
+## 11. Customer booking app (`bookings.example.com.au`)
 
 ### 11.1 Embedding on WordPress
 Each boat page gets this HTML block (deliver it as `/wordpress/book-now-block.html` with the slug as the only thing to change):
 - A `<button class="bh-book-now" data-boat="pacific-blue">Book Now</button>`.
 - An inline script, guarded so it only initialises once per page. On click:
-  - **Mobile** (`matchMedia('(max-width: 768px), (pointer: coarse)')`): open `https://book.bergerhouseboats.com.au/?boat=<slug>` in a new tab.
+  - **Mobile** (`matchMedia('(max-width: 768px), (pointer: coarse)')`): open `https://bookings.example.com.au/?boat=<slug>` in a new tab.
   - **Desktop:** open an accessible modal overlay (focus trap, Esc to close, close button, body scroll lock) containing an `<iframe src=".../?boat=<slug>" allow="payment" title="Book <boat>">`.
-  - It listens for `postMessage` `{ type: 'bh-booking:close' }`, accepted **only** from origin `https://book.bergerhouseboats.com.au`.
+  - It listens for `postMessage` `{ type: 'bh-booking:close' }`, accepted **only** from origin `https://bookings.example.com.au`.
 - The booking app sends:
   - `Content-Security-Policy: frame-ancestors https://bergerhouseboats.com.au https://www.bergerhouseboats.com.au` (configured in Pages `_headers`)
   - a CSP compatible with Stripe.js and Turnstile.
@@ -583,7 +584,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
 
 Accessibility: keyboard-operable calendar (arrow keys, Enter), visible focus, ARIA labels and live region for selection, contrast AA.
 
-## 12. Admin app (`admin.bergerhouseboats.com.au`)
+## 12. Admin app (`berger-admin.pages.dev`)
 
 Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed by max guests (largest first), then name.
 
@@ -714,11 +715,11 @@ Sections:
   - Artifact Registry
 - **Cloud Run ingress:** `all`, because Cloudflare Pages Functions, Stripe and Scheduler must reach it. Protection comes from the proxy secret, Access JWT and OIDC checks in the apps.
 - **Cloudflare:**
-  - **Move `bergerhouseboats.com.au` nameservers to Cloudflare (free plan).** Today they are at `partnerconsole.net`. Mail is Google Workspace and must keep working; Brevo and Elastic Email TXT records exist.
-  - Two Pages projects with custom domains `book.` and `admin.`.
-  - An Access application covering `admin.bergerhouseboats.com.au`. Google Workspace IdP. Policy: include emails in the allow-list, **require** country AU.
-  - A Turnstile widget for `book.bergerhouseboats.com.au`.
-  - A rate limiting rule on `book.bergerhouseboats.com.au/api/*`.
+  - **`bergerhouseboats.com.au` DNS is not touched.** WordPress and Google Workspace mail stay at `partnerconsole.net`. A separate booking domain (placeholder `bookings.example.com.au`, to be bought) is added to Cloudflare (free plan); it hosts only the booking app. Brevo's DKIM/SPF/DMARC records for `bergerhouseboats.com.au` are added at the existing DNS host.
+  - Two Pages projects. `berger-booking` has the booking domain as its custom domain. `berger-admin` has **no custom domain** and is served at `https://berger-admin.pages.dev` (project name placeholder).
+  - An Access application covering `berger-admin.pages.dev`, created through the Pages project's "Enable access policy" and edited to cover the production address rather than the preview wildcard. Google Workspace IdP. Policy: include emails in the allow-list, **require** country AU. Customers are never put behind Access.
+  - A Turnstile widget for `bookings.example.com.au`.
+  - A rate limiting rule on `bookings.example.com.au/api/*`.
 - **Firestore collections:**
   - `boats`, `bookings`, `bookingDrafts`, `customers`, `customerEmails`, `boatUnavailabilities`, `boatLocks`
   - `seasons`, `blockedPeriods`, `addons`, `emailTemplates`, `settings`, `counters`
@@ -781,11 +782,11 @@ Sections:
 1. The full solution as laid out in §6, building and passing all tests.
 2. `/wordpress/book-now-block.html`.
 3. `/docs/setup-checklist.md`, a step-by-step checklist a non-developer can follow:
-   1. **Cloudflare DNS migration:** add the site to Cloudflare, verify every imported record against the current zone (MX, Google verification TXT, SPF, Brevo, any DKIM/DMARC, WordPress A/CNAME), keep mail-related records DNS-only, check SSL mode is compatible with the WordPress host, then switch nameservers at the registrar.
+   1. **Booking domain:** buy a separate domain for the booking app, add it to Cloudflare (free plan) and point its nameservers there. The existing `bergerhouseboats.com.au` DNS and email are not changed.
    2. GCP project, APIs, Firestore, service accounts, Secret Manager, Cloud Run, Scheduler, alerts, Workload Identity Federation for GitHub.
    3. Stripe account, webhook endpoint (`checkout.session.completed`, `checkout.session.expired`), payment method domains, switching from test to live keys.
    4. Brevo sender domain authentication (DKIM/DMARC as Brevo instructs).
-   5. Cloudflare Pages projects, custom domains, `_headers`, Access app + Google IdP + policy, Turnstile, rate limiting.
+   5. Cloudflare Pages projects (booking custom domain; admin on `pages.dev` with no custom domain), `_headers`, Access app on the admin `pages.dev` address + Google IdP + policy, Turnstile, rate limiting.
    6. Run the seed. In the admin app, complete every boat (adult beds, kids beds, bedding, bond, optional deposit, rates, allowed add-ons) and activate it. Set add-on prices, order and car parking capacity. Enter blocked periods (Easter, long weekends) up to "bookings open until". Review email templates. Fill in contact details.
    7. **Before go-live: staff enter every existing future booking** from paper/Excel as staff bookings, recording payments already received as manual payments. Past bookings are not entered.
    8. End-to-end test in Stripe test mode, then switch to live keys.
