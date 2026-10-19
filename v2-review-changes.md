@@ -1,0 +1,38 @@
+# To Confirm
+
+## Angus
+
+1. Do standby booking carspots affect visibility on customer side?
+1. Do we want a 'Delete' button to remove bookings completely?
+
+# To Change
+
+1. Customer booking screen
+    1. Dates
+        1. Introduce a new darker tint colour for the customer booking calendar. Currently the --c-brand-tint is too light and doesn't contrast enough against the disabled/non-selected days outside the selected period. --c-brand-tint-strong has been added as an example
+        1.  TOP: "Check-in 11am – 2pm · Check-out by 8am (AEDT)" => "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW). (Apply to "5. Summary" as well
+        1. Don't reiterate check in/out times at the bottom i.e. "Selected: check-in Fri 16/10/2026 (11am – 2pm), check-out Fri 23/10/2026 by 8am." => "Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026."
+
+1. Admin app
+    1. Bookings
+        1. Week/month view toggle - Admin will want to be able to see the calendar in weekly and monthly formats. Weekly format should display as Mon - Sun
+        1. Reflect check in/out times on calendar e.g. 11pm checkout should finish close to the next day border
+
+1. Customers
+    1. Remove "rebook" button - it is not necessary
+
+
+# BBQ boats
+
+- BBQ boats will work similarly to House Boats with the exception that it's possible to have multiple of the same bbq boat
+- i.e. there are 4x bbq boats with 12 people and 1x houseboat with 8 people
+- BBQ boats are only available for half day and full day periods
+- The booking calendar the customer sees:
+    - No week/middweek/weekend bookings. Instead there is only half day and full day options
+    - for a given boat e.g. "12 Berth BBQ boat", the availability check must factor in that BBQ boats have quantity e.g. for a particular day, while 3/4 12 berth bbq boats might be booked, the last is available so the days should be available
+    - 
+
+# To consider
+
+1. Add address to Your Details? For now, leave as is
+1. Upfront payment via customer booking portal
