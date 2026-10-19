@@ -143,7 +143,7 @@ public class RepositoryRoundTripTests : IClassFixture<EmulatorFixture>
     {
         await _fx.SeedAsync(new FixedClock(Now));
         var settings = await new FirestoreBusinessSettingsRepository(_fx.Db).GetAsync();
-        Assert.Equal(1000m, settings.DepositAmount);
+        Assert.Equal(500m, settings.DepositAmount);
         Assert.Equal(new DateOnly(2027, 11, 30), settings.BookingsOpenUntil);
         var seasons = await new FirestoreSeasonRepository(_fx.Db).ListAsync();
         Assert.Contains(seasons, s => s.Name == "Peak" && s.Ranges.Single().WrapsYearEnd);
@@ -156,7 +156,10 @@ public class RepositoryRoundTripTests : IClassFixture<EmulatorFixture>
         Assert.True(blocked.UsesExtendedPaymentSchedule);
         var pacificBlue = (await new FirestoreBoatRepository(_fx.Db).GetBySlugAsync("pacific-blue"))!;
         Assert.True(pacificBlue.IsActive);
-        Assert.Equal((6, 2, (decimal?)null), (pacificBlue.AdultBeds, pacificBlue.KidsBeds, pacificBlue.DepositAmount));
+        Assert.Equal((6, 2, 1000m), (pacificBlue.AdultBeds, pacificBlue.KidsBeds, pacificBlue.DepositAmount));
+        var kalinda = (await new FirestoreBoatRepository(_fx.Db).GetBySlugAsync("kalinda"))!;
+        Assert.True(kalinda.IsActive);
+        Assert.Equal((5, 2, (decimal?)null), (kalinda.AdultBeds, kalinda.KidsBeds, kalinda.DepositAmount));
 
         // Seeding again changes nothing.
         await _fx.SeedAsync(new FixedClock(Now));
