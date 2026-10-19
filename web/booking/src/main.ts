@@ -7,7 +7,9 @@ import { phoneField } from '@shared/phone';
 import { publicApi, type BookingStep, type CreateBookingResult, type PublicBoat, type Quote } from './api';
 import { Calendar } from './calendar';
 import { isEmbedded, requestClose } from './embed';
-import { adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning } from './rules';
+import {
+  adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning, selectionText, summaryTimes,
+} from './rules';
 import { mountCheckout } from './stripe';
 import { TurnstileWidget } from './turnstile';
 
@@ -237,7 +239,7 @@ async function reloadAvailability(): Promise<void> {
   await loadAvailability(calendar.visibleMonth, true);
 }
 
-/** "Check-in 11am – 2pm · Check-out by 8am (AEDT)" for the selected dates, or the visible month. */
+/** "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)" for the selected dates, or the visible month. */
 function updateTimes(): void {
   const s = state.boat!.settings;
   const from = state.selection?.start ?? calendar?.visibleMonth ?? s.today;
@@ -275,11 +277,7 @@ function onActivate(_day: IsoDate, dayInfo: DayState): void {
 function setSelection(stay: Stay | null): void {
   state.selection = stay;
   state.quote = null;
-  const settings = state.boat!.settings;
-  $('#selection-summary').textContent = stay
-    ? `Selected: check-in ${formatLongDate(stay.start)} (${settings.checkInTime} – ${settings.checkInWindowEnd}), ` +
-      `check-out ${formatLongDate(stay.end)} by ${settings.checkOutTime}.`
-    : '';
+  $('#selection-summary').textContent = stay ? selectionText(stay.start, stay.end) : '';
   ($('section[data-step="dates"] [data-next]') as HTMLButtonElement).disabled = !stay;
   updateTimes();
   calendar.render();
@@ -608,14 +606,15 @@ function renderSummary(quote: Quote): void {
   const schedule = h('ul', { class: 'plain-list' }, ...quote.milestones.map((m) => h('li', {},
     `${m.label}: ${formatMoney(m.amount)}` +
     (m.kind === 'Deposit' ? '' : m.dueNow ? ' — due now; we will email you a payment link' : m.dueDate ? ` by ${formatLongDate(m.dueDate)}` : ''))));
+  const times = summaryTimes(quote, quote.startDate, quote.endDate);
   const guests = `${quote.numberOfAdults} adult${quote.numberOfAdults === 1 ? '' : 's'}, ` +
     `${quote.numberOfChildren} child${quote.numberOfChildren === 1 ? '' : 'ren'} (under 12)`;
 
   container.append(
     h('dl', { class: 'summary' },
       row('Boat', quote.boatName),
-      row('Check-in', `${formatLongDate(quote.startDate)}, ${quote.checkInTime} – ${quote.checkInWindowEnd} ${quote.timeZoneLabel}`),
-      row('Check-out', `${formatLongDate(quote.endDate)} by ${quote.checkOutTime}`),
+      row('Check-in', times.checkIn),
+      row('Check-out', times.checkOut),
       row('Guests', guests),
       row('Season', quote.seasonName),
       row('Hire price', formatMoney(quote.hirePrice)),

@@ -1151,7 +1151,6 @@
           "checkInTime",
           "checkInWindowEnd",
           "checkOutTime",
-          "timeZoneLabel",
           "numberOfAdults",
           "numberOfChildren",
           "seasonName",
@@ -1188,9 +1187,6 @@
             "type": "string"
           },
           "checkOutTime": {
-            "type": "string"
-          },
-          "timeZoneLabel": {
             "type": "string"
           },
           "numberOfAdults": {

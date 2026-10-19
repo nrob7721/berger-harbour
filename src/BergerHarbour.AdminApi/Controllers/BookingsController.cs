@@ -26,10 +26,6 @@ public sealed class BookingsController(AdminBookingService bookings) : Controlle
     [HttpGet("{id}")]
     public Task<BookingDetailDto> Get(string id, CancellationToken ct) => bookings.GetAsync(id, ct);
 
-    /// <summary>What "Re-book" pre-fills in the new booking dialog (same day and month next time, current prices).</summary>
-    [HttpGet("{id}/rebook")]
-    public Task<RebookDto> Rebook(string id, CancellationToken ct) => bookings.GetRebookAsync(id, ct);
-
     [HttpPost]
     public Task<BookingDetailDto> Create(AdminBookingRequest request, CancellationToken ct) => bookings.CreateAsync(request, ct);
 

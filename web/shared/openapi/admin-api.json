@@ -753,45 +753,6 @@
         }
       }
     },
-    "/api/bookings/{id}/rebook": {
-      "get": {
-        "tags": [
-          "Bookings"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/RebookDto"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RebookDto"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RebookDto"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/bookings/{id}/recalculate-price": {
       "post": {
         "tags": [
@@ -3580,130 +3541,6 @@
           "Custom"
         ]
       },
-      "RebookAddonDto": {
-        "required": [
-          "addonId",
-          "name",
-          "quantity",
-          "unitPrice"
-        ],
-        "type": "object",
-        "properties": {
-          "addonId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "quantity": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "unitPrice": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          }
-        }
-      },
-      "RebookDto": {
-        "required": [
-          "originalReference",
-          "boatId",
-          "periodType",
-          "startDate",
-          "endDate",
-          "numberOfAdults",
-          "numberOfChildren",
-          "checkInTime",
-          "checkOutTime",
-          "email",
-          "fullName",
-          "phone",
-          "secondaryPhone",
-          "hirePrice",
-          "addons"
-        ],
-        "type": "object",
-        "properties": {
-          "originalReference": {
-            "type": "string"
-          },
-          "boatId": {
-            "type": "string"
-          },
-          "periodType": {
-            "$ref": "#/components/schemas/PeriodType"
-          },
-          "startDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "endDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "numberOfAdults": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "numberOfChildren": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "checkInTime": {
-            "pattern": "^\\d{2}:\\d{2}$",
-            "type": "string",
-            "description": "HH:mm",
-            "format": "time"
-          },
-          "checkOutTime": {
-            "pattern": "^\\d{2}:\\d{2}$",
-            "type": "string",
-            "description": "HH:mm",
-            "format": "time"
-          },
-          "email": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "fullName": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "phone": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "secondaryPhone": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "hirePrice": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          },
-          "addons": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RebookAddonDto"
-            }
-          }
-        }
-      },
       "SeasonDto": {
         "required": [
           "id",
@@ -3864,6 +3701,8 @@
           "boatId",
           "startDate",
           "endDate",
+          "checkInTime",
+          "checkOutTime",
           "periodType",
           "status",
           "isStandby",
@@ -3888,6 +3727,18 @@
           "endDate": {
             "type": "string",
             "format": "date"
+          },
+          "checkInTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
+          },
+          "checkOutTime": {
+            "pattern": "^\\d{2}:\\d{2}$",
+            "type": "string",
+            "description": "HH:mm",
+            "format": "time"
           },
           "periodType": {
             "$ref": "#/components/schemas/PeriodType"

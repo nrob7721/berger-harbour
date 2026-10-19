@@ -28,7 +28,7 @@ public sealed record CustomerBookingDto(
     PaymentStatus PaymentStatus);
 
 /// <summary>
-/// The Customers admin page is read-only in v1, apart from opening and re-booking a customer's bookings.
+/// The Customers admin page is read-only in v1, apart from opening a customer's bookings.
 /// </summary>
 public sealed class CustomerQueries(ICustomerRepository customers, IBookingRepository bookings, IBoatRepository boats)
 {

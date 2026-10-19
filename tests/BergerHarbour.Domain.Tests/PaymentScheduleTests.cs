@@ -35,10 +35,10 @@ public class PaymentScheduleTests
     }
 
     [Theory]
-    [InlineData(2026, 12, 7, "AEDT")]
-    [InlineData(2027, 7, 7, "AEST")]
-    [InlineData(2026, 10, 4, "AEDT")]
-    [InlineData(2026, 4, 5, "AEST")]
+    [InlineData(2026, 12, 7, "AEDT/NSW")]
+    [InlineData(2027, 7, 7, "AEST/NSW")]
+    [InlineData(2026, 10, 4, "AEDT/NSW")]
+    [InlineData(2026, 4, 5, "AEST/NSW")]
     public void Time_zone_label_follows_daylight_saving(int year, int month, int day, string expected) =>
         Assert.Equal(expected, SydneyTime.ZoneLabel(D(year, month, day), Stay.CheckInTime));
 

@@ -23,11 +23,11 @@ describe('Australian display formats', () => {
 
 describe('Sydney time zone label', () => {
   it.each([
-    ['2026-12-07', 'AEDT'],
-    ['2027-07-07', 'AEST'],
-    ['2026-10-03', 'AEST'], // daylight saving starts Sunday 04/10/2026
-    ['2026-10-04', 'AEDT'],
-    ['2027-04-04', 'AEST'], // and ends Sunday 04/04/2027
+    ['2026-12-07', 'AEDT/NSW'],
+    ['2027-07-07', 'AEST/NSW'],
+    ['2026-10-03', 'AEST/NSW'], // daylight saving starts Sunday 04/10/2026
+    ['2026-10-04', 'AEDT/NSW'],
+    ['2027-04-04', 'AEST/NSW'], // and ends Sunday 04/04/2027
   ])('%s is %s', (date, label) => {
     expect(sydneyZoneLabel(date)).toBe(label);
   });

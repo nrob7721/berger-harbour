@@ -243,10 +243,13 @@
   cursor: help;
 }
 
-/* Every day of the selected stay looks active, even days not clickable in the current mode (Tue–Thu of a Week). */
+/*
+ * Every day of the selected stay looks active, even days not clickable in the current mode (Tue–Thu of a Week). The
+ * inner days use a strong tint so the stay stands out from the disabled days around it; check-in and check-out override it.
+ */
 .day--selected,
 .day--selected[aria-disabled='true'] {
-  background: var(--c-brand-tint);
+  background: var(--c-brand-tint-strong);
   color: var(--c-ink);
 }
 

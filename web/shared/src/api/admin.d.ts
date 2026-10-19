@@ -531,45 +531,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/bookings/{id}/rebook": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["RebookDto"];
-                        "application/json": components["schemas"]["RebookDto"];
-                        "text/json": components["schemas"]["RebookDto"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/bookings/{id}/recalculate-price": {
         parameters: {
             query?: never;
@@ -1974,44 +1935,6 @@ export interface components {
         PaymentStatus: "Outstanding" | "DepositPaid" | "PartPaid" | "FullyPaid";
         /** @enum {unknown} */
         PeriodType: "Midweek" | "Weekend" | "Week" | "LongWeekend" | "Custom";
-        RebookAddonDto: {
-            addonId: string;
-            name: string;
-            /** Format: int32 */
-            quantity: number;
-            /** Format: double */
-            unitPrice: null | number;
-        };
-        RebookDto: {
-            originalReference: string;
-            boatId: string;
-            periodType: components["schemas"]["PeriodType"];
-            /** Format: date */
-            startDate: string;
-            /** Format: date */
-            endDate: string;
-            /** Format: int32 */
-            numberOfAdults: number;
-            /** Format: int32 */
-            numberOfChildren: number;
-            /**
-             * Format: time
-             * @description HH:mm
-             */
-            checkInTime: string;
-            /**
-             * Format: time
-             * @description HH:mm
-             */
-            checkOutTime: string;
-            email: null | string;
-            fullName: null | string;
-            phone: null | string;
-            secondaryPhone: null | string;
-            /** Format: double */
-            hirePrice: null | number;
-            addons: components["schemas"]["RebookAddonDto"][];
-        };
         SeasonDto: {
             id: string;
             /** Format: int32 */
@@ -2063,6 +1986,16 @@ export interface components {
             startDate: string;
             /** Format: date */
             endDate: string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkInTime: string;
+            /**
+             * Format: time
+             * @description HH:mm
+             */
+            checkOutTime: string;
             periodType: components["schemas"]["PeriodType"];
             status: components["schemas"]["BookingStatus"];
             isStandby: boolean;

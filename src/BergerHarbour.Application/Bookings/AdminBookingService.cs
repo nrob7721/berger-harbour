@@ -57,7 +57,7 @@ public sealed class AdminBookingService(
             Boat.InDisplayOrder(boatsTask.Result.Where(b => b.Type == BoatType.House))
                 .Select(b => new TimelineBoatDto(b.Id.Value, b.Name, b.MaxNoOfGuests, b.IsActive)).ToList(),
             list.OrderBy(b => b.StartDate).Select(b => new TimelineBookingDto(b.Id.Value, b.Reference.Value, b.BoatId.Value,
-                b.StartDate, b.EndDate, b.PeriodType, b.Status, b.IsStandby, b.PaymentStatus, NameOf(b, names))).ToList(),
+                b.StartDate, b.EndDate, b.CheckInTime, b.CheckOutTime, b.PeriodType, b.Status, b.IsStandby, b.PaymentStatus, NameOf(b, names))).ToList(),
             unavailableTask.Result.Select(u => new TimelineUnavailabilityDto(u.Id.Value, u.BoatId.Value, u.Nights.FirstNight,
                 u.Nights.LastNight, u.Comments)).ToList(),
             catalogueTask.Result.BlockedPeriods.Where(p => window.Overlaps(p.Nights)).Select(p =>
@@ -135,41 +135,6 @@ public sealed class AdminBookingService(
         {
             return new AdminQuoteDto(null, null, end, schedule, ex.Message);
         }
-    }
-
-    /// <summary>
-    /// What "Re-book" pre-fills: the same day and month next time round, the same guests, times, customer and add-on
-    /// lines, with prices from the current rates where they apply.
-    /// </summary>
-    public async Task<RebookDto> GetRebookAsync(string id, CancellationToken ct = default)
-    {
-        var original = await LoadAsync(id, ct);
-        var boat = await boats.GetAsync(original.BoatId, ct) ?? throw new NotFoundException("Boat not found.");
-        var catalogue = await catalogueLoader.LoadAsync(ct);
-        var plan = RebookPlanner.Plan(original.PeriodType, original.Stay, clock.Today());
-
-        decimal? hirePrice = original.HirePrice;
-        if (plan.PeriodType != PeriodType.Custom)
-        {
-            try
-            {
-                hirePrice = PricingService.QuoteHirePrice(boat, catalogue.Seasons, plan.PeriodType, plan.Stay.StartDate).Price;
-            }
-            catch (DomainValidationException)
-            {
-                hirePrice = null;
-            }
-        }
-
-        var addons = AddonCatalogue.InDisplayOrder(catalogue.Addons.Where(a => a.IsActive))
-            .SelectMany(definition => original.AddonLines.Where(l => l.AddonId == definition.Id).Select(line =>
-                new RebookAddonDto(definition.Id.Value, definition.Name, line.Quantity,
-                    PricingService.AddonUnitPrice(definition, plan.PeriodType) ?? line.UnitPrice)))
-            .ToList();
-        var contact = await ContactAsync(original, ct);
-        return new RebookDto(original.Reference.Value, boat.Id.Value, plan.PeriodType, plan.Stay.StartDate, plan.Stay.EndDate,
-            original.NumberOfAdults, original.NumberOfChildren, original.CheckInTime, original.CheckOutTime, contact.Email,
-            contact.FullName, contact.Phone, contact.SecondaryPhone, hirePrice, addons);
     }
 
     // ---- Create and update ----------------------------------------------------------------------------------------
@@ -386,7 +351,7 @@ public sealed class AdminBookingService(
         errors.ThrowIfInvalid();
     }
 
-    /// <summary>Lines for a new booking (e.g. from Re-book): active add-ons only; a null price uses the current price.</summary>
+    /// <summary>Lines for a new booking: active add-ons only; a null price uses the current price.</summary>
     private static List<RequestedAddon> ResolveAddonLines(IEnumerable<AdminAddonLineRequest> requested, PeriodType periodType,
         BookingCatalogue catalogue)
     {

@@ -9,6 +9,7 @@
   --c-brand: #0b5c7a;
   --c-brand-strong: #084860;
   --c-brand-tint: #e3f1f7;
+  --c-brand-tint-strong: #9ccbe0; /* inner days of a calendar selection; 9.2:1 with --c-ink */
   --c-accent: #e0a526;
   --c-success: #1f7a4d;
   --c-success-tint: #e3f4ea;

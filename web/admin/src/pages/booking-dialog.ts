@@ -4,7 +4,6 @@ import { formatMoney } from '@shared/format';
 import { formatPhone, phoneField, type PhoneField } from '@shared/phone';
 import {
   adminApi, type Addon, type AdminAddonLineRequest, type BoatSummary, type BookingDetail, type BookingStatus, type PeriodType,
-  type Rebook,
 } from '../api';
 import { clearErrors, field, numberOrNull, openModal, PAYMENT_STATUS_LABEL, PERIOD_LABEL, showError, STATUS_LABEL, value } from '../ui';
 
@@ -12,8 +11,6 @@ interface Options {
   id?: string;
   boatId?: string;
   startDate?: string;
-  /** Re-book: a new booking pre-filled from an earlier one. */
-  rebook?: Rebook;
   onSaved: () => Promise<void> | void;
 }
 
@@ -42,10 +39,9 @@ export async function openBookingDialog(options: Options): Promise<void> {
     return;
   }
 
-  const rebook = detail ? undefined : options.rebook;
-  /** Add-on lines a new booking will be created with (Re-book copies them). */
-  const pendingLines: (AdminAddonLineRequest & { name: string })[] = (rebook?.addons ?? []).map((a) => ({ ...a }));
-  let priceTouched = !!detail || rebook?.hirePrice != null;
+  /** Add-on lines a new booking will be created with. */
+  const pendingLines: (AdminAddonLineRequest & { name: string })[] = [];
+  let priceTouched = !!detail;
   let saving = false;
   let phone: PhoneField;
   let secondaryPhone: PhoneField;
@@ -53,7 +49,7 @@ export async function openBookingDialog(options: Options): Promise<void> {
   const render = () => {
     clear(modal.body);
     clear(modal.footer);
-    modal.setTitle(detail ? `Booking ${detail.reference}` : rebook ? `Re-book ${rebook.originalReference}` : 'New booking');
+    modal.setTitle(detail ? `Booking ${detail.reference}` : 'New booking');
     const form = h('form', { class: 'booking-form', novalidate: true });
     const left = h('div', { class: 'booking-form__main' });
     const right = h('div', { class: 'booking-form__side' });
@@ -65,11 +61,11 @@ export async function openBookingDialog(options: Options): Promise<void> {
       .filter((b) => b.type === 'House' && (b.isActive || b.id === detail?.boatId))
       .map((b) => ({ value: b.id, label: b.isActive ? b.name : `${b.name} (inactive)` }));
 
-    const start = detail?.startDate ?? rebook?.startDate ?? options.startDate ?? addDays(sydneyToday(), 30);
-    const period: PeriodType = detail?.periodType ?? rebook?.periodType ?? 'Custom';
+    const start = detail?.startDate ?? options.startDate ?? addDays(sydneyToday(), 30);
+    const period: PeriodType = detail?.periodType ?? 'Custom';
     const contact = detail?.customer ?? (detail?.customerDetails
       ? { email: detail.customerDetails.email, fullName: detail.customerDetails.fullName, mobileNumber: detail.customerDetails.mobileNumber, secondaryPhone: null }
-      : rebook ? { email: rebook.email, fullName: rebook.fullName, mobileNumber: rebook.phone, secondaryPhone: rebook.secondaryPhone } : null);
+      : null);
     phone = phoneField({ name: 'phone', label: 'Phone', value: contact?.mobileNumber });
     secondaryPhone = phoneField({ name: 'secondaryPhone', label: 'Secondary phone', value: contact?.secondaryPhone });
 
@@ -77,8 +73,6 @@ export async function openBookingDialog(options: Options): Promise<void> {
       left.append(h('p', { class: 'booking-meta' },
         h('span', { class: `status-pill status-pill--${detail.status}` }, STATUS_LABEL[detail.status] ?? detail.status),
         ` ${detail.isStandby ? 'Stand-by · ' : ''}Created ${formatTimestamp(detail.createdDate)} by ${detail.createdBy === 'Customer' ? 'customer (website)' : 'staff'}`));
-    } else if (rebook) {
-      left.append(h('div', { class: 'notice' }, `Pre-filled from ${rebook.originalReference}. Check the dates and prices before creating the booking.`));
     }
     if (detail && detail.warnings.length > 0) {
       left.append(h('div', { class: 'notice notice--warning', role: 'status' },
@@ -87,21 +81,21 @@ export async function openBookingDialog(options: Options): Promise<void> {
 
     left.append(
       h('div', { class: 'form-grid' },
-        field({ label: 'Boat', name: 'boatId', required: true, value: detail?.boatId ?? rebook?.boatId ?? options.boatId ?? boatOptions[0]?.value, options: boatOptions }),
+        field({ label: 'Boat', name: 'boatId', required: true, value: detail?.boatId ?? options.boatId ?? boatOptions[0]?.value, options: boatOptions }),
         field({ label: 'Period type', name: 'periodType', required: true, value: period,
           options: Object.entries(PERIOD_LABEL).map(([v, l]) => ({ value: v, label: l })) }),
         field({ label: 'Start date', name: 'startDate', type: 'date', required: true, value: start }),
-        field({ label: 'End date', name: 'endDate', type: 'date', required: true, value: detail?.endDate ?? rebook?.endDate ?? addDays(start, NIGHTS[period] ?? 1) }),
+        field({ label: 'End date', name: 'endDate', type: 'date', required: true, value: detail?.endDate ?? addDays(start, NIGHTS[period] ?? 1) }),
         field({ label: 'Number of adults', name: 'numberOfAdults', type: 'number', required: true,
-          value: detail?.numberOfAdults ?? rebook?.numberOfAdults ?? 2, attrs: { min: 1, max: 99 } }),
+          value: detail?.numberOfAdults ?? 2, attrs: { min: 1, max: 99 } }),
         field({ label: 'Number of children (under 12)', name: 'numberOfChildren', type: 'number', required: true,
-          value: detail?.numberOfChildren ?? rebook?.numberOfChildren ?? 0, attrs: { min: 0, max: 99 } }),
+          value: detail?.numberOfChildren ?? 0, attrs: { min: 0, max: 99 } }),
         field({ label: 'Check-in time', name: 'checkInTime', type: 'time', required: true,
-          value: hhmm(detail?.checkInTime ?? rebook?.checkInTime) || STANDARD_CHECK_IN, attrs: { step: 300 } }),
+          value: hhmm(detail?.checkInTime) || STANDARD_CHECK_IN, attrs: { step: 300 } }),
         field({ label: 'Check-out time', name: 'checkOutTime', type: 'time', required: true,
-          value: hhmm(detail?.checkOutTime ?? rebook?.checkOutTime) || STANDARD_CHECK_OUT, attrs: { step: 300 } }),
+          value: hhmm(detail?.checkOutTime) || STANDARD_CHECK_OUT, attrs: { step: 300 } }),
       ),
-      h('p', { class: 'field__hint' }, 'Times are for staff only (standard: check-in 11am – 2pm, check-out by 8am) and never affect availability.'),
+      h('p', { class: 'field__hint' }, 'Times are for staff only (standard: check-in 11am – 2pm, check-out from 8am) and never affect availability.'),
       h('div', { class: 'notice notice--warning form-warning', id: 'guest-warning', 'aria-live': 'polite', hidden: true }),
       h('h3', {}, 'Customer'),
       h('div', { class: 'form-grid' },
@@ -122,7 +116,7 @@ export async function openBookingDialog(options: Options): Promise<void> {
       ),
       field({ label: 'Comments', name: 'comments', textarea: true, value: detail?.comments }),
       h('div', { class: 'price-row' },
-        field({ label: 'Hire price (AUD, incl. GST)', name: 'hirePrice', type: 'number', required: true, value: detail?.hirePrice ?? rebook?.hirePrice ?? '', attrs: { min: 0, step: '0.01' } }),
+        field({ label: 'Hire price (AUD, incl. GST)', name: 'hirePrice', type: 'number', required: true, value: detail?.hirePrice ?? '', attrs: { min: 0, step: '0.01' } }),
         detail ? h('button', { type: 'button', class: 'button', id: 'recalculate', disabled: !editable }, 'Recalculate from rates') : null,
         h('span', { class: 'field__hint', id: 'price-hint' })),
     );
@@ -189,7 +183,7 @@ export async function openBookingDialog(options: Options): Promise<void> {
     periodSel.addEventListener('change', () => void prefill());
     startIn.addEventListener('change', () => void prefill());
     boatSel.addEventListener('change', () => void prefill());
-    if (!detail) void prefill(!rebook);
+    if (!detail) void prefill();
 
     emailIn.addEventListener('blur', async () => {
       if (!emailIn.value.includes('@') || emailIn.disabled) return;
@@ -333,7 +327,7 @@ export async function openBookingDialog(options: Options): Promise<void> {
     void update();
   };
 
-  /** New booking: the lines it will be created with (e.g. copied by Re-book), editable before saving. */
+  /** New booking: the lines it will be created with, editable before saving. */
   const newAddonsSection = (form: HTMLFormElement): HTMLElement => {
     const section = h('section', { class: 'panel', 'aria-labelledby': 'addons-heading' }, h('h3', { id: 'addons-heading' }, 'Add-ons'));
     const list = h('div', {});

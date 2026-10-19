@@ -2,7 +2,7 @@ namespace BergerHarbour.Domain.Shared;
 
 /// <summary>
 /// A booking's dates as the half-open range [StartDate, EndDate). StartDate is the check-in day (check-in window
-/// 11am – 2pm), EndDate is the check-out day (by 8am). The nights occupied are StartDate … EndDate−1. The standard
+/// 11am – 2pm), EndDate is the check-out day (from 8am). The nights occupied are StartDate … EndDate−1. The standard
 /// times are fixed; custom times staff record on a booking never affect availability or capacity.
 /// </summary>
 public sealed record Stay

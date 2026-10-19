@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BergerHarbour.AdminApi.Controllers;
 
 /// <summary>
-/// Read-only in v1, apart from opening and re-booking bookings. Contact details are updated from the booking dialog.
+/// Read-only in v1, apart from opening bookings. Contact details are updated from the booking dialog.
 /// </summary>
 [ApiController]
 [Route("api/customers")]

@@ -51,7 +51,7 @@ public class OnlineBookingFlowTests
         Assert.Equal(4060m, quote.HirePrice);
         Assert.Equal("Normal", quote.SeasonName);
         Assert.Equal(start.AddDays(4), quote.EndDate);
-        Assert.Equal(("11am", "2pm", "8am", "AEDT"), (quote.CheckInTime, quote.CheckInWindowEnd, quote.CheckOutTime, quote.TimeZoneLabel));
+        Assert.Equal(("11am", "2pm", "8am"), (quote.CheckInTime, quote.CheckInWindowEnd, quote.CheckOutTime));
         Assert.Equal((7, 2), (quote.NumberOfAdults, quote.NumberOfChildren));
         Assert.Equal(1000m, quote.AmountDueAtCheckout);
         Assert.Equal(PaymentSchedule.Standard, quote.PaymentSchedule);
@@ -340,7 +340,7 @@ public class OnlineBookingFlowTests
         Assert.Contains("Outboard motor — $95.00", confirmation.HtmlBody);
         Assert.Contains("Welcome hamper — price on request", confirmation.HtmlBody);
         Assert.Contains("$2,000.00 security bond", confirmation.HtmlBody);
-        Assert.Contains("11am – 2pm AEDT", confirmation.HtmlBody);
+        Assert.Contains("11am – 2pm AEDT/NSW", confirmation.HtmlBody);
         Assert.Contains("4 adults, 2 children", confirmation.HtmlBody);
         Assert.DoesNotContain("is now due", confirmation.HtmlBody);
 

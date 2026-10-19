@@ -27,11 +27,11 @@ public static class Format
         return $"{local.ToString("dd/MM/yyyy", Invariant)} {Time(TimeOnly.FromDateTime(local.DateTime))}";
     }
 
-    /// <summary>"11am – 2pm AEDT": the standard check-in window with the time zone for that date.</summary>
+    /// <summary>"11am – 2pm AEDT/NSW": the standard check-in window with the time zone for that date.</summary>
     public static string CheckInWindow(DateOnly date) =>
         $"{Time(Stay.CheckInTime)} – {Time(Stay.CheckInWindowEnd)} {SydneyTime.ZoneLabel(date, Stay.CheckInTime)}";
 
-    /// <summary>A time on a date with its time zone, e.g. "8am AEST".</summary>
+    /// <summary>A time on a date with its time zone, e.g. "8am AEST/NSW".</summary>
     public static string TimeWithZone(DateOnly date, TimeOnly time) => $"{Time(time)} {SydneyTime.ZoneLabel(date, time)}";
 
     /// <summary>National format for Australian numbers, international for others.</summary>

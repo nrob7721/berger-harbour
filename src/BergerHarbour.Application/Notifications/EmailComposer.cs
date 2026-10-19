@@ -30,7 +30,7 @@ public sealed record EmailData(
 
 /// <summary>
 /// Fills template sections and placeholders. Values are HTML-encoded in the body; dates are dd/MM/yyyy, times
-/// 11am with AEST/AEDT, and money $1,234.00.
+/// 11am with AEST/NSW or AEDT/NSW, and money $1,234.00.
 /// </summary>
 public static class EmailComposer
 {

@@ -6,8 +6,7 @@ import { loading, PAYMENT_STATUS_LABEL, PERIOD_LABEL, showError, STATUS_LABEL } 
 import { openBookingDialog } from './booking-dialog';
 
 /**
- * Read-only in v1, apart from opening and re-booking a customer's bookings. Contact details are updated from the
- * booking dialog.
+ * Read-only in v1, apart from opening a customer's bookings. Contact details are updated from the booking dialog.
  */
 export async function renderCustomers(page: HTMLElement): Promise<void> {
   const filter = h('input', { type: 'search', placeholder: 'Filter by name, email or phone', 'aria-label': 'Filter customers', class: 'search__input' });
@@ -71,7 +70,7 @@ export async function renderCustomers(page: HTMLElement): Promise<void> {
       body)));
   };
 
-  /** All of the customer's bookings (any status, newest first); click to open, or Re-book. */
+  /** All of the customer's bookings (any status, newest first); click to open. */
   async function renderBookings(cell: HTMLElement, customer: Customer): Promise<void> {
     loading(cell, 'Loading bookings…');
     let bookings: CustomerBooking[];
@@ -90,7 +89,7 @@ export async function renderCustomers(page: HTMLElement): Promise<void> {
     const refresh = () => void renderBookings(cell, customer);
     cell.append(h('table', { class: 'table table--compact' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Reference'), h('th', {}, 'Boat'), h('th', {}, 'Dates'), h('th', {}, 'Period'),
-        h('th', {}, 'Status'), h('th', {}, 'Payment'), h('th', {}, h('span', { class: 'visually-hidden' }, 'Actions')))),
+        h('th', {}, 'Status'), h('th', {}, 'Payment'))),
       h('tbody', {}, ...bookings.map((b) => {
         const inactive = b.status !== 'Active' && b.status !== 'PendingPayment';
         return h('tr', { class: inactive ? 'row--muted' : '' },
@@ -100,19 +99,8 @@ export async function renderCustomers(page: HTMLElement): Promise<void> {
           h('td', { class: 'nowrap' }, `${formatDate(b.startDate)} → ${formatDate(b.endDate)}`),
           h('td', {}, PERIOD_LABEL[b.periodType] ?? b.periodType),
           h('td', {}, `${STATUS_LABEL[b.status] ?? b.status}${b.isStandby ? ' · stand-by' : ''}`),
-          h('td', {}, PAYMENT_STATUS_LABEL[b.paymentStatus] ?? b.paymentStatus),
-          h('td', { class: 'nowrap' }, h('button', { type: 'button', class: 'button button--small', onclick: () => void rebook(b, refresh, cell) },
-            'Re-book')));
+          h('td', {}, PAYMENT_STATUS_LABEL[b.paymentStatus] ?? b.paymentStatus));
       }))));
-  }
-
-  async function rebook(b: CustomerBooking, refresh: () => void, cell: HTMLElement): Promise<void> {
-    try {
-      const prefill = await adminApi.rebook(b.id);
-      await openBookingDialog({ rebook: prefill, onSaved: refresh });
-    } catch (e) {
-      showError(cell, e);
-    }
   }
 
   filter.addEventListener('input', render);

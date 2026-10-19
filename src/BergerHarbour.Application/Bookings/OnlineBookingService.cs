@@ -269,7 +269,7 @@ public sealed class OnlineBookingService(
         var dueAtCheckout = PaymentScheduleService.OnlineCheckoutAmount(price.Price, deposit);
         var milestones = paymentSchedule.Milestones(schedule, stay.StartDate, total, deposit, now);
         return new QuoteDto(boat.Name, request.PeriodType, stay.StartDate, stay.EndDate, Format.Time(Stay.CheckInTime),
-            Format.Time(Stay.CheckInWindowEnd), Format.Time(Stay.CheckOutTime), SydneyTime.ZoneLabel(stay.StartDate, Stay.CheckInTime),
+            Format.Time(Stay.CheckInWindowEnd), Format.Time(Stay.CheckOutTime),
             request.NumberOfAdults, request.NumberOfChildren, price.Season.Name, price.Price, addons, total, deposit,
             dueAtCheckout, schedule, MilestoneViews.Build(milestones, dueAtCheckout, true, now),
             boat.RequiresRoomingWarning(request.NumberOfGuests) ? boat.RoomingWarningText(request.NumberOfGuests) : null,

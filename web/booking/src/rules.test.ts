@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning } from './rules';
+import {
+  adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning, selectionText, summaryTimes,
+} from './rules';
 
 const times = { checkInTime: '11am', checkInWindowEnd: '2pm', checkOutTime: '8am' };
 
@@ -43,13 +45,38 @@ describe('capacity-limited add-ons', () => {
 });
 
 describe('check-in and check-out text', () => {
-  it('shows the window with AEDT in summer and AEST in winter', () => {
-    expect(checkInOutText(times, '2026-12-07', '2026-12-11')).toBe('Check-in 11am – 2pm · Check-out by 8am (AEDT)');
-    expect(checkInOutText(times, '2027-07-05')).toBe('Check-in 11am – 2pm · Check-out by 8am (AEST)');
+  it('shows the window with AEDT/NSW in summer and AEST/NSW in winter', () => {
+    expect(checkInOutText(times, '2026-12-07', '2026-12-11')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)');
+    expect(checkInOutText(times, '2027-07-05')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEST/NSW)');
   });
 
-  it('labels each time when daylight saving starts during the stay', () => {
-    // Daylight saving starts Sunday 04/10/2026.
-    expect(checkInOutText(times, '2026-10-02', '2026-10-05')).toBe('Check-in 11am – 2pm AEST · Check-out by 8am AEDT');
+  it('labels each time when daylight saving changes during the stay', () => {
+    // Daylight saving starts Sunday 04/10/2026 and ends Sunday 04/04/2027.
+    expect(checkInOutText(times, '2026-10-02', '2026-10-05'))
+      .toBe('Check-in 11am – 2pm (AEST/NSW) · Check-out from 8am (AEDT/NSW)');
+    expect(checkInOutText(times, '2027-04-02', '2027-04-05'))
+      .toBe('Check-in 11am – 2pm (AEDT/NSW) · Check-out from 8am (AEST/NSW)');
+  });
+});
+
+describe('selected dates text', () => {
+  it('states the dates without repeating the times', () => {
+    expect(selectionText('2026-10-16', '2026-10-23')).toBe('Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026.');
+  });
+});
+
+describe('summary check-in and check-out rows', () => {
+  it('shows each date with its time and zone', () => {
+    expect(summaryTimes(times, '2026-10-16', '2026-10-23')).toEqual({
+      checkIn: 'Fri 16/10/2026, 11am – 2pm AEDT/NSW',
+      checkOut: 'Fri 23/10/2026, from 8am AEDT/NSW',
+    });
+  });
+
+  it('labels each row with its own zone across a daylight-saving change', () => {
+    expect(summaryTimes(times, '2026-10-02', '2026-10-05')).toEqual({
+      checkIn: 'Fri 02/10/2026, 11am – 2pm AEST/NSW',
+      checkOut: 'Mon 05/10/2026, from 8am AEDT/NSW',
+    });
   });
 });

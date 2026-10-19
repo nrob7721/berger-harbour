@@ -548,7 +548,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
      - Weekend: the Fri→Mon containing it. Clicking Mon selects the weekend ending that day.
      - Week: Mon→next Mon or Fri→next Fri, starting on the clicked day.
    - The whole selected period is highlighted. The start shows a check-in marker and the end a check-out marker. **Every day inside the selection uses the active selection colour with normal (not grey) day numbers, even days that are not clickable in the current mode** (e.g. Tue–Thu inside a Week selection).
-   - The selection colour is a darker brand tint than the general light tint, so the selected period stands out clearly against the disabled and non-selectable days around it. The difference must be obvious at a glance, not a subtle shade.
+   - The **inner days** of the selection (every day strictly between check-in and check-out, e.g. Tue–Thu of a Mon→Fri stay) use a darker brand tint (`--c-brand-tint-strong`) than the general light tint, so the selected period stands out clearly against the disabled and non-selectable days around it. The difference must be obvious at a glance, not a subtle shade. The check-in and check-out days keep their solid brand colour and markers.
    - Below the calendar, a line states the selection without repeating the times, e.g. **"Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026."** (weekday + `dd/MM/yyyy`). The same text is announced in the ARIA live region.
    - **Greying is per period, not per day:** a day is disabled in a mode when the period it maps to is unavailable or invalid. For example, a Monday on which a weekend booking checks out is still clickable in Mid-week mode.
    - A period is unavailable if:
@@ -572,7 +572,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
    - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates **every time the Add-ons step is shown** (never cache it: going back to change the dates, or returning from the Summary, must show current figures). Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"; "{X} available for your dates" when no unit label is set). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
    - Notice: "Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods."
 6. **Summary:**
-   - Server quote showing boat, dates, the same check-in/check-out line as the Dates step (e.g. "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)"), adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
+   - Server quote showing boat, a **Check-in** row and a **Check-out** row, each with its date, time and the time zone label (§3) for that date (e.g. "Check-in: Fri 16/10/2026, 11am – 2pm AEDT/NSW" and "Check-out: Fri 23/10/2026, from 8am AEDT/NSW"; across a daylight-saving change each row shows its own label), adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
    - Terms checkbox: "I accept the [Hire Terms and Procedures]" (link opens in a new tab).
    - Button: **Pay ${amount}**, enabled only once the terms are accepted.
 7. **Payment:** `POST /api/bookings` → mount Stripe Embedded Checkout.
@@ -598,7 +598,7 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
   - Everything else (boat rows, blocked-period band, weekend shading, Show inactive, clicking an empty cell, search) works the same in both views.
 - **Bars:**
   - Bars are positioned by time of day: each day cell spans 24 hours, and a booking starts at its `CheckInTime` on the check-in day and ends at its `CheckOutTime` on the check-out day, linearly within the cell (e.g. 11am starts ≈46% into the cell, 8am ends ≈33% into it; a custom 11pm check-out ends close to the next day's border). Custom times are reflected. This applies in both views, so changeovers are visible.
-  - When custom times clash with a same-day changeover, the bars simply overlap, with the later booking drawn on top.
+  - Bars in a boat row are stacked into lanes by time, not by date: two bars share a lane only if one's check-out time is at or before the other's check-in time. A standard same-day changeover (8am out, 11am in) therefore stays in one lane, while custom times that clash (e.g. an 11pm check-out and an 11am check-in on the same day) put the later booking in a new lane. Bars never cover each other.
   - Bar label: customer name + reference.
   - Styles: `Active` (solid, tinted by payment status), `PendingPayment` (dashed outline), stand-by (hatched).
   - Unavailabilities are grey blocks positioned with the standard times, from 11am on `FirstNight` to 8am on the day after `LastNight`, so they line up with booking bars. Blocked periods are a labelled column band across all rows, covering whole days.
@@ -772,10 +772,11 @@ Sections:
 - **Frontend:** unit tests (Vitest) for:
   - the calendar period mapping, per-period greying logic, and highlighting of non-clickable days inside a selection;
   - the check-in/check-out line, including the AEST/NSW and AEDT/NSW labels and the split label for a stay that crosses a daylight-saving change;
-  - the "Selected: …" text (dates only, no times);
+  - the "Selected: …" text (dates only, no times), and the Summary's check-in and check-out rows (each with its own zone label);
   - children dropdown clamping, and the capacity "remaining" display and hiding;
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
-  - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning.
+  - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning;
+  - admin timeline lane assignment by check-in/check-out time (a standard changeover shares a lane; clashing custom times get a new lane).
 
 ## 16. Deliverables
 

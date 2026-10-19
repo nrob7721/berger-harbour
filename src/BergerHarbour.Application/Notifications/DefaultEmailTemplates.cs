@@ -14,7 +14,7 @@ public static class DefaultEmailTemplates
           <tr><td><strong>Booking reference</strong></td><td>{{BookingReference}}</td></tr>
           <tr><td><strong>Boat</strong></td><td>{{BoatName}}</td></tr>
           <tr><td><strong>Check-in</strong></td><td>{{CheckInDate}}, {{CheckInTime}}</td></tr>
-          <tr><td><strong>Check-out</strong></td><td>{{CheckOutDate}} by {{CheckOutTime}}</td></tr>
+          <tr><td><strong>Check-out</strong></td><td>{{CheckOutDate}} from {{CheckOutTime}}</td></tr>
           <tr><td><strong>Guests</strong></td><td>{{NumberOfAdults}} adults, {{NumberOfChildren}} children (under 12)</td></tr>
         </table>
         """;
@@ -83,7 +83,7 @@ public static class DefaultEmailTemplates
             <h3>Before you arrive</h3>
             <ul>
               <li>Check-in is {{CheckInTime}} on {{CheckInDate}}. Please allow time for the boat handover and driving instructions.</li>
-              <li>Check-out is by {{CheckOutTime}} on {{CheckOutDate}}.</li>
+              <li>Check-out is from {{CheckOutTime}} on {{CheckOutDate}}.</li>
               <li>A {{SecurityBond}} security bond is payable on arrival.</li>
               <li>Bring food, drinks, linen and towels unless arranged otherwise, plus warm clothing and sun protection.</li>
               <li>The licensed driver must bring their driver's licence.</li>

@@ -97,7 +97,6 @@ public sealed record MilestoneDto(
     DateOnly? DueDate,
     bool DueNow);
 
-/// <param name="TimeZoneLabel">AEST or AEDT at check-in.</param>
 /// <param name="TotalPrice">Hire price plus add-ons with a price; price-on-request add-ons are added once priced.</param>
 public sealed record QuoteDto(
     string BoatName,
@@ -107,7 +106,6 @@ public sealed record QuoteDto(
     string CheckInTime,
     string CheckInWindowEnd,
     string CheckOutTime,
-    string TimeZoneLabel,
     int NumberOfAdults,
     int NumberOfChildren,
     string SeasonName,

@@ -167,6 +167,38 @@
   border-radius: 3px;
 }
 
+/* Week | Month toggle */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented__option {
+  min-height: 44px;
+  padding: 0.5em 1em;
+  border: 0;
+  background: var(--c-surface);
+  color: var(--c-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented__option + .segmented__option {
+  border-left: 1px solid var(--c-border);
+}
+
+.segmented__option:hover:not([aria-pressed='true']) {
+  background: var(--c-brand-tint);
+}
+
+.segmented__option[aria-pressed='true'] {
+  background: var(--c-brand);
+  color: #fff;
+}
+
 .timeline-wrapper {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -227,6 +259,16 @@
 
 .tl-track--band {
   min-height: 24px;
+}
+
+/* Week view: 7 columns stretched to the width, no horizontal scroll. */
+.timeline--week .tl-row {
+  min-width: 0;
+}
+
+.timeline--week .tl-track {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .tl-day-head {
@@ -293,6 +335,7 @@
 .bar {
   position: absolute;
   z-index: 2;
+  min-width: 8px;
   display: flex;
   align-items: center;
   padding: 0 6px;

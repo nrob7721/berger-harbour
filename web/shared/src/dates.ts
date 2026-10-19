@@ -99,12 +99,12 @@ export function sydneyDate(instant: string): IsoDate {
 const offsetFormat = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Sydney', timeZoneName: 'shortOffset' });
 
 /**
- * "AEST" or "AEDT": the Australia/Sydney time zone at 11am on the date. Daylight saving changes at 2–3am, so mid-morning
+ * "AEST/NSW" or "AEDT/NSW": the Australia/Sydney time zone at 11am on the date. Daylight saving changes at 2–3am, so mid-morning
  * is unambiguous.
  */
 export function sydneyZoneLabel(iso: IsoDate): string {
   const d = parseIso(iso);
   const morning = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 30)); // 10:30–11:30 in Sydney
   const zone = offsetFormat.formatToParts(morning).find((p) => p.type === 'timeZoneName')?.value ?? '';
-  return zone.includes('+11') ? 'AEDT' : 'AEST';
+  return zone.includes('+11') ? 'AEDT/NSW' : 'AEST/NSW';
 }

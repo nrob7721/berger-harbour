@@ -1,7 +1,7 @@
 import { addDays, dayOfWeek, type IsoDate } from './dates';
 
 // Mirrors BergerHarbour.Domain.Bookings.StayPeriodFactory. A stay is the half-open range [start, end):
-// check-in on start (11am – 2pm), check-out on end (by 8am).
+// check-in on start (11am – 2pm), check-out on end (from 8am).
 
 export type OnlinePeriodType = 'Midweek' | 'Weekend' | 'Week';
 

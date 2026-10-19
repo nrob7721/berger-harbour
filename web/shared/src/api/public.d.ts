@@ -612,7 +612,6 @@ export interface components {
             checkInTime: string;
             checkInWindowEnd: string;
             checkOutTime: string;
-            timeZoneLabel: string;
             /** Format: int32 */
             numberOfAdults: number;
             /** Format: int32 */

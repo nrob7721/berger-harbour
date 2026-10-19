@@ -6,12 +6,16 @@ namespace BergerHarbour.Application.Bookings;
 
 public sealed record TimelineBoatDto(string Id, string Name, int MaxNoOfGuests, bool IsActive);
 
+/// <param name="CheckInTime">The booking's check-in time (standard 11:00); bars are positioned by it.</param>
+/// <param name="CheckOutTime">The booking's check-out time (standard 08:00).</param>
 public sealed record TimelineBookingDto(
     string Id,
     string Reference,
     string BoatId,
     DateOnly StartDate,
     DateOnly EndDate,
+    TimeOnly CheckInTime,
+    TimeOnly CheckOutTime,
     PeriodType PeriodType,
     BookingStatus Status,
     bool IsStandby,
@@ -107,7 +111,7 @@ public sealed record BookingDetailDto(
     IReadOnlyList<SentNotification> SentNotifications,
     IReadOnlyList<string> Warnings);
 
-/// <summary>An add-on line for a new staff booking (e.g. copied by Re-book). A null unit price uses the current price.</summary>
+/// <summary>An add-on line for a new staff booking. A null unit price uses the current price.</summary>
 public sealed record AdminAddonLineRequest(string AddonId, int Quantity, decimal? UnitPrice);
 
 /// <param name="CheckInTime">Defaults to 11:00.</param>
@@ -167,23 +171,3 @@ public sealed record ManualPaymentRequest(int Version, decimal Amount, DateOnly 
 public sealed record SendPaymentLinkResult(string SentTo, decimal AmountDue);
 
 public sealed record AddonAvailabilityDto(string AddonId, int Capacity, int Remaining);
-
-public sealed record RebookAddonDto(string AddonId, string Name, int Quantity, decimal? UnitPrice);
-
-/// <summary>What "Re-book" pre-fills in the new booking dialog.</summary>
-public sealed record RebookDto(
-    string OriginalReference,
-    string BoatId,
-    PeriodType PeriodType,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    int NumberOfAdults,
-    int NumberOfChildren,
-    TimeOnly CheckInTime,
-    TimeOnly CheckOutTime,
-    string? Email,
-    string? FullName,
-    string? Phone,
-    string? SecondaryPhone,
-    decimal? HirePrice,
-    IReadOnlyList<RebookAddonDto> Addons);

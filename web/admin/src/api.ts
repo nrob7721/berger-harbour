@@ -19,7 +19,6 @@ export type Unavailability = S['UnavailabilityDto'];
 export type UnavailabilityRequest = S['UnavailabilityRequest'];
 export type Customer = S['CustomerDto'];
 export type CustomerBooking = S['CustomerBookingDto'];
-export type Rebook = S['RebookDto'];
 export type AdminAddonLineRequest = S['AdminAddonLineRequest'];
 export type AddonAvailability = S['AddonAvailabilityDto'];
 export type BusinessSettings = S['BusinessSettingsDto'];
@@ -58,7 +57,6 @@ export const adminApi = {
     api<{ sentTo: string; amountDue: number }>(`/api/bookings/${enc(id)}/send-payment-link`, { method: 'POST' }),
   quote: (boatId: string, periodType: PeriodType, startDate: string) =>
     api<AdminQuote>(`/api/bookings/quote${query({ boatId, periodType, startDate })}`),
-  rebook: (id: string) => api<Rebook>(`/api/bookings/${enc(id)}/rebook`),
   addonAvailability: (addonId: string, startDate: string, endDate: string, excludeBookingId?: string) =>
     api<AddonAvailability>(`/api/addons/${enc(addonId)}/availability${query({ startDate, endDate, excludeBookingId })}`),
 

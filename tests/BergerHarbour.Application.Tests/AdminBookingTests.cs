@@ -295,63 +295,6 @@ public class AdminBookingTests
     }
 
     [Fact]
-    public async Task Rebook_prefills_next_years_dates_current_prices_guests_times_customer_and_add_ons()
-    {
-        var app = await TestApp.CreateAsync(online: false);
-        var admin = app.Get<AdminBookingService>();
-        var original = await admin.CreateAsync(Request(new DateOnly(2026, 11, 16), type: PeriodType.Midweek, adults: 5,
-            children: 3) with
-        {
-            HirePrice = 3999m, CheckInTime = new TimeOnly(12, 0), Phone = "0412 345 678", SecondaryPhone = "(02) 4444 4444",
-            Comments = "Not copied", Addons = [new AdminAddonLineRequest("outboard-motor", 1, 80m), new AdminAddonLineRequest("ice", 3, null)],
-        });
-
-        var rebook = await admin.GetRebookAsync(original.Id);
-
-        Assert.Equal(original.Reference, rebook.OriginalReference);
-        Assert.Equal(new DateOnly(2027, 11, 16), rebook.StartDate); // a Tuesday in 2027
-        Assert.Equal(new DateOnly(2027, 11, 20), rebook.EndDate);
-        Assert.Equal(PeriodType.Custom, rebook.PeriodType);
-        Assert.Equal(3999m, rebook.HirePrice); // Custom keeps the original price
-        Assert.Equal((5, 3), (rebook.NumberOfAdults, rebook.NumberOfChildren));
-        Assert.Equal(new TimeOnly(12, 0), rebook.CheckInTime);
-        Assert.Equal(("jane@example.com", "Jane Citizen", "+61412345678", "+61244444444"),
-            (rebook.Email, rebook.FullName, rebook.Phone, rebook.SecondaryPhone));
-        Assert.Equal(["ice", "outboard-motor"], rebook.Addons.Select(a => a.AddonId));
-        Assert.Equal(80m, rebook.Addons.Single(a => a.AddonId == "outboard-motor").UnitPrice); // Custom: no current price
-
-        var created = await admin.CreateAsync(new AdminBookingRequest(rebook.BoatId, rebook.PeriodType, rebook.StartDate,
-            rebook.EndDate, rebook.NumberOfAdults, rebook.NumberOfChildren, rebook.CheckInTime, rebook.CheckOutTime, rebook.Email,
-            rebook.FullName, rebook.Phone, rebook.SecondaryPhone, false, null, rebook.HirePrice,
-            rebook.Addons.Select(a => new AdminAddonLineRequest(a.AddonId, a.Quantity, a.UnitPrice)).ToList()));
-        Assert.Equal(2, created.AddonLines.Count);
-        Assert.Null(created.Comments);
-    }
-
-    [Fact]
-    public async Task Rebook_keeps_a_period_type_that_still_fits_and_uses_current_rates()
-    {
-        var app = await TestApp.CreateAsync(online: false);
-        var admin = app.Get<AdminBookingService>();
-        // Fri 06/11/2026 → Mon 09/11/2026; 06/11/2027 is a Saturday, so it becomes Custom; LongWeekend is kept.
-        var longWeekend = await admin.CreateAsync(Request(new DateOnly(2026, 11, 6), type: PeriodType.LongWeekend) with
-        {
-            HirePrice = 100m,
-            Addons = [new AdminAddonLineRequest("outboard-motor", 1, 80m)],
-        });
-        var rebook = await admin.GetRebookAsync(longWeekend.Id);
-        Assert.Equal(PeriodType.LongWeekend, rebook.PeriodType);
-        Assert.Equal(4620m, rebook.HirePrice); // current Normal long weekend rate
-        Assert.Equal(80m, Assert.Single(rebook.Addons).UnitPrice); // no long weekend add-on prices
-
-        var midweek = await admin.CreateAsync(Request(new DateOnly(2025, 11, 17), type: PeriodType.Midweek, email: "b@example.com")
-            with { HirePrice = 100m });
-        var next = await admin.GetRebookAsync(midweek.Id); // 17/11/2026 is a Tuesday → Custom
-        Assert.Equal(PeriodType.Custom, next.PeriodType);
-        Assert.Equal(new DateOnly(2026, 11, 17), next.StartDate);
-    }
-
-    [Fact]
     public async Task Customers_list_all_their_bookings_newest_first()
     {
         var app = await TestApp.CreateAsync(online: false);

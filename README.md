@@ -18,7 +18,7 @@ WordPress boat page ── "Book Now" ──► bookings.example.com.au (Cloudfl
 
 | Path | What |
 |---|---|
-| `src/BergerHarbour.Domain` | Aggregates (`Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`), value objects (incl. E.164 `PhoneNumber`), domain services (`BookingAvailabilityService`, `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory`, `RebookPlanner`) and repository interfaces next to each aggregate. |
+| `src/BergerHarbour.Domain` | Aggregates (`Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`), value objects (incl. E.164 `PhoneNumber`), domain services (`BookingAvailabilityService`, `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory`) and repository interfaces next to each aggregate. |
 | `src/BergerHarbour.Application` | Use cases, the booking validation strategies (`OnlineBookingValidationStrategy`, `InternalBookingValidationStrategy`), notifications and the hourly job, seed, and ports (`IBoatScheduleLock`, `IPaymentGateway`, `IEmailSender`, `IClock`, `ITurnstileVerifier`, `IBookingReferenceGenerator`). |
 | `src/BergerHarbour.Infrastructure` | Firestore repositories and the per-boat lock (`Firestore/`), Stripe, Brevo, Turnstile, Cloudflare Access JWT and Google OIDC validation, shared web hosting conventions. |
 | `src/BergerHarbour.PublicApi` / `AdminApi` | ASP.NET Core controllers. `dotnet BergerHarbour.AdminApi.dll seed` runs the idempotent seed. |
