@@ -104,7 +104,18 @@ public sealed class TestApp
         var provider = services.BuildServiceProvider();
         await provider.GetRequiredService<SeedService>()
             .RunAsync(new SeedService.SeedOptions("staff@example.test", "02 4444 4444", "info@example.test"));
+        await PinBusinessSettingsAsync(provider);
         return new TestApp(provider, clock, store, emails, gateway, turnstile);
+    }
+
+    /// <summary>Overrides the seeded business settings with fixed values, so tests don't depend on the production defaults.</summary>
+    private static async Task PinBusinessSettingsAsync(IServiceProvider provider)
+    {
+        var repository = provider.GetRequiredService<IBusinessSettingsRepository>();
+        var settings = await repository.GetAsync();
+        settings.Update(500m, 30, settings.BookingsOpenUntil, settings.StaffAlertEmail, settings.ContactPhone,
+            settings.ContactEmail, settings.HireTermsUrl);
+        await repository.SaveAsync(settings);
     }
 
     public T Get<T>() where T : notnull => Services.CreateScope().ServiceProvider.GetRequiredService<T>();

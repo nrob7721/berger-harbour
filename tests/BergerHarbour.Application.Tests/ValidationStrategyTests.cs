@@ -20,12 +20,20 @@ public class ValidationStrategyTests
     private readonly AddonDefinition _notAllowed = AddonDefinition.Create("Skipper", null, true, null, false, null, null, 3);
     private readonly AddonDefinition _inactive = AddonDefinition.Create("Heater", null, true, null, false, null, null, 4);
     private readonly BookingDraft _draft;
-    private readonly BusinessSettings _settings =
-        BusinessSettings.CreateDefault(new DateOnly(2027, 11, 30), "staff@example.test", "02 4444 4444", "info@example.test");
+    private readonly BusinessSettings _settings = TestSettings(minimumLeadTimeDays: 30);
     private readonly List<BlockedPeriod> _blocked =
     [
         BlockedPeriod.Create("Christmas / New Year 2026–27", new DateOnly(2026, 12, 20), new DateOnly(2027, 1, 5), true),
     ];
+
+    /// <summary>Settings pinned to explicit values so these tests don't move when the production defaults do.</summary>
+    private static BusinessSettings TestSettings(int minimumLeadTimeDays)
+    {
+        var settings = BusinessSettings.CreateDefault(new DateOnly(2027, 11, 30), "staff@example.test", "02 4444 4444", "info@example.test");
+        settings.Update(500m, minimumLeadTimeDays, new DateOnly(2027, 11, 30), "staff@example.test", "02 4444 4444", "info@example.test",
+            BusinessSettings.DefaultHireTermsUrl);
+        return settings;
+    }
 
     public ValidationStrategyTests()
     {
@@ -82,9 +90,7 @@ public class ValidationStrategyTests
     [Fact]
     public void Lead_time_exact_day_is_allowed()
     {
-        var settings = BusinessSettings.CreateDefault(new DateOnly(2027, 11, 30), "s@example.test", "1", "i@example.test");
-        settings.Update(1000, 28, new DateOnly(2027, 11, 30), "s@example.test", "1", "i@example.test", BusinessSettings.DefaultHireTermsUrl);
-        var context = Context() with { Settings = settings };
+        var context = Context() with { Settings = TestSettings(minimumLeadTimeDays: 28) };
         // Today + 28 = Monday 02/11/2026.
         Assert.True(_online.Validate(Valid(PeriodType.Week, new DateOnly(2026, 11, 2)), context).IsValid);
         Assert.False(_online.Validate(Valid(PeriodType.Midweek, new DateOnly(2026, 10, 26)), context).IsValid);

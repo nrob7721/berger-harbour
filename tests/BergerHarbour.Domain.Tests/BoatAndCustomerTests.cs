@@ -261,6 +261,8 @@ public class BoatAndCustomerTests
     public void Business_settings_online_window()
     {
         var settings = BusinessSettings.CreateDefault(D(2027, 11, 30), "staff@example.com", "02 0000 0000", "info@example.com");
+        settings.Update(500m, 30, D(2027, 11, 30), "staff@example.com", "02 0000 0000", "info@example.com",
+            BusinessSettings.DefaultHireTermsUrl);
         var today = D(2026, 10, 5);
         Assert.False(settings.SatisfiesLeadTime(new Stay(D(2026, 11, 3), D(2026, 11, 6)), today));
         Assert.True(settings.SatisfiesLeadTime(new Stay(D(2026, 11, 4), D(2026, 11, 7)), today));

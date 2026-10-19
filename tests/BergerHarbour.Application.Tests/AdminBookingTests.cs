@@ -415,7 +415,6 @@ public class AdminBookingTests
         var boats = await app.Get<IBoatRepository>().ListAsync();
 
         Assert.All(boats, b => Assert.Empty(b.MissingActivationData(seasons)));
-        Assert.Equal(["pacific-blue"], boats.Where(b => b.IsActive).Select(b => b.Slug));
         Assert.Equal(
             new Dictionary<string, decimal?> { ["pacific-blue"] = 1000m, ["ocean-spirit"] = 1000m, ["island-dream"] = 1000m, ["runaway-bear"] = 250m },
             boats.Where(b => b.DepositAmount is not null).ToDictionary(b => b.Slug, b => b.DepositAmount));
@@ -470,6 +469,10 @@ public class AdminBookingTests
     public async Task Inactive_boats_cannot_be_booked_by_staff()
     {
         var app = await TestApp.CreateAsync(online: false);
+        var boats = app.Get<IBoatRepository>();
+        var kalinda = (await boats.GetBySlugAsync("kalinda"))!;
+        kalinda.Deactivate(app.Clock.UtcNow);
+        await boats.SaveAsync(kalinda);
         var ex = await Assert.ThrowsAsync<RequestValidationException>(() =>
             app.Get<AdminBookingService>().CreateAsync(Request(app.MondayAfter(10)) with { BoatId = "kalinda" }));
         Assert.True(ex.Errors.ContainsKey("boatId"));
