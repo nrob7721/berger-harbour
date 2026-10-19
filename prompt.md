@@ -42,7 +42,7 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | Term | Meaning |
 |---|---|
 | **Period type** | `Midweek` (Mon→Fri), `Weekend` (Fri→Mon), `Week` (Mon→Mon or Fri→Fri), `LongWeekend` (staff only), `Custom` (staff only, any dates). |
-| **Stay** | A booking's dates as a half-open range `[StartDate, EndDate)`. `StartDate` is the check-in day (check-in window **11am – 2pm**) and `EndDate` is the check-out day (by **8am**). The nights occupied are `StartDate … EndDate−1`. The standard times are fixed in code and not configurable. Staff may record custom check-in/check-out times on a booking (§7.3); these never affect availability or capacity. |
+| **Stay** | A booking's dates as a half-open range `[StartDate, EndDate)`. `StartDate` is the check-in day (check-in window **11am – 2pm**) and `EndDate` is the check-out day (from **8am**). The nights occupied are `StartDate … EndDate−1`. The standard times are fixed in code and not configurable. Staff may record custom check-in/check-out times on a booking (§7.3); these never affect availability or capacity. |
 | **Same-day changeover** | Allowed. A booking ending Monday 8am and another starting Monday 11am do not overlap. |
 | **Blocked period** | A staff-defined date range (Christmas/New Year, Easter, long weekends, …) that customers cannot book online. Any online stay that overlaps it shows a "please call or email us" message. Defined by inclusive `FirstNight` and `LastNight`. |
 | **Unavailability** | A staff-defined range when a specific boat cannot be hired (maintenance, etc.). Defined by inclusive `FirstNight` and `LastNight`. |
@@ -61,7 +61,7 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 Example: Midweek Mon 28/09 → Fri 02/10 does **not** overlap a long weekend with FirstNight Fri 02/10.
 Example: Midweek Mon 17/12 → Fri 21/12 **does** overlap Christmas with FirstNight 20/12.
 
-All dates are **Australia/Sydney local dates**. "Today" always means today in Australia/Sydney. Wherever a time is shown with a time zone, the label is **AEST or AEDT, whichever applies on that date** in Australia/Sydney.
+All dates are **Australia/Sydney local dates**. "Today" always means today in Australia/Sydney. Wherever a time is shown with a time zone, the label is **`AEST/NSW` or `AEDT/NSW`, whichever applies on that date** in Australia/Sydney.
 
 **Display format.** Every date the system writes itself (UI text, tables, emails) is Australian `dd/MM/yyyy` — never American month-first. Times are shown as `11am` / `11:30am`, and timestamps as `dd/MM/yyyy h:mma`. Native `<input type="date">` controls are kept and follow the browser's locale. APIs keep ISO `yyyy-MM-dd`, which is never displayed.
 
@@ -94,7 +94,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 15. A booking that overlaps an Active or PendingPayment booking, or an unavailability, is **never** allowed, for staff or customers. Stand-by bookings are the exception: they ignore other stand-bys and are superseded rather than blocked.
 16. Frontend: TypeScript + Vite, **no UI framework**, separate HTML/CSS/TS files. Hosted on Cloudflare Pages.
 17. Minimum lead time for online bookings is **30 days** (Settings). The latest date bookable online is the **"Bookings open until"** date (Settings), which staff move forward each year after entering the next year's blocked periods and prices. There is no rolling window.
-18. The Customers admin page is **read-only** in v1, apart from opening and re-booking bookings from it.
+18. The Customers admin page is **read-only** in v1, apart from opening bookings from it.
 19. Guests are split into **adults (≥ 1)** and **children (under 12)**. Online, adults + children must not exceed the boat's max guests. The rooming warning compares adults + children with the boat's adult beds + kids beds.
 20. **Add-on lines have no status.** A line on a booking is accepted. Staff decline an add-on by deleting the line.
 21. Add-ons may have a **capacity shared across all boats**, counted on the busiest night of the stay. Online it is a hard limit, checked without a lock. Staff only get a warning.
@@ -468,7 +468,7 @@ Numbers 3 (add-on confirmed/declined) and 9 (cancellation) are **deliberately no
 - **Templates:**
   - Editable in Settings: subject + HTML body. Defaults are seeded at setup with sensible Australian-English wording.
   - Placeholders: `{{CustomerName}} {{CustomerEmail}} {{CustomerPhone}} {{BookingReference}} {{BoatName}} {{CheckInDate}} {{CheckOutDate}} {{CheckInTime}} {{CheckOutTime}} {{NumberOfGuests}} {{NumberOfAdults}} {{NumberOfChildren}} {{HirePrice}} {{TotalPrice}} {{AmountPaid}} {{AmountOwing}} {{AmountDue}} {{DueDate}} {{PaymentLink}} {{SecurityBond}} {{RequestedAddons}} {{PaymentSchedule}} {{HireTermsUrl}} {{ContactPhone}} {{ContactEmail}} {{LastStepReached}}`. Placeholders that do not apply to a message (e.g. booking fields in #10) render empty.
-  - `{{CheckInTime}}` shows the standard window "11am – 2pm" and `{{CheckOutTime}}` shows "8am", each with the AEST/AEDT label for that date. If staff changed a booking's time from its default, the custom time is shown instead.
+  - `{{CheckInTime}}` shows the standard window "11am – 2pm" and `{{CheckOutTime}}` shows "8am", each with the AEST/NSW or AEDT/NSW label for that date. If staff changed a booking's time from its default, the custom time is shown instead.
   - `{{RequestedAddons}}` lists lines in the admin-defined add-on order.
   - Values are HTML-encoded. Dates are `dd/MM/yyyy`. Money is `$1,234.00`.
 - **Payment link:** `https://book.bergerhouseboats.com.au/pay/?token=<token>`. The token is 32 random bytes, base64url. Only its SHA-256 hash is stored. It is generated with the booking and is stable for the booking's life.
@@ -536,7 +536,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
    - Inactive boat → everything greyed out, with an info message at the top: "This boat is currently unavailable for online booking. Please contact us on {phone} / {email}."
 2. **Dates:**
    - Radio buttons: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, **Week (Mon–Mon or Fri–Fri)**.
-   - A classic month calendar with previous/next navigation and a legend. It shows **"Check-in 11am – 2pm · Check-out by 8am"** with the time zone label (AEST or AEDT) for the selected dates, or for the visible month when nothing is selected.
+   - A classic month calendar with previous/next navigation and a legend. Above it, show **"Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)"**, with the time zone label (§3) for the selected dates, or for the visible month when nothing is selected. When the check-in and check-out dates fall in different zones (the stay crosses a daylight-saving change), each part carries its own label: "Check-in 11am – 2pm (AEST/NSW) · Check-out from 8am (AEDT/NSW)".
    - Availability is fetched for the visible months.
    - **Clickable days per mode:**
      - Mid-week: Mon–Fri clickable; Sat and Sun disabled.
@@ -547,6 +547,8 @@ The app is a single page with steps, in this order: **Dates → Your details →
      - Weekend: the Fri→Mon containing it. Clicking Mon selects the weekend ending that day.
      - Week: Mon→next Mon or Fri→next Fri, starting on the clicked day.
    - The whole selected period is highlighted. The start shows a check-in marker and the end a check-out marker. **Every day inside the selection uses the active selection colour with normal (not grey) day numbers, even days that are not clickable in the current mode** (e.g. Tue–Thu inside a Week selection).
+   - The selection colour is a darker brand tint than the general light tint, so the selected period stands out clearly against the disabled and non-selectable days around it. The difference must be obvious at a glance, not a subtle shade.
+   - Below the calendar, a line states the selection without repeating the times, e.g. **"Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026."** (weekday + `dd/MM/yyyy`). The same text is announced in the ARIA live region.
    - **Greying is per period, not per day:** a day is disabled in a mode when the period it maps to is unavailable or invalid. For example, a Monday on which a weekend booking checks out is still clickable in Mid-week mode.
    - A period is unavailable if:
      - it overlaps `unavailable` ranges;
@@ -569,7 +571,7 @@ The app is a single page with steps, in this order: **Dates → Your details →
    - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates **every time the Add-ons step is shown** (never cache it: going back to change the dates, or returning from the Summary, must show current figures). Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"; "{X} available for your dates" when no unit label is set). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
    - Notice: "Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods."
 6. **Summary:**
-   - Server quote showing boat, dates, check-in window and check-out time, adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
+   - Server quote showing boat, dates, the same check-in/check-out line as the Dates step (e.g. "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)"), adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
    - Terms checkbox: "I accept the [Hire Terms and Procedures]" (link opens in a new tab).
    - Button: **Pay ${amount}**, enabled only once the terms are accepted.
 7. **Payment:** `POST /api/bookings` → mount Stripe Embedded Checkout.
@@ -586,12 +588,19 @@ Accessibility: keyboard-operable calendar (arrow keys, Enter), visible focus, AR
 Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed by max guests (largest first), then name.
 
 ### 12.1 Bookings
-- **Full-screen timeline:** one row per boat (sticky boat-name column), one column per day of the month, horizontal scroll, Prev/Next month and Today buttons, weekend columns shaded.
+- **Full-screen timeline:** one row per boat (sticky boat-name column), one column per day, Prev/Next and Today buttons, weekend columns shaded.
+- **Week | Month toggle** (a segmented control next to Today):
+  - **Month view:** one column per day of the month, horizontal scroll. Prev/Next move one month; Today goes to the current month. Title e.g. "October 2026".
+  - **Week view:** 7 columns, **Mon → Sun**, stretched to fill the width (no horizontal scroll). Prev/Next move one week; Today goes to the week containing today. Title e.g. "Mon 19/10/2026 – Sun 25/10/2026".
+  - Switching Month → Week shows the week containing today if today is in the displayed month, otherwise the week containing the 1st of that month. Switching Week → Month shows the month containing the displayed week's Monday.
+  - Month is the default. The last chosen view is remembered per browser (`localStorage`).
+  - Everything else (boat rows, blocked-period band, weekend shading, Show inactive, clicking an empty cell, search) works the same in both views.
 - **Bars:**
-  - Bookings start at the right half of the check-in cell and end at the left half of the check-out cell, so changeovers are visible.
+  - Bars are positioned by time of day: each day cell spans 24 hours, and a booking starts at its `CheckInTime` on the check-in day and ends at its `CheckOutTime` on the check-out day, linearly within the cell (e.g. 11am starts ≈46% into the cell, 8am ends ≈33% into it; a custom 11pm check-out ends close to the next day's border). Custom times are reflected. This applies in both views, so changeovers are visible.
+  - When custom times clash with a same-day changeover, the bars simply overlap, with the later booking drawn on top.
   - Bar label: customer name + reference.
   - Styles: `Active` (solid, tinted by payment status), `PendingPayment` (dashed outline), stand-by (hatched).
-  - Unavailabilities are grey blocks. Blocked periods are a labelled column band across all rows.
+  - Unavailabilities are grey blocks positioned with the standard times, from 11am on `FirstNight` to 8am on the day after `LastNight`, so they line up with booking bars. Blocked periods are a labelled column band across all rows, covering whole days.
   - "Show inactive" toggle reveals Cancelled, Expired and Superseded bookings (faded).
 - **"+ New" button**, and clicking an empty cell, opens the booking dialog (the cell pre-fills boat and start date).
 - Clicking a bar opens the same dialog in edit mode.
@@ -639,12 +648,6 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - A table: name, email, mobile, secondary phone, created date. A client-side text filter.
 - Each customer row has a **dropdown expander** listing all of that customer's bookings (loaded on expand from `GET /api/customers/{id}/bookings`): reference, boat, dates, period type, status and payment status. All statuses are shown, with inactive ones faded, ordered by StartDate, newest first.
   - Clicking a booking opens the **same booking dialog** as clicking its bar on the Bookings timeline.
-  - Each booking has a **"Re-book"** button that opens the new booking dialog pre-filled from that booking:
-    - **Dates:** the same day and month in the first year where the start date is today or later, keeping the same number of nights. Example: 23/10/2021 → 28/10/2021, re-booked on 10/03/2023, becomes 23/10/2023 → 28/10/2023. 29/02 becomes 28/02.
-    - **Period type:** kept if the new dates still fit its shape (Midweek, Weekend, Week; LongWeekend is always kept), otherwise set to `Custom`. Staff adjust the dates by hand if needed.
-    - **Pre-filled:** boat, customer (email, name, phone, secondary phone), adults and children, check-in/check-out times, and add-on lines.
-    - **Prices:** the hire price is recalculated from current rates when the period type has rates (Midweek, Weekend, Week, LongWeekend). For `Custom`, it is copied from the original booking. Add-on unit prices come from current prices where they apply, otherwise from the original booking.
-    - **Not copied:** comments, stand-by, payments, status.
 - Otherwise the page is read-only. Contact details are updated from the booking dialog.
 
 ### 12.4 Settings
@@ -751,7 +754,6 @@ Sections:
   - Add-on capacity: busiest-night calculation including the four worked examples in §7.5; stand-by, Cancelled, Expired, Superseded and expired holds don't count; excluding a booking being edited.
   - Boat activation invariant.
   - Customer email normalisation; phone number E.164 normalisation.
-  - Re-book date mapping (next occurrence, 29/02, period type kept vs switched to Custom).
   - Booking draft abandonment rules.
 - **Application tests:**
   - Online vs internal validation strategies (including capacity hard limit online vs warning for staff).
@@ -766,7 +768,13 @@ Sections:
   - Optimistic concurrency 409.
   - Customer email uniqueness under concurrency.
   - Add-on capacity queries across boats.
-- **Frontend:** unit tests (Vitest) for the calendar period mapping, per-period greying logic, highlighting of non-clickable days inside a selection, the AEST/AEDT label, children dropdown clamping, and the capacity "remaining" display and hiding.
+- **Frontend:** unit tests (Vitest) for:
+  - the calendar period mapping, per-period greying logic, and highlighting of non-clickable days inside a selection;
+  - the check-in/check-out line, including the AEST/NSW and AEDT/NSW labels and the split label for a stay that crosses a daylight-saving change;
+  - the "Selected: …" text (dates only, no times);
+  - children dropdown clamping, and the capacity "remaining" display and hiding;
+  - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
+  - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning.
 
 ## 16. Deliverables
 
