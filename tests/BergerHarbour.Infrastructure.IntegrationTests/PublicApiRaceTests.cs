@@ -32,7 +32,7 @@ public class PublicApiRaceTests : IClassFixture<EmulatorFixture>
 
     private WebApplicationFactory<Program> Factory() => new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
     {
-        b.UseEnvironment("Development");
+        b.UseEnvironment(HostEnvironmentExtensions.Local);
         b.UseSetting("FIRESTORE_PROJECT_ID", _fx.ProjectId);
         b.UseSetting("EDGE_PROXY_SECRET", "it-secret");
         b.UseSetting("EMAIL_MODE", "File");

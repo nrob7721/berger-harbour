@@ -28,12 +28,19 @@ namespace BergerHarbour.Infrastructure;
 public static class DependencyInjection
 {
     /// <summary>
-    /// Registers persistence, external services and options. Secrets come from flat environment variables
-    /// (injected from Secret Manager on Cloud Run); timing comes from Notifications__* and Booking__*.
+    /// Registers persistence, external services and options. Non-secret settings come from appsettings.{Environment}.json,
+    /// secrets from flat environment variables (injected from Secret Manager on Cloud Run); timing comes from
+    /// Notifications__* and Booking__*.
     /// </summary>
     public static IServiceCollection AddBergerHarbourInfrastructure(this IServiceCollection services,
-        IConfiguration config, bool isDevelopment)
+        IConfiguration config, bool isLocal)
     {
+        if (!isLocal && (!string.IsNullOrEmpty(config["DEV_ADMIN_EMAIL"]) || config.GetValue("DEV_JOBS_BYPASS", false)))
+        {
+            // The bypasses are ignored outside Local anyway; refusing to start makes the misconfiguration visible.
+            throw new InvalidOperationException("DEV_ADMIN_EMAIL and DEV_JOBS_BYPASS are only allowed in the Local environment.");
+        }
+
         services.AddBergerHarbourApplication();
 
         var notifications = services.AddOptions<NotificationOptions>().Bind(config.GetSection(NotificationOptions.Section))
@@ -42,7 +49,7 @@ public static class DependencyInjection
             .Validate(o => !o.Validate().Any(), "Invalid Booking__* settings");
         var paymentLinks = services.AddOptions<PaymentLinkOptions>().Configure(o =>
         {
-            o.PublicBookingBaseUrl = config["PUBLIC_BOOKING_BASE_URL"] ?? o.PublicBookingBaseUrl;
+            o.PublicBookingBaseUrl = config["PUBLIC_BOOKING_BASE_URL"] ?? string.Empty;
             o.Secret = config["PAYMENT_LINK_SECRET"] ?? string.Empty;
         }).Validate(o => !o.Validate().Any(), "PUBLIC_BOOKING_BASE_URL / PAYMENT_LINK_SECRET are invalid");
         if (!IsOpenApiGeneration)
@@ -62,6 +69,7 @@ public static class DependencyInjection
         {
             o.SenderEmail = config["EMAIL_SENDER"] ?? o.SenderEmail;
             o.SenderName = config["EMAIL_SENDER_NAME"] ?? o.SenderName;
+            o.SubjectPrefix = config["EMAIL_SUBJECT_PREFIX"] ?? string.Empty;
             o.Password = config["SMTP_PASSWORD"] ?? string.Empty;
         }).Validate(o => !o.Validate().Any(), "EMAIL_SENDER / SMTP_PASSWORD are invalid");
         services.Configure<CloudflareAccessOptions>(o =>
@@ -69,13 +77,13 @@ public static class DependencyInjection
             o.TeamDomain = config["CF_ACCESS_TEAM_DOMAIN"] ?? string.Empty;
             o.Audience = config["CF_ACCESS_AUD"] ?? string.Empty;
             o.AllowedEmails = config["ADMIN_ALLOWED_EMAILS"] ?? string.Empty;
-            o.DevBypassEmail = isDevelopment ? config["DEV_ADMIN_EMAIL"] : null;
+            o.DevBypassEmail = isLocal ? config["DEV_ADMIN_EMAIL"] : null;
         });
         services.Configure<SchedulerOidcOptions>(o =>
         {
             o.ServiceAccountEmail = config["SCHEDULER_SERVICE_ACCOUNT_EMAIL"] ?? string.Empty;
             o.Audience = config["SCHEDULER_AUDIENCE"] ?? string.Empty;
-            o.DevBypass = isDevelopment && config.GetValue("DEV_JOBS_BYPASS", false);
+            o.DevBypass = isLocal && config.GetValue("DEV_JOBS_BYPASS", false);
         });
 
         services.AddSingleton<IClock, SystemClock>();
@@ -103,7 +111,7 @@ public static class DependencyInjection
             sp.GetRequiredService<ILogger<CloudflareAccessValidator>>()));
         services.AddSingleton<SchedulerOidcValidator>();
 
-        var emailMode = config["EMAIL_MODE"] ?? (isDevelopment ? "File" : "Smtp");
+        var emailMode = config["EMAIL_MODE"] ?? (isLocal ? "File" : "Smtp");
         if (string.Equals(emailMode, "File", StringComparison.OrdinalIgnoreCase))
         {
             var folder = config["EMAIL_OUTPUT_DIR"] ?? Path.Combine(Path.GetTempPath(), "berger-harbour-emails");

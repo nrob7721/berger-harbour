@@ -1,0 +1,20 @@
+name: Release (production)
+
+# Publishing a GitHub Release (tag vX.Y.Z on a commit already deployed to dev) promotes that commit's images to
+# production. The `production` environment's required reviewers approve the deploy. Rolling back = re-run an older
+# release's workflow.
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  production:
+    if: ${{ !github.event.release.prerelease }}
+    permissions:
+      contents: read
+      id-token: write # granted to the called workflow's deploy job
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: production
+    secrets: inherit

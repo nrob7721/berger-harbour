@@ -4,8 +4,8 @@ using BergerHarbour.Infrastructure.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddBergerHarbourWeb(maxRequestBodyBytes: 64 * 1024, defaultCorsOrigin: "https://bookings.example.com.au");
-builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsDevelopment());
+builder.AddBergerHarbourWeb(maxRequestBodyBytes: 64 * 1024);
+builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsLocal());
 
 // Customer bookings use the online rules (period shape, lead time, open-until, blocked periods, …).
 builder.Services.AddSingleton<IBookingRequestValidationStrategy, OnlineBookingValidationStrategy>();

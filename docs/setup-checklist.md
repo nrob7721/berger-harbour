@@ -15,12 +15,39 @@ You will create these things:
 | Payments | Stripe | |
 | Email | Gmail SMTP (Google Workspace) | sender `info@bergerhouseboats.com.au` |
 
+### Two environments: dev and prod
+
+There are two complete copies of the system. **Dev** is where every change lands first (each merge to `main` deploys
+it automatically) and where you test with fake bookings and Stripe test cards. **Prod** is what customers use; it only
+changes when a GitHub Release is published and approved.
+
+Work through this checklist **twice**: first for dev, then for prod. Steps marked **(prod only)** or **(dev only)** are
+skipped the other time. Wherever a step names a prod value, use the dev value from this table when setting up dev:
+
+| Value | Dev | Prod |
+|---|---|---|
+| GCP project | `berger-harbour-dev` | `berger-harbour-prod` |
+| GitHub Environment | `dev` | `production` |
+| `ASPNETCORE_ENVIRONMENT` | `Development` | `Production` |
+| Booking app Pages project / address | `berger-booking-dev` / `https://berger-booking-dev.pages.dev` | `berger-booking` / `https://bookings.example.com.au` |
+| Admin app Pages project / address | `berger-admin-dev` / `https://berger-admin-dev.pages.dev` | `berger-admin` / `https://berger-admin.pages.dev` |
+| Stripe | a separate sandbox named "dev" (test keys only) | the account's test mode, then live mode at go-live |
+| Turnstile widget | "Booking (dev)" for `berger-booking-dev.pages.dev` | "Booking" for the booking domain |
+| Emails | from `info@bergerhouseboats.com.au` as "Berger Houseboats (DEV)", subjects start with `[DEV] ` | from `info@bergerhouseboats.com.au` as "Berger Houseboats" |
+
+The addresses, sender and subject prefix are already set in the repository (`appsettings.Development.json` and
+`appsettings.Production.json` in each API project); everything else is entered as you go. Secrets are **never** shared
+between the two projects: generate new random values for dev.
+
 Keep a private password-manager note called **"Booking system secrets"**. Several steps ask you to save a value
 there; later steps paste them back in. Never email or chat these values.
 
 ---
 
-## 1. Booking domain on Cloudflare
+## 1. Booking domain on Cloudflare (prod only)
+
+Dev has no domain: its apps live at their `pages.dev` addresses. For dev, only create the Cloudflare account if it does
+not exist yet.
 
 The existing domain `bergerhouseboats.com.au` (WordPress and Google Workspace email) **stays where it is**; its DNS
 is not moved and email is not touched. Instead, buy a separate domain for the booking app and put only that on
@@ -39,15 +66,17 @@ Cloudflare Access, so staff never need a nice URL.
 - [ ] Wait until Cloudflare says the site is **Active** (minutes to 24 hours).
 - [ ] **SSL/TLS → Overview**: choose **Full (strict)** (Pages serves valid certificates).
 - [ ] Note the real booking domain: it replaces `bookings.example.com.au` in the steps below, in
-      `wordpress/book-now-block.html` (`APP_ORIGIN`), in `src/BergerHarbour.PublicApi/Program.cs`,
-      `src/BergerHarbour.Application/Common/Options.cs` and in `.github/workflows/deploy.yml` (`PUBLIC_BOOKING_BASE_URL`
-      and `CORS_ALLOWED_ORIGIN`).
+      `wordpress/book-now-block.html` (`APP_ORIGIN`) and in `appsettings.Production.json` of both
+      `src/BergerHarbour.PublicApi` and `src/BergerHarbour.AdminApi` (`PUBLIC_BOOKING_BASE_URL`, and
+      `CORS_ALLOWED_ORIGIN` for the public API).
 
 ## 2. Google Cloud (GCP)
 
-Use one production project. Choose **Sydney (`australia-southeast1`)** every time a region is asked.
+Use one project per environment (`berger-harbour-dev`, then `berger-harbour-prod`). Choose **Sydney
+(`australia-southeast1`)** every time a region is asked.
 
-- [ ] Create a Google Cloud project, e.g. `berger-harbour-prod`, and link a billing account. Note the **Project ID**.
+- [ ] Create a Google Cloud project, e.g. `berger-harbour-prod`, and link a billing account. Note the **Project ID**
+      and **Project number**.
 - [ ] Set a **budget alert** (Billing → Budgets) at e.g. $20/month, emailing the owner.
 - [ ] Enable these APIs (APIs & Services → Enable APIs): Cloud Run, Firestore, Secret Manager, Cloud Scheduler,
       Artifact Registry, IAM Credentials, Cloud Logging, Cloud Monitoring.
@@ -55,7 +84,14 @@ Use one production project. Choose **Sydney (`australia-southeast1`)** every tim
 - [ ] **Firestore indexes**: ask your developer to run
       `firebase deploy --only firestore:indexes --project <PROJECT_ID>` from the repository (uses
       `firestore.indexes.json`).
-- [ ] **Artifact Registry**: create a Docker repository named `berger-harbour` in `australia-southeast1`.
+- [ ] **(prod only) Artifact Registry**: create a Docker repository named `berger-harbour` in `australia-southeast1`.
+      There is only one, in the prod project: dev builds each commit's images into it and prod deploys the same images.
+      If you set up dev first, create the prod project and this repository before dev's first deploy.
+- [ ] **(dev only) Let dev use the shared repository.** In the **prod** project → Artifact Registry → `berger-harbour`
+      → Permissions, grant:
+  - `github-deploy@berger-harbour-dev.iam.gserviceaccount.com`: **Artifact Registry Writer** (it pushes the images)
+  - `service-<DEV_PROJECT_NUMBER>@serverless-robot-prod.iam.gserviceaccount.com` (dev's Cloud Run service agent):
+    **Artifact Registry Reader** (it pulls them)
 
 ### 2.1 Service accounts (least privilege)
 
@@ -66,7 +102,7 @@ Create these in IAM & Admin → Service Accounts:
 | `public-api@…` | Cloud Datastore User; Secret Manager Secret Accessor (on its secrets only) |
 | `admin-api@…` | Cloud Datastore User; Secret Manager Secret Accessor (on its secrets only) |
 | `scheduler@…` | Cloud Run Invoker (on the `admin-api` service, after it exists) |
-| `github-deploy@…` | Artifact Registry Writer; Cloud Run Admin; Service Account User (on `public-api@` and `admin-api@`) |
+| `github-deploy@…` | Cloud Run Admin; Service Account User (on `public-api@` and `admin-api@`). Prod only: Artifact Registry Reader (to check the release's images exist). Dev's push rights on the shared repository are granted above. |
 
 ### 2.2 Secrets (Secret Manager)
 
@@ -90,25 +126,41 @@ Grant `public-api@` and `admin-api@` **Secret Manager Secret Accessor** on the s
 
 ### 2.3 Workload Identity Federation for GitHub (no JSON keys)
 
-Ask your developer to run (replace `OWNER/REPO` and `PROJECT_ID`):
+Each project trusts only GitHub jobs running in its own GitHub Environment, so a dev deploy can never obtain prod
+credentials. Ask your developer to run (replace `OWNER/REPO`, `PROJECT_ID`, `PROJECT_NUMBER`, and `ENVIRONMENT` with
+`dev` or `production`):
 
 ```bash
 gcloud iam workload-identity-pools create github --project=PROJECT_ID --location=global
 gcloud iam workload-identity-pools providers create-oidc github --project=PROJECT_ID --location=global \
   --workload-identity-pool=github --issuer-uri=https://token.actions.githubusercontent.com \
-  --attribute-mapping=google.subject=assertion.sub,attribute.repository=assertion.repository \
-  --attribute-condition="assertion.repository=='OWNER/REPO'"
+  --attribute-mapping=google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.environment=assertion.environment \
+  --attribute-condition="assertion.repository=='OWNER/REPO' && assertion.environment=='ENVIRONMENT'"
 gcloud iam service-accounts add-iam-policy-binding github-deploy@PROJECT_ID.iam.gserviceaccount.com \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository/OWNER/REPO"
 ```
 
-- [ ] In GitHub → repository → Settings → Secrets and variables → Actions → **Variables**, add:
+- [ ] In GitHub → repository → Settings → **Environments**, create the environment (`dev` or `production`):
+  - `dev`: Deployment branches and tags → **Selected branches and tags** → `main`.
+  - `production`: tick **Required reviewers** and add whoever approves releases; Deployment branches and tags →
+    **Selected branches and tags** → add the tag rule `v*`.
+- [ ] Once (the first time only), under Settings → Secrets and variables → Actions → **Repository variables**, add:
 
 | Variable | Value |
 |---|---|
-| `GCP_PROJECT_ID` | the project ID |
+| `GCP_REGISTRY_PROJECT_ID` | the **prod** project ID (where the shared Artifact Registry lives) |
 | `GCP_ARTIFACT_REPOSITORY` | `berger-harbour` |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+
+- [ ] Also once, under **Repository secrets**, add `CLOUDFLARE_API_TOKEN` (a Cloudflare API token with *Cloudflare
+      Pages: Edit*).
+- [ ] In the environment (Settings → Environments → `dev`/`production` → **Environment variables**), add:
+
+| Variable | Value |
+|---|---|
+| `ASPNETCORE_ENVIRONMENT` | `Development` (dev) or `Production` (prod) |
+| `GCP_PROJECT_ID` | the project ID |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github` |
 | `GCP_DEPLOY_SERVICE_ACCOUNT` | `github-deploy@PROJECT_ID.iam.gserviceaccount.com` |
 | `PUBLIC_API_SERVICE_ACCOUNT` | `public-api@PROJECT_ID.iam.gserviceaccount.com` |
@@ -117,19 +169,21 @@ gcloud iam service-accounts add-iam-policy-binding github-deploy@PROJECT_ID.iam.
 | `ADMIN_API_URL` | the admin-api Cloud Run URL (after the first deploy, see 2.4) |
 | `CF_ACCESS_TEAM_DOMAIN` | e.g. `bergerhouseboats.cloudflareaccess.com` (section 5) |
 | `CF_ACCESS_AUD` | the Access application AUD tag (section 5) |
-| `STRIPE_PUBLISHABLE_KEY` | `pk_test_…` / later `pk_live_…` |
-| `TURNSTILE_SITE_KEY` | Turnstile site key |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
-
-- [ ] Under **Secrets** add `CLOUDFLARE_API_TOKEN` (a Cloudflare API token with *Cloudflare Pages: Edit*).
+| `STRIPE_PUBLISHABLE_KEY` | `pk_test_…` (dev: the dev sandbox's key; prod: later `pk_live_…`) |
+| `TURNSTILE_SITE_KEY` | Turnstile site key of this environment's widget |
+| `PAGES_BOOKING_PROJECT` | `berger-booking-dev` (dev) or `berger-booking` (prod) |
+| `PAGES_ADMIN_PROJECT` | `berger-admin-dev` (dev) or `berger-admin` (prod) |
 
 ### 2.4 Cloud Run (first deploy)
 
-- [ ] Merge to `main` (or run the **Deploy** workflow manually). It builds both containers, pushes them to Artifact
-      Registry and deploys `public-api` (max 3 instances) and `admin-api` (max 2), both with min instances 0 and
-      ingress "all".
-- [ ] Copy each service URL (Cloud Run → service → URL, like `https://admin-api-xxxx-ts.a.run.app`). Set the GitHub
-      variable `ADMIN_API_URL` to the admin-api URL and re-run the Deploy workflow (it becomes the OIDC audience).
+- [ ] **Dev:** merge to `main` (or run the **Deploy (dev)** workflow manually). It builds both containers, pushes them
+      to the shared Artifact Registry and deploys `public-api` (max 3 instances) and `admin-api` (max 2), both with min
+      instances 0 and ingress "all".
+- [ ] **Prod:** GitHub → Releases → **Draft a new release** → new tag `vX.Y.Z` on a commit that dev has already deployed
+      → **Publish release**. The **Release (production)** workflow waits for a required reviewer to approve, then deploys
+      that commit's images (it refuses if dev never built them). This is also how every later change reaches customers.
+- [ ] Copy each service URL (Cloud Run → service → URL, like `https://admin-api-xxxx-ts.a.run.app`). Set the
+      environment variable `ADMIN_API_URL` to the admin-api URL and re-run the deploy (it becomes the OIDC audience).
 - [ ] Give `scheduler@` the **Cloud Run Invoker** role on the `admin-api` service.
 
 The services are reachable on the internet, but every route requires the edge proxy secret, a Cloudflare Access
@@ -161,9 +215,15 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 
 ## 3. Stripe
 
+Dev and prod must not share a Stripe test mode: every test webhook endpoint receives every test payment, so each
+environment would log the other's payments as "paid for unknown booking". Dev therefore uses its own **sandbox**.
+
+- [ ] **(dev only)** In the Stripe dashboard, open the account menu → **Sandboxes** → create a sandbox named "dev".
+      Do every Stripe step below inside that sandbox, skip the steps about verification, payment method domains and
+      go-live, and never use live keys for dev.
 - [ ] Create or sign in to the Stripe account; complete business verification (ABN, bank account).
 - [ ] Stay in **Test mode** for now. Developers → API keys: copy the **publishable key** (`pk_test_…`) into the
-      GitHub variable `STRIPE_PUBLISHABLE_KEY` and the **secret key** (`sk_test_…`) into the `stripe-secret-key`
+      GitHub environment variable `STRIPE_PUBLISHABLE_KEY` and the **secret key** (`sk_test_…`) into the `stripe-secret-key`
       secret.
 - [ ] Developers → Webhooks (Workbench → Event destinations) → **Add endpoint**:
   - URL: `<public-api URL>/api/stripe/webhook` (the Cloud Run URL directly, not the booking domain)
@@ -171,7 +231,7 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
   - Copy the signing secret (`whsec_…`) into the `stripe-webhook-secret` secret.
 - [ ] Settings → Payment methods: keep **Cards** on; turn on **Apple Pay** and **Google Pay**. Leave delayed methods
       (bank debits, BNPL) off — the system only accepts card and wallet payments.
-- [ ] Settings → Payment method domains: add the booking domain (`bookings.example.com.au`) and
+- [ ] **(prod only)** Settings → Payment method domains: add the booking domain (`bookings.example.com.au`) and
       `bergerhouseboats.com.au` (the booking app runs inside the WordPress page on desktop). Follow Stripe's
       verification steps.
 - [ ] Settings → Branding: logo and colours (used by the embedded checkout and receipts).
@@ -181,7 +241,9 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 
 ## 4. Gmail SMTP (email)
 
-The system sends every email through `smtp.gmail.com` as `info@bergerhouseboats.com.au`, using an app password.
+The system sends every email through `smtp.gmail.com` as `info@bergerhouseboats.com.au`, using an app password. Dev
+sends from the same mailbox (as "Berger Houseboats (DEV)", with `[DEV] ` in front of every subject), so for dev only
+copy the existing app password into dev's `gmail-app-password` secret; the steps below are done once.
 Replies from customers arrive in the same mailbox, and every email sent is also kept in its **Sent** folder. Bounces
 (undeliverable emails) come back to its inbox as well; the system does not track delivery or opens.
 
@@ -206,10 +268,12 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 ### 5.1 Pages projects
 
 - [ ] Workers & Pages → Create → Pages → **Direct upload** project `berger-booking` (the deploy workflow uploads it).
-      Custom domains → add the booking domain (`bookings.example.com.au`).
-- [ ] Same for `berger-admin`, but **do not add a custom domain**: staff use `https://berger-admin.pages.dev`. If that
-      name is taken, choose another project name and use it in place of `berger-admin.pages.dev` everywhere (including
-      `.github/workflows/deploy.yml` and `src/BergerHarbour.AdminApi/Program.cs`).
+      Custom domains → add the booking domain (`bookings.example.com.au`). For dev, the project is
+      `berger-booking-dev` with **no** custom domain.
+- [ ] Same for `berger-admin` (dev: `berger-admin-dev`), but **do not add a custom domain**: staff use
+      `https://berger-admin.pages.dev`. If a name is taken, choose another project name and use it everywhere in
+      its place (including the `PAGES_*_PROJECT` environment variables and `CORS_ALLOWED_ORIGIN` /
+      `PUBLIC_BOOKING_BASE_URL` in the matching `appsettings.{Development,Production}.json`).
 - [ ] In each project → Settings → Variables and secrets (Production), add:
   - `API_ORIGIN` = the matching Cloud Run URL (`public-api` for booking, `admin-api` for admin)
   - `EDGE_PROXY_SECRET` (type *Secret*) = the value of the matching GCP secret: `edge-proxy-secret-public` for
@@ -228,8 +292,9 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 - [ ] Zero Trust → **Integrations → Identity providers → Add new identity provider → Google Workspace** (follow the
       wizard; it creates a Google OAuth client). In older dashboards this was Settings → Authentication → Login
       methods → Add new. Note the **team domain** (`<team>.cloudflareaccess.com`, shown under Settings → Custom
-      pages or in the Zero Trust URL/overview) → GitHub variable `CF_ACCESS_TEAM_DOMAIN`.
-- [ ] Protect the admin app's `pages.dev` address. In the `berger-admin` Pages project → Settings → General →
+      pages or in the Zero Trust URL/overview) → GitHub environment variable `CF_ACCESS_TEAM_DOMAIN`.
+- [ ] Protect the admin app's `pages.dev` address (dev: a separate application for `berger-admin-dev.pages.dev`,
+      done the same way in the `berger-admin-dev` project). In the `berger-admin` Pages project → Settings → General →
       **Enable access policy**. Cloudflare creates an Access application with a preview wildcard
       (`*.berger-admin.pages.dev`). In Zero Trust → Access → Applications, edit it so the domain is exactly
       `berger-admin.pages.dev` (remove the wildcard from the subdomain field), set the identity provider to Google
@@ -237,16 +302,20 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
       also creating a separate self-hosted Access application for it.
 - [ ] Replace the default policy with "Staff": **Include** → Emails → the staff account(s); **Require** → Country → Australia.
       (Restricting to NSW only is not possible in Access and not required.)
-- [ ] Copy the application's **Application Audience (AUD) tag** → GitHub variable `CF_ACCESS_AUD`.
+- [ ] Copy the application's **Application Audience (AUD) tag** → GitHub environment variable `CF_ACCESS_AUD`.
 - [ ] Put the same staff email(s) into the `admin-allowed-emails` secret (the API checks them again).
-- [ ] Re-run the Deploy workflow so admin-api picks up the Access settings.
+- [ ] Re-run the latest deploy (dev: **Deploy (dev)**; prod: the latest release's **Release (production)**) so
+      admin-api picks up the Access settings.
 
 ### 5.3 Turnstile
 
-- [ ] Turnstile → Add widget: name "Booking", hostname `bookings.example.com.au`, mode **Managed**.
-- [ ] Site key → GitHub variable `TURNSTILE_SITE_KEY`; secret key → `turnstile-secret` GCP secret.
+- [ ] Turnstile → Add widget: name "Booking", hostname `bookings.example.com.au`, mode **Managed**. For dev, a separate
+      widget "Booking (dev)" with hostname `berger-booking-dev.pages.dev`.
+- [ ] Site key → GitHub environment variable `TURNSTILE_SITE_KEY`; secret key → `turnstile-secret` GCP secret.
 
-### 5.4 Rate limiting
+### 5.4 Rate limiting (prod only)
+
+Dev has no rate limiting: `pages.dev` addresses are not in your Cloudflare zone. This is accepted.
 
 - [ ] Security → WAF → Rate limiting rules → Create: *if* hostname equals `bookings.example.com.au` *and* URI
       path starts with `/api/`, *then* **Block** for 1 minute when a client makes more than **60 requests per
@@ -254,13 +323,15 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 
 ## 6. Seed and complete the data
 
-- [ ] Ask your developer to run the seed once against production (safe to repeat; it never overwrites edits):
+- [ ] Ask your developer to run the seed once against the environment (safe to repeat; it never overwrites edits).
+      `--no-launch-profile` matters: the launch profile selects `Local`, which points at the emulator.
       ```bash
-      FIRESTORE_PROJECT_ID=<PROJECT_ID> \
+      ASPNETCORE_ENVIRONMENT=Production FIRESTORE_PROJECT_ID=<PROJECT_ID> \
       SEED_STAFF_ALERT_EMAIL=info@bergerhouseboats.com.au \
       SEED_CONTACT_PHONE="(02) xxxx xxxx" SEED_CONTACT_EMAIL=info@bergerhouseboats.com.au \
-      dotnet run --project src/BergerHarbour.AdminApi -- seed
+      dotnet run --no-launch-profile --project src/BergerHarbour.AdminApi -- seed
       ```
+      (For dev use `ASPNETCORE_ENVIRONMENT=Development` and the dev project ID.)
       (needs `gcloud auth application-default login` with an account that can write Firestore.)
 - [ ] Open `https://berger-admin.pages.dev` and sign in with Google.
 - [ ] **Settings → General**: check the default deposit ($1,000), lead time (30 days), bookings open until, staff
@@ -276,7 +347,9 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
       New Year 2026–27 is pre-filled with the extended payment schedule).
 - [ ] **Settings → Email templates**: review the wording of each template and press **Send test** for each.
 
-## 7. Enter existing future bookings (before go-live)
+For dev, the data only needs to be good enough to test with; the remaining steps of this section are optional.
+
+## 7. Enter existing future bookings (prod only, before go-live)
 
 - [ ] For every **future** booking on paper/Excel, create a staff booking in **Bookings → + New** with the
       customer's email, correct boat, dates, adults and children, and agreed hire price.
@@ -287,6 +360,8 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 - [ ] Past bookings are **not** entered.
 
 ## 8. End-to-end test in Stripe test mode, then go live
+
+Run the tests below on dev first. The go-live steps are prod only.
 
 In test mode (cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` asks for 3-D Secure, any future expiry
 and any CVC):
@@ -303,11 +378,11 @@ and any CVC):
 - [ ] Check Cloud Scheduler's last run succeeded.
 - [ ] **Go live**: in Stripe switch to live mode, create a **new live webhook endpoint** (same URL and events), then
       update the `stripe-secret-key` and `stripe-webhook-secret` secrets with the live values and the GitHub
-      variable `STRIPE_PUBLISHABLE_KEY` with `pk_live_…`. Switch the Turnstile keys if you used test ones. Re-run the
-      Deploy workflow.
+      `production` environment variable `STRIPE_PUBLISHABLE_KEY` with `pk_live_…`. Switch the Turnstile keys if you
+      used test ones. Re-run the latest release's **Release (production)** workflow.
 - [ ] Make one small real booking and refund it in Stripe, then cancel it in the admin app.
 
-## 9. Add the Book Now button to WordPress
+## 9. Add the Book Now button to WordPress (prod only)
 
 - [ ] Open `wordpress/book-now-block.html` from the repository and copy all of it.
 - [ ] For each of the 14 boat pages: edit the page → add a **Custom HTML** block where the button should appear →

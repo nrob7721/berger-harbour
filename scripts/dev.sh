@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 mkdir -p .dev-emails
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
-export ASPNETCORE_ENVIRONMENT=Development
+export ASPNETCORE_ENVIRONMENT=Local
 export EMAIL_OUTPUT_DIR="$ROOT/.dev-emails"
 export STRIPE_SECRET_KEY=
 export STRIPE_WEBHOOK_SECRET=

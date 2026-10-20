@@ -33,7 +33,6 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 - Importing historical bookings.
 - Formal tax invoices. Stripe receipts are enough.
 - Terraform / IaC. Use a documented manual setup checklist.
-- A separate dev/staging environment. There is one prod GCP project; development is local, against emulators.
 - Drag-and-drop on the admin calendar.
 - Concurrency protection for add-on capacity (see §7.5). A true simultaneous race may oversell; this is accepted.
 
@@ -90,7 +89,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 11. Database: **Firestore**. Every Firestore-specific detail, including the per-boat lock document, lives in the Infrastructure layer so the database can be swapped later.
 12. Admin authentication: Cloudflare Access with Google SSO (one Google Workspace account in v1, more later) **and** Country = AU. The admin API also validates the Access JWT. NSW-only geo-restriction is not possible in Access policies and is not required.
 13. No Cloudflare Tunnel, because it is incompatible with Cloud Run scaling to zero. There are two Cloud Run services: `public-api` and `admin-api`.
-    **Domains:** the booking app is public (customers never log in or sign up) on a separate, newly bought domain (placeholder `bookings.example.com.au`) on Cloudflare. The admin app has no custom domain and is served at `berger-admin.pages.dev` behind Access. The existing `bergerhouseboats.com.au` DNS and email stay where they are.
+    **Domains:** the booking app is public (customers never log in or sign up) on a separate, newly bought domain (placeholder `bookings.example.com.au`) on Cloudflare. The admin app has no custom domain and is served at `berger-admin.pages.dev` behind Access. The existing `bergerhouseboats.com.au` DNS and email stay where they are. The deployed dev environment (§14) uses `berger-booking-dev.pages.dev` and `berger-admin-dev.pages.dev`.
 14. Customer email is **mandatory** everywhere, including staff-created bookings. Customers are matched by normalised email. For online bookings, a `Customer` record is created or updated **only when the deposit is paid** (the booking becomes Active). Until then the details live in the booking draft and on the PendingPayment booking.
 15. A booking that overlaps an Active or PendingPayment booking, or an unavailability, is **never** allowed, for staff or customers. Stand-by bookings are the exception: they ignore other stand-bys and are superseded rather than blocked.
 16. Frontend: TypeScript + Vite, **no UI framework**, separate HTML/CSS/TS files. Hosted on Cloudflare Pages.
@@ -127,7 +126,7 @@ External: Stripe (payments), Gmail SMTP (email), Cloudflare Turnstile (bot prote
   - forwards `CF-Connecting-IP`.
 
   This avoids Cloud Run custom domain mapping and lets the frontends call APIs same-origin.
-- **CORS:** both APIs only allow their own frontend origin (`https://bookings.example.com.au` and `https://berger-admin.pages.dev` respectively). There are no wildcard origins and credentials are not allowed cross-origin. Since traffic is proxied same-origin, CORS is defence in depth.
+- **CORS:** both APIs only allow their own frontend origin (`https://bookings.example.com.au` and `https://berger-admin.pages.dev` respectively; `https://berger-booking-dev.pages.dev` and `https://berger-admin-dev.pages.dev` in dev). The origin has no default in code: a service without one refuses to start, so an environment can never fall back to another environment's frontend. There are no wildcard origins and credentials are not allowed cross-origin. Since traffic is proxied same-origin, CORS is defence in depth.
 - **Cold starts:** both services run with `min-instances=0` and are published with ReadyToRun. There is no separate "wake-up" endpoint. The booking app calls `GET /api/boats/{slug}` as soon as it loads, which wakes the service while a skeleton loader is shown.
 
 ## 6. Repository layout
@@ -503,16 +502,16 @@ All offsets are .NET `TimeSpan` strings (`d.hh:mm:ss`), bound with the options p
 | `Booking__AbandonedDraftAfter` | `02:00:00` (inactivity before a draft counts as abandoned; longer than the maximum hold) |
 | `Booking__DraftRetention` | `30.00:00:00` |
 
-### 10.3 Secrets and other config
-Stored in Secret Manager and injected as env vars:
+### 10.3 Environments, secrets and other config
+`ASPNETCORE_ENVIRONMENT` selects the environment: `Local` (a developer machine against emulators), `Development` (the deployed dev project) or `Production`. Non-secret settings that differ per environment live in `appsettings.{Environment}.json`, committed with the code: the booking base URL, the allowed CORS origin, the email sender, sender name and `EMAIL_SUBJECT_PREFIX` (`[DEV] ` in dev, empty in prod). `PUBLIC_BOOKING_BASE_URL` and `CORS_ALLOWED_ORIGIN` have no defaults in code and are required at startup. Infrastructure IDs that only exist once a project is provisioned (Firestore project, Access team domain and AUD, Scheduler service account and audience) are passed as env vars by the deploy. Only `Local` relaxes any security check (§14); the services refuse to start if `DEV_ADMIN_EMAIL` or `DEV_JOBS_BYPASS` is set in any other environment.
+
+Secrets are stored in each project's Secret Manager and injected as env vars:
 - Stripe secret key and webhook signing secret
 - `SMTP_PASSWORD`: the Google app password for the sender mailbox. `EMAIL_SENDER` (`info@bergerhouseboats.com.au`) and `EMAIL_SENDER_NAME` are plain settings. In `Smtp` mode the services refuse to start if the sender or password is missing; `EMAIL_MODE=File` (the development default) writes emails to a folder instead
 - Turnstile secret
 - `EDGE_PROXY_SECRET`
 - `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `ADMIN_ALLOWED_EMAILS` (comma-separated)
 - `SCHEDULER_SERVICE_ACCOUNT_EMAIL`
-- `PUBLIC_BOOKING_BASE_URL`
-- the allowed CORS origin
 
 The frontends need the Stripe publishable key and the Turnstile site key at build time.
 
@@ -707,19 +706,21 @@ Sections:
 
 ## 14. Infrastructure and operations
 
-- **GCP (one prod project):**
+- **Environments:** two GCP projects, **dev** and **prod**, with identical infrastructure and nothing shared except the Artifact Registry. Dev runs with `ASPNETCORE_ENVIRONMENT=Development`, prod with `Production`; both behave identically apart from their `appsettings.{Environment}.json`. Dev uses Stripe test mode, its own Turnstile widget and Access application, and the same Gmail sender as prod with the `[DEV] ` subject prefix and the sender name "Berger Houseboats (DEV)". Dev uses the default timing (§10.2) unless a test needs shorter offsets.
+- **GCP (per project):**
   - Firestore Native (`australia-southeast1`)
   - two Cloud Run services (min 0; max instances 3 for public, 2 for admin), each with its own service account and least privilege
   - Secret Manager
   - Cloud Scheduler job (hourly → admin-api `/api/jobs/process-notifications`, OIDC)
-  - Artifact Registry
+  - a Workload Identity pool and `github-deploy` service account. The prod pool only trusts GitHub jobs running in the `production` environment.
+- **Artifact Registry:** one Docker repository in the prod project. Dev's deploy identity may push to it (and nothing else in prod); dev's Cloud Run pulls from it. Images are tagged with the commit SHA.
 - **Cloud Run ingress:** `all`, because Cloudflare Pages Functions, Stripe and Scheduler must reach it. Protection comes from the proxy secret, Access JWT and OIDC checks in the apps.
 - **Cloudflare:**
   - **`bergerhouseboats.com.au` DNS is not touched.** WordPress and Google Workspace mail stay at `partnerconsole.net`. A separate booking domain (placeholder `bookings.example.com.au`, to be bought) is added to Cloudflare (free plan); it hosts only the booking app. If Google's DKIM, SPF or DMARC records for `bergerhouseboats.com.au` are missing, they are added at the existing DNS host.
-  - Two Pages projects. `berger-booking` has the booking domain as its custom domain. `berger-admin` has **no custom domain** and is served at `https://berger-admin.pages.dev` (project name placeholder).
-  - An Access application covering `berger-admin.pages.dev`, created through the Pages project's "Enable access policy" and edited to cover the production address rather than the preview wildcard. Google Workspace IdP. Policy: include emails in the allow-list, **require** country AU. Customers are never put behind Access.
-  - A Turnstile widget for `bookings.example.com.au`.
-  - A rate limiting rule on `bookings.example.com.au/api/*`.
+  - Two Pages projects per environment. `berger-booking` has the booking domain as its custom domain. `berger-admin` has **no custom domain** and is served at `https://berger-admin.pages.dev` (project name placeholder). Dev uses `berger-booking-dev` and `berger-admin-dev`, served only at their `pages.dev` addresses.
+  - An Access application covering `berger-admin.pages.dev`, created through the Pages project's "Enable access policy" and edited to cover the production address rather than the preview wildcard. Google Workspace IdP. Policy: include emails in the allow-list, **require** country AU. Customers are never put behind Access. Dev has its own Access application on `berger-admin-dev.pages.dev`, set up the same way.
+  - A Turnstile widget for `bookings.example.com.au`, and a separate one for `berger-booking-dev.pages.dev`.
+  - A rate limiting rule on `bookings.example.com.au/api/*`. Dev has none (`pages.dev` is not in our zone); this is accepted.
 - **Firestore collections:**
   - `boats`, `bookings`, `bookingDrafts`, `customers`, `customerEmails`, `boatUnavailabilities`, `boatLocks`
   - `seasons`, `blockedPeriods`, `addons`, `emailTemplates`, `settings`, `counters`
@@ -729,14 +730,17 @@ Sections:
   - Log-based alert policies email the staff alert address on: webhook processing errors, job failures, and paid-but-expired bookings.
 - **CI/CD (GitHub Actions):**
   - On PR: build, unit tests, integration tests against the Firestore emulator, web typecheck/lint/build.
-  - On `main`: build and push containers → deploy both Cloud Run services → deploy both Pages projects.
-  - Auth to GCP via Workload Identity Federation (no JSON keys).
+  - On `main`: build and push both containers **once** (tagged with the commit SHA) → deploy both Cloud Run services to **dev** → build the frontends with dev's keys and deploy the dev Pages projects.
+  - On a published GitHub Release (tag `vX.Y.Z`, pre-releases ignored): after approval by the `production` environment's required reviewers, deploy that commit's existing images to **prod** (fail if they do not exist, i.e. the commit never went through dev; never rebuild) → rebuild the frontends with prod's keys and deploy the prod Pages projects. Rolling back is re-running an older release's deploy.
+  - Per-environment values live in GitHub Environments `dev` and `production` with the same variable names. Concurrency groups `deploy-dev` and `deploy-prod`.
+  - Auth to GCP via Workload Identity Federation (no JSON keys), one pool per project.
 - **Local development:**
   - Firestore emulator
   - Stripe test mode + Stripe CLI for webhooks
   - fake email sender
   - Turnstile test keys
-  - a dev bypass of Access JWT validation, **only** when `ASPNETCORE_ENVIRONMENT=Development`
+  - `ASPNETCORE_ENVIRONMENT=Local` (never `Development`, which is the deployed dev environment), with settings in `appsettings.Local.json`
+  - a dev bypass of Access JWT validation, the Scheduler OIDC check and the edge proxy secret, **only** when `ASPNETCORE_ENVIRONMENT=Local`
   - one command (e.g. `docker compose up` or a script) starts the emulator, both APIs and both Vite dev servers
 
 ## 15. Testing
@@ -784,7 +788,7 @@ Sections:
 2. `/wordpress/book-now-block.html`.
 3. `/docs/setup-checklist.md`, a step-by-step checklist a non-developer can follow:
    1. **Booking domain:** buy a separate domain for the booking app, add it to Cloudflare (free plan) and point its nameservers there. The existing `bergerhouseboats.com.au` DNS and email are not changed.
-   2. GCP project, APIs, Firestore, service accounts, Secret Manager, Cloud Run, Scheduler, alerts, Workload Identity Federation for GitHub.
+   2. GCP project, APIs, Firestore, service accounts, Secret Manager, Cloud Run, Scheduler, alerts, Workload Identity Federation for GitHub, GitHub Environments. The checklist is run once per environment (dev, then prod), with a table of the values that differ, and marks the steps that apply to only one of them (shared Artifact Registry, Releases, rate limiting, booking domain).
    3. Stripe account, webhook endpoint (`checkout.session.completed`, `checkout.session.expired`), payment method domains, switching from test to live keys.
    4. Gmail SMTP: 2-Step Verification and a Google app password for `info@bergerhouseboats.com.au`, and checking SPF, DKIM and DMARC for `bergerhouseboats.com.au` at its existing DNS host.
    5. Cloudflare Pages projects (booking custom domain; admin on `pages.dev` with no custom domain), `_headers`, Access app on the admin `pages.dev` address + Google IdP + policy, Turnstile, rate limiting.

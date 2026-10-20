@@ -16,8 +16,7 @@ public static class WebDefaults
 {
     public const string CorsPolicy = "frontend";
 
-    public static WebApplicationBuilder AddBergerHarbourWeb(this WebApplicationBuilder builder, long maxRequestBodyBytes,
-        string defaultCorsOrigin)
+    public static WebApplicationBuilder AddBergerHarbourWeb(this WebApplicationBuilder builder, long maxRequestBodyBytes)
     {
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = maxRequestBodyBytes);
         var port = Environment.GetEnvironmentVariable("PORT");
@@ -26,7 +25,7 @@ public static class WebDefaults
             builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
         }
 
-        if (!builder.Environment.IsDevelopment())
+        if (!builder.Environment.IsLocal())
         {
             // Structured JSON logs for Cloud Logging. Never log card data or full tokens.
             builder.Logging.ClearProviders();
@@ -68,7 +67,15 @@ public static class WebDefaults
             return Task.CompletedTask;
         }));
 
-        var origin = builder.Configuration["CORS_ALLOWED_ORIGIN"] ?? defaultCorsOrigin;
+        // No default: a missing value must never fall back to another environment's frontend.
+        var origin = builder.Configuration["CORS_ALLOWED_ORIGIN"];
+        if (string.IsNullOrWhiteSpace(origin))
+        {
+            origin = DependencyInjection.IsOpenApiGeneration
+                ? string.Empty
+                : throw new InvalidOperationException("Set CORS_ALLOWED_ORIGIN.");
+        }
+
         builder.Services.AddCors(o => o.AddPolicy(CorsPolicy, p => p
             .WithOrigins(origin.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             .WithMethods("GET", "POST", "PUT", "DELETE")
@@ -84,9 +91,9 @@ public static class WebDefaults
         app.UseCors(CorsPolicy);
         app.UseMiddleware<EdgeProxySecretMiddleware>(
             app.Configuration["EDGE_PROXY_SECRET"] ?? string.Empty,
-            app.Environment.IsDevelopment(),
+            app.Environment.IsLocal(),
             (IReadOnlyList<PathString>)proxySecretExemptPrefixes.Select(p => new PathString(p)).ToList());
-        if (app.Environment.IsDevelopment())
+        if (app.Environment.IsLocal())
         {
             app.MapOpenApi();
         }

@@ -12,7 +12,7 @@ public sealed class SchedulerOidcOptions
     /// <summary>SCHEDULER_AUDIENCE: the admin-api Cloud Run service URL the job calls.</summary>
     public string Audience { get; set; } = string.Empty;
 
-    /// <summary>Development only: accept the jobs endpoint without a token.</summary>
+    /// <summary>Local environment only: accept the jobs endpoint without a token.</summary>
     public bool DevBypass { get; set; }
 }
 

@@ -6,8 +6,8 @@ using BergerHarbour.Infrastructure.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddBergerHarbourWeb(maxRequestBodyBytes: 1024 * 1024, defaultCorsOrigin: "https://berger-admin.pages.dev");
-builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsDevelopment());
+builder.AddBergerHarbourWeb(maxRequestBodyBytes: 1024 * 1024);
+builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsLocal());
 
 // Staff bookings only check dates, guests and the customer; the availability invariant still applies.
 builder.Services.AddSingleton<IBookingRequestValidationStrategy, InternalBookingValidationStrategy>();
@@ -30,7 +30,7 @@ app.UseBergerHarbourWeb(JobsController.Route);
 app.AddCloudflareAccessGuard(JobsController.Route);
 app.MapControllers();
 
-if (app.Environment.IsDevelopment() && app.Configuration.GetValue("SEED_ON_STARTUP", false))
+if (app.Environment.IsLocal() && app.Configuration.GetValue("SEED_ON_STARTUP", false))
 {
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<SeedService>().RunAsync(new SeedService.SeedOptions(

@@ -17,7 +17,7 @@ public sealed class CloudflareAccessOptions
     /// <summary>ADMIN_ALLOWED_EMAILS, comma-separated.</summary>
     public string AllowedEmails { get; set; } = string.Empty;
 
-    /// <summary>Development only: skip JWT validation and act as this email.</summary>
+    /// <summary>Local environment only: skip JWT validation and act as this email.</summary>
     public string? DevBypassEmail { get; set; }
 
     public IReadOnlySet<string> AllowedEmailSet =>

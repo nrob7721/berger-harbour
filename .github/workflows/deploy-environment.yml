@@ -1,0 +1,92 @@
+name: Deploy environment
+
+# Deploys an already-built image pair (tagged with the commit SHA) and freshly built frontends to one environment.
+# Called by deploy.yml (dev) and release.yml (production). All per-environment values come from the GitHub
+# Environment's variables; non-secret app settings live in appsettings.{ASPNETCORE_ENVIRONMENT}.json in the image.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment name (dev or production)
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # One job per environment, so a production deploy needs a single approval.
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # Workload Identity Federation: no JSON keys
+    env:
+      REGION: australia-southeast1
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      IMAGE_BASE: australia-southeast1-docker.pkg.dev/${{ vars.GCP_REGISTRY_PROJECT_ID }}/${{ vars.GCP_ARTIFACT_REPOSITORY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Images exist for this commit
+        # Production only ever runs images that the dev deploy built; nothing is rebuilt here.
+        run: |
+          for service in public-api admin-api; do
+            gcloud artifacts docker images describe "${IMAGE_BASE}/${service}:${GITHUB_SHA}" --format='value(image_summary.digest)' \
+              || { echo "::error::No ${service} image for ${GITHUB_SHA}. Deploy this commit to dev first."; exit 1; }
+          done
+      - name: Deploy public-api
+        run: |
+          gcloud run deploy public-api \
+            --project "$PROJECT_ID" --region "$REGION" --image "${IMAGE_BASE}/public-api:${GITHUB_SHA}" \
+            --service-account "${{ vars.PUBLIC_API_SERVICE_ACCOUNT }}" \
+            --ingress all --allow-unauthenticated \
+            --min-instances 0 --max-instances 3 \
+            --cpu 1 --memory 512Mi --cpu-boost \
+            --set-secrets "STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,SMTP_PASSWORD=gmail-app-password:latest,TURNSTILE_SECRET=turnstile-secret:latest,EDGE_PROXY_SECRET=edge-proxy-secret-public:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest" \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ vars.ASPNETCORE_ENVIRONMENT }},FIRESTORE_PROJECT_ID=${PROJECT_ID}"
+      - name: Deploy admin-api
+        run: |
+          gcloud run deploy admin-api \
+            --project "$PROJECT_ID" --region "$REGION" --image "${IMAGE_BASE}/admin-api:${GITHUB_SHA}" \
+            --service-account "${{ vars.ADMIN_API_SERVICE_ACCOUNT }}" \
+            --ingress all --allow-unauthenticated \
+            --min-instances 0 --max-instances 2 \
+            --cpu 1 --memory 512Mi --cpu-boost \
+            --set-secrets "SMTP_PASSWORD=gmail-app-password:latest,EDGE_PROXY_SECRET=edge-proxy-secret-admin:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest,ADMIN_ALLOWED_EMAILS=admin-allowed-emails:latest" \
+            --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ vars.ASPNETCORE_ENVIRONMENT }},FIRESTORE_PROJECT_ID=${PROJECT_ID},CF_ACCESS_TEAM_DOMAIN=${{ vars.CF_ACCESS_TEAM_DOMAIN }},CF_ACCESS_AUD=${{ vars.CF_ACCESS_AUD }},SCHEDULER_SERVICE_ACCOUNT_EMAIL=${{ vars.SCHEDULER_SERVICE_ACCOUNT }},SCHEDULER_AUDIENCE=${{ vars.ADMIN_API_URL }}"
+
+      # Vite inlines the publishable keys at build time, so the frontends are built per environment.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Build frontends
+        working-directory: web
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
+        run: npm run build -w booking && npm run build -w admin
+      - name: Deploy booking app
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/booking
+          command: pages deploy dist --project-name=${{ vars.PAGES_BOOKING_PROJECT }} --branch=main
+      - name: Deploy admin app
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web/admin
+          command: pages deploy dist --project-name=${{ vars.PAGES_ADMIN_PROJECT }} --branch=main

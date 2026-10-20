@@ -14,6 +14,9 @@ public sealed class SmtpOptions
     /// <summary>EMAIL_SENDER_NAME</summary>
     public string SenderName { get; set; } = "Berger Houseboats";
 
+    /// <summary>EMAIL_SUBJECT_PREFIX: prepended to every subject, e.g. "[DEV] " in the dev environment.</summary>
+    public string SubjectPrefix { get; set; } = string.Empty;
+
     /// <summary>SMTP_PASSWORD: a Google app password for <see cref="SenderEmail"/>.</summary>
     public string Password { get; set; } = string.Empty;
 
@@ -56,7 +59,7 @@ public sealed class GmailSmtpEmailSender(IOptions<SmtpOptions> options) : IEmail
         mime.From.Add(sender);
         mime.ReplyTo.Add(sender);
         mime.To.Add(new MailboxAddress(message.ToName ?? message.To, message.To));
-        mime.Subject = message.Subject;
+        mime.Subject = o.SubjectPrefix + message.Subject;
         mime.Body = new BodyBuilder { HtmlBody = message.HtmlBody }.ToMessageBody();
         return mime;
     }

@@ -39,6 +39,17 @@ public class GmailSmtpEmailSenderTests
     }
 
     [Fact]
+    public void Build_prepends_the_subject_prefix()
+    {
+        var options = Options();
+        options.SubjectPrefix = "[DEV] ";
+
+        using var mime = GmailSmtpEmailSender.Build(options, new EmailMessage("jane@example.com", null, "Booking confirmed", "<p>x</p>"));
+
+        Assert.Equal("[DEV] Booking confirmed", mime.Subject);
+    }
+
+    [Fact]
     public void Options_are_valid_with_a_sender_address_and_password() =>
         Assert.Empty(Options().Validate());
 
