@@ -7,7 +7,6 @@ using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Unavailabilities;
-using BergerHarbour.Infrastructure.Brevo;
 using BergerHarbour.Infrastructure.Cloudflare;
 using BergerHarbour.Infrastructure.Email;
 using BergerHarbour.Infrastructure.Firestore;
@@ -59,11 +58,12 @@ public static class DependencyInjection
             o.WebhookSecret = config["STRIPE_WEBHOOK_SECRET"] ?? string.Empty;
         });
         services.Configure<TurnstileOptions>(o => o.SecretKey = config["TURNSTILE_SECRET"] ?? string.Empty);
-        services.Configure<BrevoOptions>(o =>
+        var smtp = services.AddOptions<SmtpOptions>().Configure(o =>
         {
-            o.ApiKey = config["BREVO_API_KEY"] ?? string.Empty;
             o.SenderEmail = config["EMAIL_SENDER"] ?? o.SenderEmail;
-        });
+            o.SenderName = config["EMAIL_SENDER_NAME"] ?? o.SenderName;
+            o.Password = config["SMTP_PASSWORD"] ?? string.Empty;
+        }).Validate(o => !o.Validate().Any(), "EMAIL_SENDER / SMTP_PASSWORD are invalid");
         services.Configure<CloudflareAccessOptions>(o =>
         {
             o.TeamDomain = config["CF_ACCESS_TEAM_DOMAIN"] ?? string.Empty;
@@ -103,7 +103,7 @@ public static class DependencyInjection
             sp.GetRequiredService<ILogger<CloudflareAccessValidator>>()));
         services.AddSingleton<SchedulerOidcValidator>();
 
-        var emailMode = config["EMAIL_MODE"] ?? (isDevelopment ? "File" : "Brevo");
+        var emailMode = config["EMAIL_MODE"] ?? (isDevelopment ? "File" : "Smtp");
         if (string.Equals(emailMode, "File", StringComparison.OrdinalIgnoreCase))
         {
             var folder = config["EMAIL_OUTPUT_DIR"] ?? Path.Combine(Path.GetTempPath(), "berger-harbour-emails");
@@ -111,11 +111,12 @@ public static class DependencyInjection
         }
         else
         {
-            services.AddHttpClient<IEmailSender, BrevoEmailSender>(c =>
+            if (!IsOpenApiGeneration)
             {
-                c.BaseAddress = new Uri(BrevoEmailSender.BaseAddress);
-                c.Timeout = TimeSpan.FromSeconds(20);
-            });
+                smtp.ValidateOnStart();
+            }
+
+            services.AddSingleton<IEmailSender, GmailSmtpEmailSender>();
         }
 
         return services;

@@ -19,9 +19,9 @@ if (args.Contains("seed"))
 {
     using var scope = app.Services.CreateScope();
     var created = await scope.ServiceProvider.GetRequiredService<SeedService>().RunAsync(new SeedService.SeedOptions(
-        app.Configuration["SEED_STAFF_ALERT_EMAIL"] ?? "bookings@bergerhouseboats.com.au",
+        app.Configuration["SEED_STAFF_ALERT_EMAIL"] ?? "info@bergerhouseboats.com.au",
         app.Configuration["SEED_CONTACT_PHONE"] ?? "(02) 0000 0000",
-        app.Configuration["SEED_CONTACT_EMAIL"] ?? "bookings@bergerhouseboats.com.au"));
+        app.Configuration["SEED_CONTACT_EMAIL"] ?? "info@bergerhouseboats.com.au"));
     Console.WriteLine($"Seed complete: {created} records created.");
     return;
 }

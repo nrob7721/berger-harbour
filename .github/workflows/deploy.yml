@@ -33,17 +33,17 @@ jobs:
             service_account: ${{ vars.PUBLIC_API_SERVICE_ACCOUNT }}
             max_instances: 3
             secrets: >-
-              STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,BREVO_API_KEY=brevo-api-key:latest,TURNSTILE_SECRET=turnstile-secret:latest,EDGE_PROXY_SECRET=edge-proxy-secret-public:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest
+              STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,SMTP_PASSWORD=gmail-app-password:latest,TURNSTILE_SECRET=turnstile-secret:latest,EDGE_PROXY_SECRET=edge-proxy-secret-public:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest
             env_vars: >-
-              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},PUBLIC_BOOKING_BASE_URL=https://bookings.example.com.au,CORS_ALLOWED_ORIGIN=https://bookings.example.com.au
+              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},EMAIL_SENDER=info@bergerhouseboats.com.au,PUBLIC_BOOKING_BASE_URL=https://bookings.example.com.au,CORS_ALLOWED_ORIGIN=https://bookings.example.com.au
           - service: admin-api
             project: AdminApi
             service_account: ${{ vars.ADMIN_API_SERVICE_ACCOUNT }}
             max_instances: 2
             secrets: >-
-              BREVO_API_KEY=brevo-api-key:latest,EDGE_PROXY_SECRET=edge-proxy-secret-admin:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest,ADMIN_ALLOWED_EMAILS=admin-allowed-emails:latest
+              SMTP_PASSWORD=gmail-app-password:latest,EDGE_PROXY_SECRET=edge-proxy-secret-admin:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest,ADMIN_ALLOWED_EMAILS=admin-allowed-emails:latest
             env_vars: >-
-              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},PUBLIC_BOOKING_BASE_URL=https://bookings.example.com.au,CORS_ALLOWED_ORIGIN=https://berger-admin.pages.dev,CF_ACCESS_TEAM_DOMAIN=${{ vars.CF_ACCESS_TEAM_DOMAIN }},CF_ACCESS_AUD=${{ vars.CF_ACCESS_AUD }},SCHEDULER_SERVICE_ACCOUNT_EMAIL=${{ vars.SCHEDULER_SERVICE_ACCOUNT }},SCHEDULER_AUDIENCE=${{ vars.ADMIN_API_URL }}
+              FIRESTORE_PROJECT_ID=${{ vars.GCP_PROJECT_ID }},EMAIL_SENDER=info@bergerhouseboats.com.au,PUBLIC_BOOKING_BASE_URL=https://bookings.example.com.au,CORS_ALLOWED_ORIGIN=https://berger-admin.pages.dev,CF_ACCESS_TEAM_DOMAIN=${{ vars.CF_ACCESS_TEAM_DOMAIN }},CF_ACCESS_AUD=${{ vars.CF_ACCESS_AUD }},SCHEDULER_SERVICE_ACCOUNT_EMAIL=${{ vars.SCHEDULER_SERVICE_ACCOUNT }},SCHEDULER_AUDIENCE=${{ vars.ADMIN_API_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2

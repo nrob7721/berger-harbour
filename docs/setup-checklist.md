@@ -13,7 +13,7 @@ You will create these things:
 | Staff API | Google Cloud Run service `admin-api` | Sydney region |
 | Database | Google Firestore (Native mode) | Sydney region |
 | Payments | Stripe | |
-| Email | Brevo | sender `bookings@bergerhouseboats.com.au` |
+| Email | Gmail SMTP (Google Workspace) | sender `info@bergerhouseboats.com.au` |
 
 Keep a private password-manager note called **"Booking system secrets"**. Several steps ask you to save a value
 there; later steps paste them back in. Never email or chat these values.
@@ -78,7 +78,7 @@ characters).
 |---|---|---|
 | `stripe-secret-key` | Stripe secret key (`sk_test_…` first, later `sk_live_…`) | public-api |
 | `stripe-webhook-secret` | Stripe webhook signing secret (`whsec_…`) | public-api |
-| `brevo-api-key` | Brevo API key | both |
+| `gmail-app-password` | Google app password for `info@bergerhouseboats.com.au` (section 4) | both |
 | `turnstile-secret` | Turnstile secret key | public-api |
 | `edge-proxy-secret-public` | random 40+ characters (also goes into the `berger-booking` Pages project) | public-api |
 | `edge-proxy-secret-admin` | a **different** random 40+ characters (also goes into the `berger-admin` Pages project) | admin-api |
@@ -179,15 +179,27 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
       record; the system does not issue tax invoices).
 - [ ] Refunds are made in the Stripe dashboard (Payments → payment → Refund). The booking system does not refund.
 
-## 4. Brevo (email)
+## 4. Gmail SMTP (email)
 
-- [ ] In Brevo → Senders, Domains & Dedicated IPs → **Domains**: authenticate `bergerhouseboats.com.au`. Brevo shows
-      the DNS records to add (brevo-code TXT, DKIM, DMARC). Add them where `bergerhouseboats.com.au`'s DNS is hosted
-      today (partnerconsole.net), not in Cloudflare. If records already exist, compare and keep only one SPF record.
-- [ ] Add the sender `bookings@bergerhouseboats.com.au` (name "Berger Houseboats") and verify it.
-- [ ] SMTP & API → API keys → **Generate** a key; save it in the `brevo-api-key` secret.
-- [ ] Make sure replies to `bookings@bergerhouseboats.com.au` reach a monitored mailbox (Google Workspace group or
-      alias).
+The system sends every email through `smtp.gmail.com` as `info@bergerhouseboats.com.au`, using an app password.
+Replies from customers arrive in the same mailbox, and every email sent is also kept in its **Sent** folder. Bounces
+(undeliverable emails) come back to its inbox as well; the system does not track delivery or opens.
+
+- [ ] Sign in to Google as `info@bergerhouseboats.com.au` (it must be a real user mailbox, not a group or an alias).
+- [ ] Google Account → Security → turn on **2-Step Verification**.
+- [ ] Google Account → Security → **App passwords** → create one named "Berger booking system". Save the 16
+      characters (without spaces) in the secret `gmail-app-password`. If the App passwords option does not appear,
+      ask whoever administers the Workspace (the `partnerconsole.net` reseller) to allow it.
+- [ ] Check the email is authenticated, so customers' mail providers do not send it to spam. In the Google Admin
+      console (Apps → Google Workspace → Gmail → Authenticate email) make sure DKIM for `bergerhouseboats.com.au` is
+      **on**. If it is not, generate the key and add the TXT record Google shows where `bergerhouseboats.com.au`'s DNS
+      is hosted today (partnerconsole.net), not in Cloudflare.
+- [ ] Check the DNS of `bergerhouseboats.com.au` has exactly one SPF record that includes `_spf.google.com`, and a
+      DMARC record (`_dmarc` TXT). Add or fix them at partnerconsole.net only if they are missing.
+- [ ] Once the admin app is running (section 6), press **Send test** on each template (Settings → Email templates)
+      and check the email arrives from "Berger Houseboats <info@bergerhouseboats.com.au>" and not in spam.
+
+Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more than this system sends.
 
 ## 5. Cloudflare Pages, Access, Turnstile and rate limiting
 
@@ -244,8 +256,8 @@ JSON logs; the level is in `jsonPayload.LogLevel`).
 - [ ] Ask your developer to run the seed once against production (safe to repeat; it never overwrites edits):
       ```bash
       FIRESTORE_PROJECT_ID=<PROJECT_ID> \
-      SEED_STAFF_ALERT_EMAIL=bookings@bergerhouseboats.com.au \
-      SEED_CONTACT_PHONE="(02) xxxx xxxx" SEED_CONTACT_EMAIL=bookings@bergerhouseboats.com.au \
+      SEED_STAFF_ALERT_EMAIL=info@bergerhouseboats.com.au \
+      SEED_CONTACT_PHONE="(02) xxxx xxxx" SEED_CONTACT_EMAIL=info@bergerhouseboats.com.au \
       dotnet run --project src/BergerHarbour.AdminApi -- seed
       ```
       (needs `gcloud auth application-default login` with an account that can write Firestore.)

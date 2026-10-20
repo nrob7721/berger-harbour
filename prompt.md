@@ -19,7 +19,7 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 ### In scope (v1)
 - A customer booking app, embedded in the WordPress site.
 - Online deposit payment, plus later balance payments through emailed payment links (Stripe).
-- Automatic notification emails (Brevo).
+- Automatic notification emails (Gmail SMTP).
 - An internal admin app with Bookings, Fleet, Customers and Settings pages.
 - Backend APIs, Firestore persistence, GCP and Cloudflare infrastructure, CI/CD and a setup checklist.
 
@@ -117,7 +117,7 @@ WordPress boat page ──(HTML block: "Book Now")──► modal <iframe> (desk
                                                         │  /api/* → Pages Function proxy
                                        berger-admin.pages.dev  (Cloudflare Pages: admin app,
                                                                        behind Cloudflare Access)
-External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection)
+External: Stripe (payments), Gmail SMTP (email), Cloudflare Turnstile (bot protection)
 ```
 
 - **GCP region:** `australia-southeast1` (Sydney) for Cloud Run, Firestore (Native mode) and Cloud Scheduler.
@@ -137,7 +137,7 @@ External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection
   BergerHarbour.Domain/            # aggregates, value objects, domain services, repository interfaces
     Boats/  Bookings/  BookingDrafts/  Customers/  Unavailabilities/  Settings/  Shared/
   BergerHarbour.Application/       # use cases, validation strategies, ports (IPaymentGateway, IEmailSender, IClock, ITurnstileVerifier, IBoatScheduleLock, ...)
-  BergerHarbour.Infrastructure/    # Firestore/, Stripe/, Brevo/, Turnstile/, Cloudflare/ (Access JWT validation)
+  BergerHarbour.Infrastructure/    # Firestore/, Stripe/, Email/ (Gmail SMTP), Turnstile/, Cloudflare/ (Access JWT validation)
   BergerHarbour.PublicApi/         # ASP.NET Core controllers for customers + Stripe webhook
   BergerHarbour.AdminApi/          # ASP.NET Core controllers for staff + jobs endpoint
 /tests
@@ -151,7 +151,7 @@ External: Stripe (payments), Brevo (email), Cloudflare Turnstile (bot protection
 /wordpress
   book-now-block.html             # the HTML block pasted into each boat page
 /docs
-  setup-checklist.md              # booking domain, GCP, Cloudflare, Stripe, Brevo, go-live
+  setup-checklist.md              # booking domain, GCP, Cloudflare, Stripe, Gmail SMTP, go-live
 firestore.indexes.json
 .github/workflows/
 ```
@@ -447,7 +447,7 @@ Staff-created bookings (`POST /api/bookings`):
 
 ## 9. Notifications
 
-**Provider:** Brevo transactional email API. Sender `bookings@bergerhouseboats.com.au`. Sending is behind the `IEmailSender` port; local development uses a fake that writes emails to the console or a folder.
+**Provider:** Gmail SMTP (`smtp.gmail.com:587`, STARTTLS) using MailKit. The sender is the business mailbox `info@bergerhouseboats.com.au` (a Google Workspace user), authenticated with a Google app password. It is the SMTP login, the From address (display name "Berger Houseboats") and the Reply-To. Customer replies and bounces arrive in that mailbox, and every email sent is kept in its Sent folder; the system does no delivery or open tracking. Workspace allows about 2,000 emails a day through SMTP, far above this system's volume. Sending is behind the `IEmailSender` port; local development uses a fake that writes emails to the console or a folder.
 
 | # | Key | To | Trigger |
 |---|---|---|---|
@@ -506,7 +506,7 @@ All offsets are .NET `TimeSpan` strings (`d.hh:mm:ss`), bound with the options p
 ### 10.3 Secrets and other config
 Stored in Secret Manager and injected as env vars:
 - Stripe secret key and webhook signing secret
-- Brevo API key
+- `SMTP_PASSWORD`: the Google app password for the sender mailbox. `EMAIL_SENDER` (`info@bergerhouseboats.com.au`) and `EMAIL_SENDER_NAME` are plain settings. In `Smtp` mode the services refuse to start if the sender or password is missing; `EMAIL_MODE=File` (the development default) writes emails to a folder instead
 - Turnstile secret
 - `EDGE_PROXY_SECRET`
 - `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, `ADMIN_ALLOWED_EMAILS` (comma-separated)
@@ -715,7 +715,7 @@ Sections:
   - Artifact Registry
 - **Cloud Run ingress:** `all`, because Cloudflare Pages Functions, Stripe and Scheduler must reach it. Protection comes from the proxy secret, Access JWT and OIDC checks in the apps.
 - **Cloudflare:**
-  - **`bergerhouseboats.com.au` DNS is not touched.** WordPress and Google Workspace mail stay at `partnerconsole.net`. A separate booking domain (placeholder `bookings.example.com.au`, to be bought) is added to Cloudflare (free plan); it hosts only the booking app. Brevo's DKIM/SPF/DMARC records for `bergerhouseboats.com.au` are added at the existing DNS host.
+  - **`bergerhouseboats.com.au` DNS is not touched.** WordPress and Google Workspace mail stay at `partnerconsole.net`. A separate booking domain (placeholder `bookings.example.com.au`, to be bought) is added to Cloudflare (free plan); it hosts only the booking app. If Google's DKIM, SPF or DMARC records for `bergerhouseboats.com.au` are missing, they are added at the existing DNS host.
   - Two Pages projects. `berger-booking` has the booking domain as its custom domain. `berger-admin` has **no custom domain** and is served at `https://berger-admin.pages.dev` (project name placeholder).
   - An Access application covering `berger-admin.pages.dev`, created through the Pages project's "Enable access policy" and edited to cover the production address rather than the preview wildcard. Google Workspace IdP. Policy: include emails in the allow-list, **require** country AU. Customers are never put behind Access.
   - A Turnstile widget for `bookings.example.com.au`.
@@ -786,7 +786,7 @@ Sections:
    1. **Booking domain:** buy a separate domain for the booking app, add it to Cloudflare (free plan) and point its nameservers there. The existing `bergerhouseboats.com.au` DNS and email are not changed.
    2. GCP project, APIs, Firestore, service accounts, Secret Manager, Cloud Run, Scheduler, alerts, Workload Identity Federation for GitHub.
    3. Stripe account, webhook endpoint (`checkout.session.completed`, `checkout.session.expired`), payment method domains, switching from test to live keys.
-   4. Brevo sender domain authentication (DKIM/DMARC as Brevo instructs).
+   4. Gmail SMTP: 2-Step Verification and a Google app password for `info@bergerhouseboats.com.au`, and checking SPF, DKIM and DMARC for `bergerhouseboats.com.au` at its existing DNS host.
    5. Cloudflare Pages projects (booking custom domain; admin on `pages.dev` with no custom domain), `_headers`, Access app on the admin `pages.dev` address + Google IdP + policy, Turnstile, rate limiting.
    6. Run the seed. In the admin app, complete every boat (adult beds, kids beds, bedding, bond, optional deposit, rates, allowed add-ons) and activate it. Set add-on prices, order and car parking capacity. Enter blocked periods (Easter, long weekends) up to "bookings open until". Review email templates. Fill in contact details.
    7. **Before go-live: staff enter every existing future booking** from paper/Excel as staff bookings, recording payments already received as manual payments. Past bookings are not entered.

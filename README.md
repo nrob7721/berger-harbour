@@ -20,7 +20,7 @@ WordPress boat page ── "Book Now" ──► bookings.example.com.au (Cloudfl
 |---|---|
 | `src/BergerHarbour.Domain` | Aggregates (`Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`), value objects (incl. E.164 `PhoneNumber`), domain services (`BookingAvailabilityService`, `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory`) and repository interfaces next to each aggregate. |
 | `src/BergerHarbour.Application` | Use cases, the booking validation strategies (`OnlineBookingValidationStrategy`, `InternalBookingValidationStrategy`), notifications and the hourly job, seed, and ports (`IBoatScheduleLock`, `IPaymentGateway`, `IEmailSender`, `IClock`, `ITurnstileVerifier`, `IBookingReferenceGenerator`). |
-| `src/BergerHarbour.Infrastructure` | Firestore repositories and the per-boat lock (`Firestore/`), Stripe, Brevo, Turnstile, Cloudflare Access JWT and Google OIDC validation, shared web hosting conventions. |
+| `src/BergerHarbour.Infrastructure` | Firestore repositories and the per-boat lock (`Firestore/`), Stripe, Gmail SMTP, Turnstile, Cloudflare Access JWT and Google OIDC validation, shared web hosting conventions. |
 | `src/BergerHarbour.PublicApi` / `AdminApi` | ASP.NET Core controllers. `dotnet BergerHarbour.AdminApi.dll seed` runs the idempotent seed. |
 | `tests/` | Domain and application unit tests; integration tests against the Firestore emulator. |
 | `web/` | npm workspace: `shared` (generated API types, date/period logic, phone input, tokens), `booking` and `admin` Vite apps (TypeScript, no UI framework) with their Pages Functions. |
@@ -72,7 +72,7 @@ other settings are flat environment variables injected from Secret Manager on Cl
 |---|---|---|
 | `FIRESTORE_PROJECT_ID` | both | `FIRESTORE_EMULATOR_HOST` switches to the emulator |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | public | |
-| `BREVO_API_KEY` | both | `EMAIL_MODE=File` + `EMAIL_OUTPUT_DIR` writes emails to disk instead |
+| `EMAIL_SENDER`, `EMAIL_SENDER_NAME`, `SMTP_PASSWORD` | both | Gmail SMTP login, From/Reply-To address (`info@bergerhouseboats.com.au`), display name (default "Berger Houseboats") and its Google app password. `EMAIL_MODE=Smtp` is the default outside development; `EMAIL_MODE=File` + `EMAIL_OUTPUT_DIR` writes emails to disk instead (the development default) |
 | `TURNSTILE_SECRET` | public | |
 | `EDGE_PROXY_SECRET` | both | required on every route except the webhook and jobs endpoint; each service has its own value (`edge-proxy-secret-public` / `-admin`) |
 | `PAYMENT_LINK_SECRET` | both | derives each booking's stable payment-link token; never rotate after go-live |
