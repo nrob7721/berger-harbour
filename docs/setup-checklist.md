@@ -225,9 +225,10 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
       unit holding the staff accounts; prefer security keys or passkeys over SMS). Cloudflare Access cannot see
       whether a login used MFA when Google is the identity provider, so this is the only place it is enforced.
       Do this before the Access policy below, and confirm each staff member has enrolled.
-- [ ] Zero Trust → Settings → Authentication → **Add new → Google Workspace** (follow the wizard; it creates a
-      Google OAuth client). Note the **team domain** (`<team>.cloudflareaccess.com`) → GitHub variable
-      `CF_ACCESS_TEAM_DOMAIN`.
+- [ ] Zero Trust → **Integrations → Identity providers → Add new identity provider → Google Workspace** (follow the
+      wizard; it creates a Google OAuth client). In older dashboards this was Settings → Authentication → Login
+      methods → Add new. Note the **team domain** (`<team>.cloudflareaccess.com`, shown under Settings → Custom
+      pages or in the Zero Trust URL/overview) → GitHub variable `CF_ACCESS_TEAM_DOMAIN`.
 - [ ] Protect the admin app's `pages.dev` address. In the `berger-admin` Pages project → Settings → General →
       **Enable access policy**. Cloudflare creates an Access application with a preview wildcard
       (`*.berger-admin.pages.dev`). In Zero Trust → Access → Applications, edit it so the domain is exactly
