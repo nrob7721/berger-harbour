@@ -11,8 +11,13 @@ mkdir -p .dev-emails
 export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
 export ASPNETCORE_ENVIRONMENT=Development
 export EMAIL_OUTPUT_DIR="$ROOT/.dev-emails"
+export STRIPE_SECRET_KEY=
+export STRIPE_WEBHOOK_SECRET=
+export VITE_STRIPE_PUBLISHABLE_KEY=
 # Optional for payments: export STRIPE_SECRET_KEY=sk_test_… STRIPE_WEBHOOK_SECRET=whsec_… and
-# VITE_STRIPE_PUBLISHABLE_KEY=pk_test_…, then run: stripe listen --forward-to localhost:5080/api/stripe/webhook
+# VITE_STRIPE_PUBLISHABLE_KEY=pk_test_…, then run: stripe listen --all-snapshot --forward-to localhost:5080/api/stripe/webhook
+
+
 
 pids=()
 cleanup() { kill "${pids[@]}" 2>/dev/null || true; }
