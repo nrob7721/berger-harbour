@@ -47,7 +47,7 @@ jobs:
             --project "$PROJECT_ID" --region "$REGION" --image "${IMAGE_BASE}/public-api:${GITHUB_SHA}" \
             --service-account "${{ vars.PUBLIC_API_SERVICE_ACCOUNT }}" \
             --ingress all --allow-unauthenticated \
-            --min-instances 0 --max-instances 3 \
+            --min-instances 0 --max-instances 1 \
             --cpu 1 --memory 512Mi --cpu-boost \
             --set-secrets "STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,SMTP_PASSWORD=gmail-app-password:latest,TURNSTILE_SECRET=turnstile-secret:latest,EDGE_PROXY_SECRET=edge-proxy-secret-public:latest,PAYMENT_LINK_SECRET=payment-link-secret:latest" \
             --set-env-vars "ASPNETCORE_ENVIRONMENT=${{ vars.ASPNETCORE_ENVIRONMENT }},FIRESTORE_PROJECT_ID=${PROJECT_ID}"

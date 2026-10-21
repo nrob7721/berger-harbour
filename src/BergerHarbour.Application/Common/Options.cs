@@ -93,10 +93,10 @@ public sealed class BookingOptions
     }
 }
 
-/// <summary>Payment links: https://bookings.example.com.au/pay/?token=…</summary>
+/// <summary>Payment links: https://bookings.bergerhouseboats.com.au/pay/?token=…</summary>
 public sealed class PaymentLinkOptions
 {
-    /// <summary>PUBLIC_BOOKING_BASE_URL, e.g. https://bookings.example.com.au. Required: there is no default.</summary>
+    /// <summary>PUBLIC_BOOKING_BASE_URL, e.g. https://bookings.bergerhouseboats.com.au. Required: there is no default.</summary>
     public string PublicBookingBaseUrl { get; set; } = string.Empty;
 
     /// <summary>PAYMENT_LINK_SECRET: HMAC key that derives each booking's stable payment-link token.</summary>

@@ -54,7 +54,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     const problem = (json ?? {}) as ProblemDetails;
     throw new ApiError(
       response.status,
-      problem.title ?? (response.status >= 500 ? 'Something went wrong. Please try again.' : `Request failed (${response.status}).`),
+      problem.title ?? fallbackTitle(response.status),
       problem.errors ?? {},
       problem.conflictingReferences ?? [],
       problem.type,
@@ -62,6 +62,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   }
 
   return json as T;
+}
+
+function fallbackTitle(status: number): string {
+  if (status === 429) return 'Too many requests. Please wait a minute and try again.';
+  return status >= 500 ? 'Something went wrong. Please try again.' : `Request failed (${status}).`;
 }
 
 function safeParse(text: string): unknown {

@@ -7,7 +7,7 @@ You will create these things:
 
 | What | Where | Example name |
 |---|---|---|
-| Booking app (customers) | `https://bookings.example.com.au` (placeholder: your new booking domain) | Cloudflare Pages project `berger-booking` |
+| Booking app (customers) | `https://bookings.bergerhouseboats.com.au` (a subdomain of your existing domain) | Cloudflare Pages project `berger-booking` |
 | Admin app (staff) | `https://berger-admin.pages.dev` (no custom domain; the name follows the project name) | Cloudflare Pages project `berger-admin` |
 | Customer API | Google Cloud Run service `public-api` | Sydney region |
 | Staff API | Google Cloud Run service `admin-api` | Sydney region |
@@ -29,10 +29,10 @@ skipped the other time. Wherever a step names a prod value, use the dev value fr
 | GCP project | `berger-harbour-dev` | `berger-harbour-prod` |
 | GitHub Environment | `dev` | `production` |
 | `ASPNETCORE_ENVIRONMENT` | `Development` | `Production` |
-| Booking app Pages project / address | `berger-booking-dev` / `https://berger-booking-dev.pages.dev` | `berger-booking` / `https://bookings.example.com.au` |
+| Booking app Pages project / address | `berger-booking-dev` / `https://berger-booking-dev.pages.dev` | `berger-booking` / `https://bookings.bergerhouseboats.com.au` |
 | Admin app Pages project / address | `berger-admin-dev` / `https://berger-admin-dev.pages.dev` | `berger-admin` / `https://berger-admin.pages.dev` |
 | Stripe | a separate sandbox named "dev" (test keys only) | the account's test mode, then live mode at go-live |
-| Turnstile widget | "Booking (dev)" for `berger-booking-dev.pages.dev` | "Booking" for the booking domain |
+| Turnstile widget | "Booking (dev)" for `berger-booking-dev.pages.dev` | "Booking" for the booking subdomain |
 | Emails | from `info@bergerhouseboats.com.au` as "Berger Houseboats (DEV)", subjects start with `[DEV] ` | from `info@bergerhouseboats.com.au` as "Berger Houseboats" |
 
 The addresses, sender and subject prefix are already set in the repository (`appsettings.Development.json` and
@@ -44,31 +44,43 @@ there; later steps paste them back in. Never email or chat these values.
 
 ---
 
-## 1. Booking domain on Cloudflare (prod only)
+## 1. Booking subdomain (prod only)
 
-Dev has no domain: its apps live at their `pages.dev` addresses. For dev, only create the Cloudflare account if it does
-not exist yet.
+Dev has no custom domain: its apps live at their `pages.dev` addresses. For dev, only create the Cloudflare account if
+it does not exist yet (free plan; use the business Google Workspace address).
 
-The existing domain `bergerhouseboats.com.au` (WordPress and Google Workspace email) **stays where it is**; its DNS
-is not moved and email is not touched. Instead, buy a separate domain for the booking app and put only that on
-Cloudflare. Everywhere this checklist and the repository say `bookings.example.com.au`, use your real booking domain.
+The booking app lives at `bookings.bergerhouseboats.com.au`, a subdomain of the existing domain. The existing domain
+`bergerhouseboats.com.au` (WordPress and Google Workspace email) **stays where it is**: its DNS is not moved to
+Cloudflare and email is not touched. The only change is **one CNAME record** added at the current DNS host
+(`partnerconsole.net`). Cloudflare Pages supports custom *subdomains* on domains that are not on Cloudflare.
 
 The admin app has no domain at all. It lives at `https://berger-admin.pages.dev` (section 5.1) and is locked down by
 Cloudflare Access, so staff never need a nice URL.
 
-- [ ] **Choose and buy the booking domain**, something customers will trust at payment time (e.g.
-      `bergerhouseboatbookings.com.au`). A `.com.au` needs an Australian business presence (ABN), so register it at an
-      Australian registrar. Cloudflare's own registrar may not sell `.au` names.
-- [ ] Create a free Cloudflare account (use the business Google Workspace address) and choose
-      **Add a site → your booking domain → Free plan**.
-- [ ] At the registrar, replace the domain's nameservers with the two Cloudflare ones shown (e.g.
-      `xxx.ns.cloudflare.com`). The domain is new and unused, so there is no email or website to break.
-- [ ] Wait until Cloudflare says the site is **Active** (minutes to 24 hours).
-- [ ] **SSL/TLS → Overview**: choose **Full (strict)** (Pages serves valid certificates).
-- [ ] Note the real booking domain: it replaces `bookings.example.com.au` in the steps below, in
-      `wordpress/book-now-block.html` (`APP_ORIGIN`) and in `appsettings.Production.json` of both
-      `src/BergerHarbour.PublicApi` and `src/BergerHarbour.AdminApi` (`PUBLIC_BOOKING_BASE_URL`, and
-      `CORS_ALLOWED_ORIGIN` for the public API).
+- [ ] Create the Cloudflare account if you have not already. You do **not** add `bergerhouseboats.com.au` to it as a
+      site/zone.
+- [ ] **Do this in section 5.1, in this order:** (1) create the `berger-booking` Pages project, (2) in its
+      **Custom domains** add `bookings.bergerhouseboats.com.au`, (3) only then add the DNS record below. A CNAME created before the
+      domain is added in Pages returns error 522.
+- [ ] At the DNS host for `bergerhouseboats.com.au`, ask them (or your developer) to add:
+
+      | Type | Name | Value |
+      |---|---|---|
+      | `CNAME` | `bookings` | `berger-booking.pages.dev` |
+
+- [ ] If the DNS zone has **CAA** records, check they allow Cloudflare's certificate authorities (Let's Encrypt,
+      Google Trust Services, SSL.com); otherwise the certificate cannot be issued and the domain stays pending.
+- [ ] Wait until the Pages project shows the custom domain as **Active** (minutes to a few hours) and
+      `https://bookings.bergerhouseboats.com.au` loads.
+- [ ] Confirm the hostname is already set in `wordpress/book-now-block.html` (`APP_ORIGIN`) and in
+      `appsettings.Production.json` of both `src/BergerHarbour.PublicApi` and `src/BergerHarbour.AdminApi`
+      (`PUBLIC_BOOKING_BASE_URL`, and `CORS_ALLOWED_ORIGIN` for the public API). They already are; change them only if
+      you use a different name.
+
+**Fallback if the DNS host cannot add a CNAME:** buy a separate domain (a `.com.au` needs an ABN; use an Australian
+registrar), add it to Cloudflare (**Add a site → Free plan**), replace its nameservers with Cloudflare's, wait until it
+is **Active** (SSL/TLS → Full (strict)), and use that domain instead of `bookings.bergerhouseboats.com.au` everywhere, including the
+three repository files above. Cloudflare's WAF rate limiting is still not used (see 5.4; the app limits requests itself).
 
 ## 2. Google Cloud (GCP)
 
@@ -177,7 +189,7 @@ gcloud iam service-accounts add-iam-policy-binding github-deploy@PROJECT_ID.iam.
 ### 2.4 Cloud Run (first deploy)
 
 - [ ] **Dev:** merge to `main` (or run the **Deploy (dev)** workflow manually). It builds both containers, pushes them
-      to the shared Artifact Registry and deploys `public-api` (max 3 instances) and `admin-api` (max 2), both with min
+      to the shared Artifact Registry and deploys `public-api` (max 1 instance) and `admin-api` (max 2), both with min
       instances 0 and ingress "all".
 - [ ] **Prod:** GitHub → Releases → **Draft a new release** → new tag `vX.Y.Z` on a commit that dev has already deployed
       → **Publish release**. The **Release (production)** workflow waits for a required reviewer to approve, then deploys
@@ -231,7 +243,7 @@ environment would log the other's payments as "paid for unknown booking". Dev th
   - Copy the signing secret (`whsec_…`) into the `stripe-webhook-secret` secret.
 - [ ] Settings → Payment methods: keep **Cards** on; turn on **Apple Pay** and **Google Pay**. Leave delayed methods
       (bank debits, BNPL) off — the system only accepts card and wallet payments.
-- [ ] **(prod only)** Settings → Payment method domains: add the booking domain (`bookings.example.com.au`) and
+- [ ] **(prod only)** Settings → Payment method domains: add the booking domain (`bookings.bergerhouseboats.com.au`) and
       `bergerhouseboats.com.au` (the booking app runs inside the WordPress page on desktop). Follow Stripe's
       verification steps.
 - [ ] Settings → Branding: logo and colours (used by the embedded checkout and receipts).
@@ -263,12 +275,12 @@ Replies from customers arrive in the same mailbox, and every email sent is also 
 
 Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more than this system sends.
 
-## 5. Cloudflare Pages, Access, Turnstile and rate limiting
+## 5. Cloudflare Pages, Access and Turnstile
 
 ### 5.1 Pages projects
 
 - [ ] Workers & Pages → Create → Pages → **Direct upload** project `berger-booking` (the deploy workflow uploads it).
-      Custom domains → add the booking domain (`bookings.example.com.au`). For dev, the project is
+      Custom domains → add the booking domain (`bookings.bergerhouseboats.com.au`). For dev, the project is
       `berger-booking-dev` with **no** custom domain.
 - [ ] Same for `berger-admin` (dev: `berger-admin-dev`), but **do not add a custom domain**: staff use
       `https://berger-admin.pages.dev`. If a name is taken, choose another project name and use it everywhere in
@@ -309,17 +321,17 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 
 ### 5.3 Turnstile
 
-- [ ] Turnstile → Add widget: name "Booking", hostname `bookings.example.com.au`, mode **Managed**. For dev, a separate
+- [ ] Turnstile → Add widget: name "Booking", hostname `bookings.bergerhouseboats.com.au`, mode **Managed**. For dev, a separate
       widget "Booking (dev)" with hostname `berger-booking-dev.pages.dev`.
 - [ ] Site key → GitHub environment variable `TURNSTILE_SITE_KEY`; secret key → `turnstile-secret` GCP secret.
 
-### 5.4 Rate limiting (prod only)
+### 5.4 Rate limiting (nothing to configure)
 
-Dev has no rate limiting: `pages.dev` addresses are not in your Cloudflare zone. This is accepted.
-
-- [ ] Security → WAF → Rate limiting rules → Create: *if* hostname equals `bookings.example.com.au` *and* URI
-      path starts with `/api/`, *then* **Block** for 1 minute when a client makes more than **60 requests per
-      minute**. (Free plan allows one rule; this is it.)
+There is no Cloudflare rule: the booking subdomain is not in your Cloudflare zone, and WAF rate limiting is a paid
+feature. Instead `public-api` limits each visitor IP to **30 requests per minute** on `/api/*` (the Stripe webhook is
+exempt) and answers "Too many requests" beyond that. It runs in dev and prod. `public-api` is deployed with a single
+instance so the limit is exact; an operator can change it with the `RATE_LIMIT_PER_MINUTE` environment variable on the
+Cloud Run service (`0` turns it off).
 
 ## 6. Seed and complete the data
 
