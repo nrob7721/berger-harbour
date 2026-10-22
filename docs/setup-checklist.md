@@ -113,7 +113,7 @@ Create these in IAM & Admin → Service Accounts:
 |---|---|
 | `public-api@…` | Cloud Datastore User; Secret Manager Secret Accessor (on its secrets only) |
 | `admin-api@…` | Cloud Datastore User; Secret Manager Secret Accessor (on its secrets only) |
-| `scheduler@…` | Cloud Run Invoker (on the `admin-api` service, after it exists) |
+| `scheduler@…` | none (it only identifies the Scheduler job; admin-api checks its OIDC token itself) |
 | `github-deploy@…` | Cloud Run Admin; Service Account User (on `public-api@` and `admin-api@`). Prod only: Artifact Registry Reader (to check the release's images exist). Dev's push rights on the shared repository are granted above. |
 
 ### 2.2 Secrets (Secret Manager)
@@ -190,16 +190,29 @@ gcloud iam service-accounts add-iam-policy-binding github-deploy@PROJECT_ID.iam.
 
 - [ ] **Dev:** merge to `main` (or run the **Deploy (dev)** workflow manually). It builds both containers, pushes them
       to the shared Artifact Registry and deploys `public-api` (max 1 instance) and `admin-api` (max 2), both with min
-      instances 0 and ingress "all".
+      instances 0, ingress "all" and Cloud Run's invoker IAM check turned off (see the check below).
 - [ ] **Prod:** GitHub → Releases → **Draft a new release** → new tag `vX.Y.Z` on a commit that dev has already deployed
       → **Publish release**. The **Release (production)** workflow waits for a required reviewer to approve, then deploys
       that commit's images (it refuses if dev never built them). This is also how every later change reaches customers.
 - [ ] Copy each service URL (Cloud Run → service → URL, like `https://admin-api-xxxx-ts.a.run.app`). Set the
       environment variable `ADMIN_API_URL` to the admin-api URL and re-run the deploy (it becomes the OIDC audience).
-- [ ] Give `scheduler@` the **Cloud Run Invoker** role on the `admin-api` service.
+- [ ] **Check both services reach the app.** The Cloudflare Pages Functions call the APIs without a Google token, so
+      the deploy turns off Cloud Run's own sign-in check (`--no-invoker-iam-check`) instead of granting the invoker role
+      to `allUsers` (which the org policy *Domain restricted sharing* of a Google Workspace organisation blocks). Run
+      this for each service URL:
+
+      ```bash
+      curl -i <service URL>/api/bookings
+      ```
+
+      The answer must be `403` with the body `Status Code: 403; Forbidden`: that is the app rejecting the missing
+      edge proxy secret, so the request got through. An HTML page saying "Your client does not have permission" (and
+      Cloud Run logs "The request was not authenticated") means Cloud Run still requires sign-in: check the deploy
+      log of that step. If it failed because the organisation enforces the policy *Require Invoker IAM*
+      (`run.managed.requireInvokerIam`), ask the Workspace administrator to turn that policy off for this project.
 
 The services are reachable on the internet, but every route requires the edge proxy secret, a Cloudflare Access
-login (admin), a Stripe signature (webhook) or a Google OIDC token (jobs).
+login (admin), a Stripe signature (webhook) or a Google OIDC token (jobs, checked by admin-api itself).
 
 ### 2.5 Cloud Scheduler
 
@@ -296,21 +309,32 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 
 ### 5.2 Cloudflare Access (admin app)
 
-- [ ] **Enforce 2-step verification in Google Workspace** (Admin console → Security → Authentication → 2-step
+- [ ] **(prod, Workspace accounts) Enforce 2-step verification in Google Workspace** (Admin console → Security → Authentication → 2-step
       verification → **Allow users to turn on 2-step verification** and **Enforcement: On**, for the organizational
       unit holding the staff accounts; prefer security keys or passkeys over SMS). Cloudflare Access cannot see
       whether a login used MFA when Google is the identity provider, so this is the only place it is enforced.
       Do this before the Access policy below, and confirm each staff member has enrolled.
-- [ ] Zero Trust → **Integrations → Identity providers → Add new identity provider → Google Workspace** (follow the
-      wizard; it creates a Google OAuth client). In older dashboards this was Settings → Authentication → Login
-      methods → Add new. Note the **team domain** (`<team>.cloudflareaccess.com`, shown under Settings → Custom
+- [ ] **Google OAuth client.** In the GCP project, Google Auth Platform (APIs & Services → OAuth consent screen):
+  - **Audience** → **User type**. **Internal** only lets accounts in the Workspace organisation sign in; anyone else
+    (for example a personal Gmail account used for testing dev) gets `Error 403: org_internal`. Use **Internal** when
+    every staff account is on the `bergerhouseboats.com.au` Workspace (prod). Use **Make external** when anyone else
+    needs to sign in (dev): then either add them under **Test users**, or **Publish app** (the `openid`, `email` and
+    `profile` scopes need no Google verification). The Access policy below is what restricts who gets in.
+  - **Clients** → **Create client** → *Web application*. Authorized JavaScript origin:
+    `https://<team>.cloudflareaccess.com`; authorized redirect URI:
+    `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. Keep the client ID and secret for the next step.
+- [ ] Zero Trust → **Integrations → Identity providers → Add new identity provider**, paste the client ID and secret.
+      Pick **Google Workspace** if every staff account is on the Workspace (prod); pick **Google** if personal Gmail
+      accounts must sign in (dev). Where the wizard offers to create the OAuth client for you, you can use that
+      instead of the previous step, but the consent screen **User type** above still applies. In older dashboards this
+      was Settings → Authentication → Login methods → Add new. Note the **team domain** (`<team>.cloudflareaccess.com`, shown under Settings → Custom
       pages or in the Zero Trust URL/overview) → GitHub environment variable `CF_ACCESS_TEAM_DOMAIN`.
 - [ ] Protect the admin app's `pages.dev` address (dev: a separate application for `berger-admin-dev.pages.dev`,
       done the same way in the `berger-admin-dev` project). In the `berger-admin` Pages project → Settings → General →
       **Enable access policy**. Cloudflare creates an Access application with a preview wildcard
       (`*.berger-admin.pages.dev`). In Zero Trust → Access → Applications, edit it so the domain is exactly
-      `berger-admin.pages.dev` (remove the wildcard from the subdomain field), set the identity provider to Google
-      Workspace only, and set the session duration e.g. 24 hours. Never add a custom domain to this project without
+      `berger-admin.pages.dev` (remove the wildcard from the subdomain field), set the identity provider to the Google
+      one created above (and no other), and set the session duration e.g. 24 hours. Never add a custom domain to this project without
       also creating a separate self-hosted Access application for it.
 - [ ] Replace the default policy with "Staff": **Include** → Emails → the staff account(s); **Require** → Country → Australia.
       (Restricting to NSW only is not possible in Access and not required.)
