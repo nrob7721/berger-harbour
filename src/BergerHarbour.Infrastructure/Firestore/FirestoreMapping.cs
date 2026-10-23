@@ -40,6 +40,9 @@ internal static class FirestoreMapping
 
     private static T Enum<T>(string value) where T : struct, System.Enum => System.Enum.Parse<T>(value);
 
+    /// <summary>Drafts saved before the Guests step was merged into the dates and boat step may still say "Guests".</summary>
+    private static BookingStep LastStep(string value) => value == "Guests" ? BookingStep.Details : Enum<BookingStep>(value);
+
     // ---- Booking --------------------------------------------------------------------------------------------------
 
     public static BookingDocument ToDocument(BookingSnapshot s, int version) => new()
@@ -138,7 +141,7 @@ internal static class FirestoreMapping
         id, d.Version, d.BoatId, Enum<PeriodType>(d.PeriodType), Date(d.StartDate), Date(d.EndDate), d.FullName, d.Email,
         d.MobileNumber, d.NumberOfAdults, d.NumberOfChildren,
         d.AddonRequests.Select(a => new DraftAddonRequestSnapshot(a.AddonId, a.Quantity)).ToList(),
-        Enum<BookingStep>(d.LastStepReached), Instant(d.LastActivityAt), d.ConvertedBookingId, Instant(d.ConvertedAt),
+        LastStep(d.LastStepReached), Instant(d.LastActivityAt), d.ConvertedBookingId, Instant(d.ConvertedAt),
         Instant(d.AbandonedNotifiedAt), Instant(d.CreatedDate)));
 
     // ---- Boat -----------------------------------------------------------------------------------------------------
@@ -155,6 +158,9 @@ internal static class FirestoreMapping
         BeddingDescription = s.BeddingDescription,
         SecurityBondCents = Cents(s.SecurityBond),
         DepositAmountCents = s.DepositAmount is { } deposit ? Cents(deposit) : null,
+        ImageUrl = s.ImageUrl,
+        HasSpa = s.HasSpa,
+        IsPetFriendly = s.IsPetFriendly,
         Rates = s.Rates.Select(r => new BoatRateDocument
         {
             SeasonId = r.SeasonId,
@@ -169,7 +175,7 @@ internal static class FirestoreMapping
 
     public static Boat ToBoat(string id, BoatDocument d) => Boat.FromSnapshot(new BoatSnapshot(
         id, d.Version, d.Name, d.Slug, Enum<BoatType>(d.Type), d.MaxNoOfGuests, d.AdultBeds, d.KidsBeds,
-        d.BeddingDescription, Money(d.SecurityBondCents), Money(d.DepositAmountCents),
+        d.BeddingDescription, Money(d.SecurityBondCents), Money(d.DepositAmountCents), d.ImageUrl, d.HasSpa, d.IsPetFriendly,
         d.Rates.Select(r => new BoatRateSnapshot(r.SeasonId, Enum<PeriodType>(r.PeriodType), Money(r.PriceCents))).ToList(),
         d.AllowedAddonIds, d.IsActive, Instant(d.CreatedDate), Instant(d.ModifiedDate)));
 

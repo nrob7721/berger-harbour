@@ -189,8 +189,8 @@ public class NotificationJobTests
         var app = await TestApp.CreateAsync(booking: DraftTiming);
         var start = app.MondayAfter(40);
         var draftId = await app.DraftAsync(start);
-        await app.Get<OnlineBookingService>().UpdateDraftAsync(draftId, new UpdateBookingDraftRequest(PeriodType.Midweek, start,
-            "Jane Citizen", "jane@example.com", "0412 345 678", 4, 2, [new("ice", 2), new("outboard-motor", 1)], BookingStep.Addons));
+        await app.Get<OnlineBookingService>().UpdateDraftAsync(draftId, new UpdateBookingDraftRequest("pacific-blue",
+            PeriodType.Midweek, start, 4, 2, "Jane Citizen", "jane@example.com", "0412 345 678", [new("ice", 2), new("outboard-motor", 1)], BookingStep.Addons));
 
         app.Clock.Advance(TimeSpan.FromHours(2));
         await Run(app);

@@ -46,6 +46,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["FleetAvailabilityDto"];
+                        "application/json": components["schemas"]["FleetAvailabilityDto"];
+                        "text/json": components["schemas"]["FleetAvailabilityDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/availability/period": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    periodType?: components["schemas"]["PeriodType"];
+                    startDate?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PeriodAvailabilityDto"];
+                        "application/json": components["schemas"]["PeriodAvailabilityDto"];
+                        "text/json": components["schemas"]["PeriodAvailabilityDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["PublicFleetDto"];
+                        "application/json": components["schemas"]["PublicFleetDto"];
+                        "text/json": components["schemas"]["PublicFleetDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boats/{slug}": {
         parameters: {
             query?: never;
@@ -73,48 +190,6 @@ export interface paths {
                         "text/plain": components["schemas"]["PublicBoatDto"];
                         "application/json": components["schemas"]["PublicBoatDto"];
                         "text/json": components["schemas"]["PublicBoatDto"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/boats/{slug}/availability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: {
-                    from?: string;
-                    to?: string;
-                };
-                header?: never;
-                path: {
-                    slug: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AvailabilityDto"];
-                        "application/json": components["schemas"]["AvailabilityDto"];
-                        "text/json": components["schemas"]["AvailabilityDto"];
                     };
                 };
             };
@@ -430,9 +505,15 @@ export interface components {
             /** Format: double */
             week: number;
         };
-        AvailabilityDto: {
+        BoatAvailabilityDto: {
+            slug: string;
             unavailable: components["schemas"]["DateRangeDto"][];
-            enquireOnly: components["schemas"]["EnquireOnlyDto"][];
+        };
+        BoatPeriodDto: {
+            slug: string;
+            available: boolean;
+            /** Format: double */
+            hirePrice: null | number;
         };
         BookingAddonRequest: {
             addonId: string;
@@ -457,12 +538,16 @@ export interface components {
             amountPaid: number;
         };
         /** @enum {unknown} */
-        BookingStep: "Details" | "Guests" | "Addons" | "Summary" | "Payment";
+        BookingStep: "Details" | "Addons" | "Summary" | "Payment";
         CreateBookingDraftRequest: {
             slug: string;
             periodType: components["schemas"]["PeriodType"];
             /** Format: date */
             startDate: string;
+            /** Format: int32 */
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
             fullName: null | string;
             email: null | string;
             mobile: null | string;
@@ -506,6 +591,10 @@ export interface components {
             /** Format: date */
             lastNight: string;
         };
+        FleetAvailabilityDto: {
+            enquireOnly: components["schemas"]["EnquireOnlyDto"][];
+            boats: components["schemas"]["BoatAvailabilityDto"][];
+        };
         MilestoneDto: {
             kind: components["schemas"]["MilestoneKind"];
             label: string;
@@ -544,6 +633,9 @@ export interface components {
             amountDueNow: number;
             canPay: boolean;
         };
+        PeriodAvailabilityDto: {
+            boats: components["schemas"]["BoatPeriodDto"][];
+        };
         /** @enum {unknown} */
         PeriodType: "Midweek" | "Weekend" | "Week" | "LongWeekend" | "Custom";
         PublicAddonAvailabilityDto: {
@@ -563,8 +655,11 @@ export interface components {
         PublicBoatDto: {
             slug: string;
             name: string;
+            imageUrl: null | string;
             /** Format: int32 */
             maxNoOfGuests: number;
+            hasSpa: boolean;
+            isPetFriendly: boolean;
             /** Format: int32 */
             adultBeds: null | number;
             /** Format: int32 */
@@ -576,7 +671,6 @@ export interface components {
             depositAmount: number;
             isActive: boolean;
             addons: components["schemas"]["PublicAddonDto"][];
-            settings: components["schemas"]["PublicBookingSettingsDto"];
         };
         PublicBookingSettingsDto: {
             /** Format: int32 */
@@ -591,6 +685,19 @@ export interface components {
             checkInTime: string;
             checkInWindowEnd: string;
             checkOutTime: string;
+        };
+        PublicFleetBoatDto: {
+            slug: string;
+            name: string;
+            imageUrl: null | string;
+            /** Format: int32 */
+            maxNoOfGuests: number;
+            hasSpa: boolean;
+            isPetFriendly: boolean;
+        };
+        PublicFleetDto: {
+            boats: components["schemas"]["PublicFleetBoatDto"][];
+            settings: components["schemas"]["PublicBookingSettingsDto"];
         };
         QuoteAddonDto: {
             addonId: string;
@@ -643,16 +750,17 @@ export interface components {
             addons: null | components["schemas"]["BookingAddonRequest"][];
         };
         UpdateBookingDraftRequest: {
+            slug: string;
             periodType: components["schemas"]["PeriodType"];
             /** Format: date */
             startDate: string;
+            /** Format: int32 */
+            numberOfAdults: number;
+            /** Format: int32 */
+            numberOfChildren: number;
             fullName: null | string;
             email: null | string;
             mobile: null | string;
-            /** Format: int32 */
-            numberOfAdults: null | number;
-            /** Format: int32 */
-            numberOfChildren: null | number;
             addons: null | components["schemas"]["BookingAddonRequest"][];
             lastStepReached: components["schemas"]["BookingStep"];
         };

@@ -115,6 +115,30 @@ export function evaluateDay(type: OnlinePeriodType, day: IsoDate, availability: 
   return state('available');
 }
 
+/** Availability of several boats: the blocked periods, and each boat's taken ranges by slug. */
+export interface FleetAvailabilityData {
+  enquireOnly: EnquireOnlyRange[];
+  unavailable: ReadonlyMap<string, readonly DateRange[]>;
+}
+
+/** True when none of the boat's taken ranges overlaps the stay. */
+export function isBoatFree(stay: Stay, unavailable: readonly DateRange[] | undefined): boolean {
+  return !(unavailable ?? []).some((r) => staysOverlap(stay, r));
+}
+
+/**
+ * Like {@link evaluateDay}, for a set of boats: the period is available when **any** of the calendar boats is free for
+ * it, and taken when every one of them is taken (or there are none).
+ */
+export function evaluateFleetDay(
+  type: OnlinePeriodType, day: IsoDate, availability: FleetAvailabilityData, calendarBoats: readonly string[], window: BookingWindow,
+): DayState {
+  const state = evaluateDay(type, day, { unavailable: [], enquireOnly: availability.enquireOnly }, window);
+  if (state.status !== 'available') return state;
+  const free = calendarBoats.some((slug) => isBoatFree(state.stay!, availability.unavailable.get(slug)));
+  return free ? state : { ...state, status: 'taken', clickable: false };
+}
+
 /** True when the day is part of the selected stay (check-in through check-out day). */
 export function isInSelection(day: IsoDate, selection: Stay | null): boolean {
   return !!selection && day >= selection.start && day <= selection.end;

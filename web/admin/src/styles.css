@@ -426,6 +426,49 @@
   border-color: var(--c-brand);
 }
 
+.boat-card__image {
+  grid-column: 1 / -1;
+  display: block;
+  width: calc(100% + 32px);
+  aspect-ratio: 16 / 9;
+  margin: -16px -16px 8px;
+  object-fit: cover;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.boat-card__features {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Neutral stand-in when a boat has no image, or it fails to load. */
+.image-placeholder {
+  background: var(--c-disabled) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 24' fill='none' stroke='%238b9aa6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 14h40l-5 7H9z'/%3E%3Cpath d='M10 14V8h22v6M16 8V4h10v4'/%3E%3C/svg%3E") center / 72px auto no-repeat;
+}
+
+.image-preview {
+  margin: -6px 0 14px;
+}
+
+.image-preview__image {
+  display: block;
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+}
+
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-bottom: 8px;
+}
+
 .boat-card__name {
   font-weight: 700;
   font-size: 1.1rem;
@@ -459,6 +502,11 @@
 .badge--inactive {
   background: var(--c-disabled);
   color: #4d5c66;
+}
+
+.badge--feature {
+  background: var(--c-brand-tint);
+  color: var(--c-brand-strong);
 }
 
 .table {

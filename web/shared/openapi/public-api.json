@@ -60,6 +60,128 @@
         }
       }
     },
+    "/api/availability": {
+      "get": {
+        "tags": [
+          "Availability"
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/availability/period": {
+      "get": {
+        "tags": [
+          "Availability"
+        ],
+        "parameters": [
+          {
+            "name": "periodType",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/PeriodType"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/boats": {
+      "get": {
+        "tags": [
+          "Boats"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFleetDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFleetDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFleetDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/boats/{slug}": {
       "get": {
         "tags": [
@@ -92,61 +214,6 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PublicBoatDto"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/boats/{slug}/availability": {
-      "get": {
-        "tags": [
-          "Boats"
-        ],
-        "parameters": [
-          {
-            "name": "slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/AvailabilityDto"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AvailabilityDto"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AvailabilityDto"
                 }
               }
             }
@@ -502,24 +569,44 @@
           }
         }
       },
-      "AvailabilityDto": {
+      "BoatAvailabilityDto": {
         "required": [
-          "unavailable",
-          "enquireOnly"
+          "slug",
+          "unavailable"
         ],
         "type": "object",
         "properties": {
+          "slug": {
+            "type": "string"
+          },
           "unavailable": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DateRangeDto"
             }
+          }
+        }
+      },
+      "BoatPeriodDto": {
+        "required": [
+          "slug",
+          "available",
+          "hirePrice"
+        ],
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
           },
-          "enquireOnly": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnquireOnlyDto"
-            }
+          "available": {
+            "type": "boolean"
+          },
+          "hirePrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           }
         }
       },
@@ -600,7 +687,6 @@
       "BookingStep": {
         "enum": [
           "Details",
-          "Guests",
           "Addons",
           "Summary",
           "Payment"
@@ -611,6 +697,8 @@
           "slug",
           "periodType",
           "startDate",
+          "numberOfAdults",
+          "numberOfChildren",
           "fullName",
           "email",
           "mobile",
@@ -627,6 +715,14 @@
           "startDate": {
             "type": "string",
             "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
           },
           "fullName": {
             "type": [
@@ -799,6 +895,27 @@
           }
         }
       },
+      "FleetAvailabilityDto": {
+        "required": [
+          "enquireOnly",
+          "boats"
+        ],
+        "type": "object",
+        "properties": {
+          "enquireOnly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnquireOnlyDto"
+            }
+          },
+          "boats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatAvailabilityDto"
+            }
+          }
+        }
+      },
       "MilestoneDto": {
         "required": [
           "kind",
@@ -919,6 +1036,20 @@
           }
         }
       },
+      "PeriodAvailabilityDto": {
+        "required": [
+          "boats"
+        ],
+        "type": "object",
+        "properties": {
+          "boats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatPeriodDto"
+            }
+          }
+        }
+      },
       "PeriodType": {
         "enum": [
           "Midweek",
@@ -996,15 +1127,17 @@
         "required": [
           "slug",
           "name",
+          "imageUrl",
           "maxNoOfGuests",
+          "hasSpa",
+          "isPetFriendly",
           "adultBeds",
           "kidsBeds",
           "beddingDescription",
           "securityBond",
           "depositAmount",
           "isActive",
-          "addons",
-          "settings"
+          "addons"
         ],
         "type": "object",
         "properties": {
@@ -1014,9 +1147,21 @@
           "name": {
             "type": "string"
           },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "maxNoOfGuests": {
             "type": "integer",
             "format": "int32"
+          },
+          "hasSpa": {
+            "type": "boolean"
+          },
+          "isPetFriendly": {
+            "type": "boolean"
           },
           "adultBeds": {
             "type": [
@@ -1054,9 +1199,6 @@
             "items": {
               "$ref": "#/components/schemas/PublicAddonDto"
             }
-          },
-          "settings": {
-            "$ref": "#/components/schemas/PublicBookingSettingsDto"
           }
         }
       },
@@ -1103,6 +1245,59 @@
           },
           "checkOutTime": {
             "type": "string"
+          }
+        }
+      },
+      "PublicFleetBoatDto": {
+        "required": [
+          "slug",
+          "name",
+          "imageUrl",
+          "maxNoOfGuests",
+          "hasSpa",
+          "isPetFriendly"
+        ],
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "maxNoOfGuests": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hasSpa": {
+            "type": "boolean"
+          },
+          "isPetFriendly": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PublicFleetDto": {
+        "required": [
+          "boats",
+          "settings"
+        ],
+        "type": "object",
+        "properties": {
+          "boats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicFleetBoatDto"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/PublicBookingSettingsDto"
           }
         }
       },
@@ -1281,24 +1476,36 @@
       },
       "UpdateBookingDraftRequest": {
         "required": [
+          "slug",
           "periodType",
           "startDate",
+          "numberOfAdults",
+          "numberOfChildren",
           "fullName",
           "email",
           "mobile",
-          "numberOfAdults",
-          "numberOfChildren",
           "addons",
           "lastStepReached"
         ],
         "type": "object",
         "properties": {
+          "slug": {
+            "type": "string"
+          },
           "periodType": {
             "$ref": "#/components/schemas/PeriodType"
           },
           "startDate": {
             "type": "string",
             "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
           },
           "fullName": {
             "type": [
@@ -1317,20 +1524,6 @@
               "null",
               "string"
             ]
-          },
-          "numberOfAdults": {
-            "type": [
-              "null",
-              "integer"
-            ],
-            "format": "int32"
-          },
-          "numberOfChildren": {
-            "type": [
-              "null",
-              "integer"
-            ],
-            "format": "int32"
           },
           "addons": {
             "type": [
@@ -1351,6 +1544,9 @@
   "tags": [
     {
       "name": "Addons"
+    },
+    {
+      "name": "Availability"
     },
     {
       "name": "Boats"

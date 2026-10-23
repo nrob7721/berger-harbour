@@ -3,8 +3,11 @@ import { api, query } from '@shared/http';
 import type { IsoDate } from '@shared/dates';
 
 type S = components['schemas'];
+export type PublicFleet = S['PublicFleetDto'];
+export type PublicBookingSettings = S['PublicBookingSettingsDto'];
 export type PublicBoat = S['PublicBoatDto'];
-export type Availability = S['AvailabilityDto'];
+export type FleetAvailability = S['FleetAvailabilityDto'];
+export type PeriodAvailability = S['PeriodAvailabilityDto'];
 export type Quote = S['QuoteDto'];
 export type QuoteRequest = S['QuoteRequest'];
 export type CreateBookingRequest = S['CreateOnlineBookingRequest'];
@@ -19,9 +22,11 @@ export type BookingStep = S['BookingStep'];
 const enc = encodeURIComponent;
 
 export const publicApi = {
+  fleet: () => api<PublicFleet>('/api/boats'),
   boat: (slug: string) => api<PublicBoat>(`/api/boats/${enc(slug)}`),
-  availability: (slug: string, from: IsoDate, to: IsoDate) =>
-    api<Availability>(`/api/boats/${enc(slug)}/availability${query({ from, to })}`),
+  availability: (from: IsoDate, to: IsoDate) => api<FleetAvailability>(`/api/availability${query({ from, to })}`),
+  periodAvailability: (periodType: string, startDate: IsoDate) =>
+    api<PeriodAvailability>(`/api/availability/period${query({ periodType, startDate })}`),
   quote: (slug: string, body: QuoteRequest) => api<Quote>(`/api/boats/${enc(slug)}/quote`, { body }),
   addonAvailability: (addonId: string, startDate: IsoDate, endDate: IsoDate) =>
     api<{ remaining: number }>(`/api/addons/${enc(addonId)}/availability${query({ startDate, endDate })}`),

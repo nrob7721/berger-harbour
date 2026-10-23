@@ -8,7 +8,6 @@ namespace BergerHarbour.Domain.BookingDrafts;
 public enum BookingStep
 {
     Details,
-    Guests,
     Addons,
     Summary,
     Payment,
@@ -17,8 +16,9 @@ public enum BookingStep
 public sealed record DraftAddonRequest(AddonId AddonId, int Quantity);
 
 /// <summary>
-/// What a customer has entered in the booking app (from "Your details" on) before paying. It is not a customer
-/// record: if it is never converted into an Active booking, staff are alerted so they can follow up.
+/// What a customer has entered in the booking app (from "Your details" on) before paying: the boat, stay and guests
+/// chosen on the dates and boat step, their contact details and requested add-ons. It is not a customer record: if it
+/// is never converted into an Active booking, staff are alerted so they can follow up.
 /// </summary>
 public sealed class BookingDraft : AggregateRoot<BookingDraftId>
 {
@@ -48,7 +48,8 @@ public sealed class BookingDraft : AggregateRoot<BookingDraftId>
         CreatedDate = createdDate;
     }
 
-    public BoatId BoatId { get; }
+    /// <summary>The selected boat; changes when the customer goes back and chooses another one.</summary>
+    public BoatId BoatId { get; private set; }
 
     public PeriodType PeriodType { get; private set; }
 
@@ -61,6 +62,7 @@ public sealed class BookingDraft : AggregateRoot<BookingDraftId>
     /// <summary>E.164.</summary>
     public string MobileNumber { get; private set; }
 
+    /// <summary>Always set on new drafts; null only on drafts saved before guests moved to the first step.</summary>
     public int? NumberOfAdults { get; private set; }
 
     public int? NumberOfChildren { get; private set; }
@@ -83,28 +85,27 @@ public sealed class BookingDraft : AggregateRoot<BookingDraftId>
 
     public bool IsConverted => ConvertedBookingId is not null;
 
-    public static BookingDraft Create(BoatId boatId, PeriodType periodType, Stay stay, string fullName, string email,
-        string mobileNumber, DateTimeOffset now, BookingDraftId? id = null) =>
-        new(id ?? BookingDraftId.New(), 0, boatId, periodType, stay, Guard.Required(fullName, "fullName", "Full name"),
-            EmailAddress.Create(email), PhoneNumber.Normalise(mobileNumber, "mobile", "Mobile number"), null, null, [],
-            BookingStep.Details, now, null, null, null, now);
+    public static BookingDraft Create(BoatId boatId, PeriodType periodType, Stay stay, int numberOfAdults,
+        int numberOfChildren, string fullName, string email, string mobileNumber, DateTimeOffset now,
+        BookingDraftId? id = null)
+    {
+        ValidateGuests(numberOfAdults, numberOfChildren);
+        return new(id ?? BookingDraftId.New(), 0, boatId, periodType, stay, Guard.Required(fullName, "fullName", "Full name"),
+            EmailAddress.Create(email), PhoneNumber.Normalise(mobileNumber, "mobile", "Mobile number"), numberOfAdults,
+            numberOfChildren, [], BookingStep.Details, now, null, null, null, now);
+    }
 
-    /// <summary>The customer moved forward a step. A converted draft can no longer be updated.</summary>
-    public void Update(PeriodType periodType, Stay stay, string fullName, string email, string mobileNumber,
-        int? numberOfAdults, int? numberOfChildren, IEnumerable<DraftAddonRequest> addonRequests, BookingStep stepReached,
-        DateTimeOffset now)
+    /// <summary>
+    /// The customer moved forward a step, possibly after going back and choosing another boat, stay or guests. A
+    /// converted draft can no longer be updated.
+    /// </summary>
+    public void Update(BoatId boatId, PeriodType periodType, Stay stay, int numberOfAdults, int numberOfChildren,
+        string fullName, string email, string mobileNumber, IEnumerable<DraftAddonRequest> addonRequests,
+        BookingStep stepReached, DateTimeOffset now)
     {
         EnsureNotConverted();
-        if (numberOfAdults is < 1)
-        {
-            throw new DomainValidationException("numberOfAdults", "There must be at least one adult.");
-        }
-
-        if (numberOfChildren is < 0)
-        {
-            throw new DomainValidationException("numberOfChildren", "Number of children cannot be negative.");
-        }
-
+        ValidateGuests(numberOfAdults, numberOfChildren);
+        BoatId = boatId;
         PeriodType = periodType;
         Stay = stay;
         FullName = Guard.Required(fullName, "fullName", "Full name");
@@ -150,6 +151,19 @@ public sealed class BookingDraft : AggregateRoot<BookingDraftId>
         s.AddonRequests.Select(a => new DraftAddonRequest(new AddonId(a.AddonId), a.Quantity)), s.LastStepReached,
         s.LastActivityAt, string.IsNullOrEmpty(s.ConvertedBookingId) ? null : new BookingId(s.ConvertedBookingId),
         s.ConvertedAt, s.AbandonedNotifiedAt, s.CreatedDate);
+
+    private static void ValidateGuests(int numberOfAdults, int numberOfChildren)
+    {
+        if (numberOfAdults < 1)
+        {
+            throw new DomainValidationException("numberOfAdults", "There must be at least one adult.");
+        }
+
+        if (numberOfChildren < 0)
+        {
+            throw new DomainValidationException("numberOfChildren", "Number of children cannot be negative.");
+        }
+    }
 
     private void EnsureNotConverted()
     {

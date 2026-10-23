@@ -12,7 +12,7 @@ public class BookingDraftTests
     private static readonly Stay Stay = new(D(2026, 12, 7), D(2026, 12, 11));
 
     private static BookingDraft Draft(DateTimeOffset createdAt, string email = "jane@example.com") =>
-        BookingDraft.Create(Boat, PeriodType.Midweek, Stay, "Jane", email, "0412 345 678", createdAt);
+        BookingDraft.Create(Boat, PeriodType.Midweek, Stay, 2, 0, "Jane", email, "0412 345 678", createdAt);
 
     [Fact]
     public void Ids_are_long_random_and_url_safe()
@@ -31,16 +31,37 @@ public class BookingDraftTests
         Assert.Equal(BookingStep.Details, draft.LastStepReached);
         Assert.Equal("+61412345678", draft.MobileNumber);
 
-        draft.Update(PeriodType.Midweek, Stay, "Jane", "jane@example.com", "0412 345 678", 4, 2,
+        Assert.Equal((2, 0), (draft.NumberOfAdults, draft.NumberOfChildren));
+
+        draft.Update(Boat, PeriodType.Midweek, Stay, 4, 2, "Jane", "jane@example.com", "0412 345 678",
             [new DraftAddonRequest(AddonId.New(), 2)], BookingStep.Addons, Now.AddMinutes(5));
         Assert.Equal(BookingStep.Addons, draft.LastStepReached);
         Assert.Equal(Now.AddMinutes(5), draft.LastActivityAt);
         Assert.Equal(4, draft.NumberOfAdults);
 
         // Going back a step keeps the furthest step reached.
-        draft.Update(PeriodType.Midweek, Stay, "Jane", "jane@example.com", "0412 345 678", 4, 2, [], BookingStep.Guests,
-            Now.AddMinutes(6));
+        draft.Update(Boat, PeriodType.Midweek, Stay, 4, 2, "Jane", "jane@example.com", "0412 345 678", [],
+            BookingStep.Details, Now.AddMinutes(6));
         Assert.Equal(BookingStep.Addons, draft.LastStepReached);
+    }
+
+    [Fact]
+    public void Going_back_and_choosing_another_boat_moves_the_draft_to_it()
+    {
+        var draft = Draft(Now);
+        var other = BoatId.New();
+        draft.Update(other, PeriodType.Midweek, Stay, 2, 0, "Jane", "jane@example.com", "0412 345 678", [],
+            BookingStep.Addons, Now.AddMinutes(1));
+        Assert.Equal(other, draft.BoatId);
+    }
+
+    [Fact]
+    public void Drafts_need_at_least_one_adult_and_no_negative_children()
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            BookingDraft.Create(Boat, PeriodType.Midweek, Stay, 0, 2, "Jane", "jane@example.com", "0412 345 678", Now));
+        Assert.Throws<DomainValidationException>(() => Draft(Now).Update(Boat, PeriodType.Midweek, Stay, 1, -1, "Jane",
+            "jane@example.com", "0412 345 678", [], BookingStep.Addons, Now));
     }
 
     [Fact]
@@ -51,8 +72,8 @@ public class BookingDraftTests
         draft.MarkConverted(bookingId, Now);
         draft.MarkConverted(bookingId, Now); // idempotent
         Assert.Throws<InvalidStateTransitionException>(() => draft.MarkConverted(BookingId.New(), Now));
-        Assert.Throws<InvalidStateTransitionException>(() => draft.Update(PeriodType.Midweek, Stay, "Jane",
-            "jane@example.com", "0412 345 678", 1, 0, [], BookingStep.Guests, Now));
+        Assert.Throws<InvalidStateTransitionException>(() => draft.Update(Boat, PeriodType.Midweek, Stay, 1, 0, "Jane",
+            "jane@example.com", "0412 345 678", [], BookingStep.Addons, Now));
         Assert.False(draft.IsAbandoned(Now.AddDays(1), AbandonedAfter));
     }
 

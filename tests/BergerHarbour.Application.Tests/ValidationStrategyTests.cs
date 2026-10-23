@@ -45,7 +45,7 @@ public class ValidationStrategyTests
         _boat.Activate(seasons, Now);
         _inactive.Deactivate();
         _draft = BookingDraft.Create(_boat.Id, PeriodType.Midweek, new Stay(new DateOnly(2026, 11, 9), new DateOnly(2026, 11, 13)),
-            "Jane Citizen", "jane@example.com", "0412 345 678", Now);
+            4, 2, "Jane Citizen", "jane@example.com", "0412 345 678", Now);
     }
 
     private BookingValidationContext Context(BookingValidationScope scope = BookingValidationScope.Submit, Boat? boat = null,
@@ -153,7 +153,7 @@ public class ValidationStrategyTests
         Assert.True(Online(Valid() with { DraftId = "other" }).ContainsKey("draftId"));
         Assert.True(_online.Validate(Valid(), Context() with { Draft = null }).ToDictionary().ContainsKey("draftId"));
 
-        var otherBoat = BookingDraft.Create(BoatId.New(), PeriodType.Midweek, _draft.Stay, "Jane", "jane@example.com", "0412 345 678", Now);
+        var otherBoat = BookingDraft.Create(BoatId.New(), PeriodType.Midweek, _draft.Stay, 1, 0, "Jane", "jane@example.com", "0412 345 678", Now);
         Assert.True(_online.Validate(Valid() with { DraftId = otherBoat.Id.Value }, Context() with { Draft = otherBoat })
             .ToDictionary().ContainsKey("draftId"));
 

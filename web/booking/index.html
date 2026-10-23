@@ -10,15 +10,14 @@
     <div class="app" id="app">
       <header class="app__header">
         <p class="app__brand">Berger Houseboats</p>
-        <h1 class="app__title" id="boat-name"><span class="skeleton skeleton--title"></span></h1>
+        <h1 class="app__title" id="app-title"><span class="skeleton skeleton--title"></span></h1>
       </header>
 
       <div id="page-notice" role="alert" aria-live="assertive"></div>
 
       <ol class="progress" id="progress" aria-label="Booking progress">
-        <li data-step="dates">Dates</li>
+        <li data-step="dates">Dates &amp; boat</li>
         <li data-step="details">Your details</li>
-        <li data-step="guests">Guests</li>
         <li data-step="addons">Add-ons</li>
         <li data-step="summary">Summary</li>
         <li data-step="payment">Payment</li>
@@ -31,36 +30,71 @@
           <div class="skeleton skeleton--calendar"></div>
         </section>
 
-        <!-- Step 1: dates -->
+        <!-- Step 1: dates & boat -->
         <section class="step" data-step="dates" aria-labelledby="dates-title">
-          <h2 id="dates-title">Choose your dates</h2>
-          <fieldset class="period-options" id="period-options">
-            <legend>Type of stay</legend>
-            <label class="radio-card">
-              <input type="radio" name="periodType" value="Midweek" checked />
-              <span><strong>Mid-week</strong> <span class="muted">(Mon–Fri)</span></span>
-            </label>
-            <label class="radio-card">
-              <input type="radio" name="periodType" value="Weekend" />
-              <span><strong>Weekend</strong> <span class="muted">(Fri–Mon)</span></span>
-            </label>
-            <label class="radio-card">
-              <input type="radio" name="periodType" value="Week" />
-              <span><strong>Week</strong> <span class="muted">(Mon–Mon or Fri–Fri)</span></span>
-            </label>
-          </fieldset>
-          <p class="times" id="times" aria-live="polite"></p>
-          <div id="calendar"></div>
-          <ul class="legend" aria-label="Calendar legend">
-            <li><span class="swatch swatch--available"></span>Available</li>
-            <li><span class="swatch swatch--selected"></span>Your stay</li>
-            <li><span class="swatch swatch--taken"></span>Unavailable</li>
-            <li><span class="swatch swatch--enquire"></span>Phone or email to book</li>
-          </ul>
-          <p class="selection-summary" id="selection-summary" aria-live="polite"></p>
-          <div class="step__nav">
-            <span></span>
-            <button type="button" class="button button--primary" data-next disabled>Next</button>
+          <h2 id="dates-title">Choose your dates and boat</h2>
+          <div class="dates-boat">
+            <div class="dates-boat__controls">
+              <fieldset class="period-options" id="period-options">
+                <legend>Type of stay</legend>
+                <label class="radio-card">
+                  <input type="radio" name="periodType" value="Midweek" checked />
+                  <span><strong>Mid-week</strong> <span class="muted">(Mon–Fri)</span></span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="periodType" value="Weekend" />
+                  <span><strong>Weekend</strong> <span class="muted">(Fri–Mon)</span></span>
+                </label>
+                <label class="radio-card">
+                  <input type="radio" name="periodType" value="Week" />
+                  <span><strong>Week</strong> <span class="muted">(Mon–Mon or Fri–Fri)</span></span>
+                </label>
+              </fieldset>
+              <p class="times" id="times" aria-live="polite"></p>
+              <div id="calendar"></div>
+              <ul class="legend" aria-label="Calendar legend">
+                <li><span class="swatch swatch--available"></span>Available</li>
+                <li><span class="swatch swatch--selected"></span>Your stay</li>
+                <li><span class="swatch swatch--taken"></span>Unavailable</li>
+                <li><span class="swatch swatch--enquire"></span>Phone or email to book</li>
+              </ul>
+              <p class="selection-summary" id="selection-summary" aria-live="polite"></p>
+              <label class="inline-choice only-selected">
+                <input type="checkbox" id="only-selected" disabled />
+                <span id="only-selected-label">Show the selected boat's availability only</span>
+              </label>
+              <fieldset class="filters" data-field="numberOfAdults">
+                <legend>Guests and features</legend>
+                <div class="guest-grid">
+                  <div class="field">
+                    <label for="adults">Adults</label>
+                    <select id="adults"></select>
+                  </div>
+                  <div class="field" data-field="numberOfChildren">
+                    <label for="children">Children (Under 12)</label>
+                    <select id="children"></select>
+                  </div>
+                </div>
+                <label class="inline-choice"><input type="checkbox" id="filter-spa" /><span>Spa</span></label>
+                <label class="inline-choice"><input type="checkbox" id="filter-pet" /><span>Pet friendly</span></label>
+              </fieldset>
+              <div class="base-rate">
+                <div>
+                  <span class="base-rate__label">Base hire rate</span>
+                  <span class="base-rate__sub muted">Excludes add-ons</span>
+                </div>
+                <strong class="base-rate__value" id="base-rate" aria-live="polite"></strong>
+              </div>
+              <div class="step__nav" data-field="roomingWarningAccepted">
+                <span></span>
+                <button type="button" class="button button--primary" data-next disabled>Continue</button>
+              </div>
+            </div>
+            <div class="dates-boat__boats" data-field="slug">
+              <h3 class="boats__title" id="boats-title">Boats</h3>
+              <div class="boat-list" id="boat-list" role="radiogroup" aria-labelledby="boats-title"></div>
+              <p class="visually-hidden" id="boat-announcer" aria-live="polite"></p>
+            </div>
           </div>
         </section>
 
@@ -88,29 +122,10 @@
           </div>
         </section>
 
-        <!-- Step 3: guests -->
-        <section class="step" data-step="guests" aria-labelledby="guests-title">
-          <h2 id="guests-title">Guests</h2>
-          <div class="guest-grid">
-            <div class="field" data-field="numberOfAdults">
-              <label for="adults">Adults</label>
-              <select id="adults" required><option value="">Choose…</option></select>
-            </div>
-            <div class="field" data-field="numberOfChildren">
-              <label for="children">Children (Under 12)</label>
-              <select id="children" required></select>
-            </div>
-          </div>
-          <p class="field__hint" id="bedding-hint"></p>
-          <div class="step__nav">
-            <button type="button" class="button" data-back>Back</button>
-            <button type="button" class="button button--primary" data-next disabled>Next</button>
-          </div>
-        </section>
-
-        <!-- Step 4: add-ons -->
+        <!-- Step 3: add-ons -->
         <section class="step" data-step="addons" aria-labelledby="addons-title">
           <h2 id="addons-title">Add-ons</h2>
+          <p class="notice notice--warning" id="addons-removed" hidden></p>
           <p class="notice">Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods.</p>
           <div data-field="addons"></div>
           <ul class="addon-list" id="addon-list" aria-busy="false"></ul>
@@ -120,7 +135,7 @@
           </div>
         </section>
 
-        <!-- Step 5: summary -->
+        <!-- Step 4: summary -->
         <section class="step" data-step="summary" aria-labelledby="summary-title">
           <h2 id="summary-title">Summary</h2>
           <div id="summary"></div>
@@ -136,14 +151,14 @@
           </div>
         </section>
 
-        <!-- Step 6: payment -->
+        <!-- Step 5: payment -->
         <section class="step" data-step="payment" aria-labelledby="payment-title">
           <h2 id="payment-title">Payment</h2>
           <p class="muted" id="payment-hold"></p>
           <div id="checkout" class="checkout"></div>
         </section>
 
-        <!-- Step 7: complete -->
+        <!-- Step 6: complete -->
         <section class="step" data-step="complete" aria-labelledby="complete-title">
           <h2 id="complete-title">Thank you</h2>
           <div id="complete" aria-live="polite"></div>

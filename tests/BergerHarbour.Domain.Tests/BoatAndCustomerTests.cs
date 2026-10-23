@@ -93,6 +93,55 @@ public class BoatAndCustomerTests
     }
 
     [Fact]
+    public void Image_spa_and_pet_friendly_are_not_required_for_activation()
+    {
+        var seasons = Seasons();
+        var boat = CompleteBoat(seasons);
+        Assert.Equal((null, false, false), (boat.ImageUrl, boat.HasSpa, boat.IsPetFriendly));
+        boat.Activate(seasons, Now);
+        Assert.True(boat.IsActive);
+    }
+
+    [Theory]
+    [InlineData("https://bergerhouseboats.com.au/wp-content/uploads/2025/03/1-12.jpg")]
+    [InlineData("https://www.bergerhouseboats.com.au/wp-content/uploads/2025/03/1-12.jpg")]
+    [InlineData("https://BergerHouseboats.com.au/a.png")]
+    public void Image_url_on_the_wordpress_site_is_accepted(string url)
+    {
+        var boat = CompleteBoat(Seasons());
+        boat.UpdateFeatures($"  {url} ", true, true, Now);
+        Assert.Equal((url, true, true), (boat.ImageUrl, boat.HasSpa, boat.IsPetFriendly));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Image_url_may_be_empty(string? url)
+    {
+        var boat = CompleteBoat(Seasons());
+        boat.UpdateFeatures("https://bergerhouseboats.com.au/a.jpg", false, false, Now);
+        boat.UpdateFeatures(url, false, false, Now);
+        Assert.Null(boat.ImageUrl);
+    }
+
+    [Theory]
+    [InlineData("http://bergerhouseboats.com.au/a.jpg")]
+    [InlineData("https://example.com/a.jpg")]
+    [InlineData("https://bergerhouseboats.com.au.evil.example/a.jpg")]
+    [InlineData("https://cdn.bergerhouseboats.com.au/a.jpg")]
+    [InlineData("https://user@bergerhouseboats.com.au/a.jpg")]
+    [InlineData("https://bergerhouseboats.com.au:8443/a.jpg")]
+    [InlineData("/wp-content/uploads/a.jpg")]
+    [InlineData("javascript:alert(1)")]
+    public void Image_url_must_be_https_on_the_wordpress_site(string url)
+    {
+        var boat = CompleteBoat(Seasons());
+        var ex = Assert.Throws<DomainValidationException>(() => boat.UpdateFeatures(url, false, false, Now));
+        Assert.Equal("imageUrl", ex.Field);
+    }
+
+    [Fact]
     public void Zero_kids_beds_is_complete()
     {
         var seasons = Seasons();

@@ -95,7 +95,7 @@ and infrastructure IDs are passed by the deploy. Any key can be overridden with 
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | public | |
 | `EMAIL_SENDER`, `EMAIL_SENDER_NAME`, `EMAIL_SUBJECT_PREFIX`, `SMTP_PASSWORD` | both | Gmail SMTP login, From/Reply-To address (`info@bergerhouseboats.com.au`), display name (default "Berger Houseboats") and its Google app password. `EMAIL_SUBJECT_PREFIX` (`[DEV] ` in dev) is prepended to every subject. `EMAIL_MODE=Smtp` is the default outside Local; `EMAIL_MODE=File` + `EMAIL_OUTPUT_DIR` writes emails to disk instead (the Local default) |
 | `TURNSTILE_SECRET` | public | |
-| `RATE_LIMIT_PER_MINUTE` | public | requests per client IP per minute on `/api/*` (the Stripe webhook is exempt); default 30, `0` disables, off by default in `Local`. In-memory, so exact only while `public-api` runs one instance |
+| `RATE_LIMIT_PER_MINUTE` | public | requests per client IP per minute on `/api/*` (the Stripe webhook is exempt); default 60, `0` disables, off by default in `Local`. In-memory, so exact only while `public-api` runs one instance |
 | `EDGE_PROXY_SECRET` | both | required on every route except the webhook and jobs endpoint; each service has its own value (`edge-proxy-secret-public` / `-admin`) |
 | `PAYMENT_LINK_SECRET` | both | derives each booking's stable payment-link token; never rotate after go-live |
 | `PUBLIC_BOOKING_BASE_URL` | both | base of payment links (required) |

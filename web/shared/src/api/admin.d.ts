@@ -1698,6 +1698,9 @@ export interface components {
             securityBond: number;
             /** Format: double */
             depositAmount: null | number;
+            imageUrl: null | string;
+            hasSpa: boolean;
+            isPetFriendly: boolean;
             rates: components["schemas"]["BoatRateDto"][];
             allowedAddonIds: string[];
             isActive: boolean;
@@ -1724,6 +1727,9 @@ export interface components {
             adultBeds: null | number;
             /** Format: int32 */
             kidsBeds: null | number;
+            imageUrl: null | string;
+            hasSpa: boolean;
+            isPetFriendly: boolean;
             isActive: boolean;
         };
         /** @enum {unknown} */
@@ -1744,6 +1750,9 @@ export interface components {
             securityBond: number;
             /** Format: double */
             depositAmount: null | number;
+            imageUrl: null | string;
+            hasSpa: boolean;
+            isPetFriendly: boolean;
             rates: null | components["schemas"]["BoatRateDto"][];
             allowedAddonIds: null | string[];
             isActive: boolean;

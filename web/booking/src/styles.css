@@ -1,7 +1,7 @@
 @import '../../shared/styles/tokens.css';
 
 .app {
-  max-width: 880px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 16px var(--gutter) 32px;
 }
@@ -23,13 +23,6 @@
   font-size: 1.6rem;
   margin: 0;
   min-height: 1.3em;
-}
-
-.app--inactive main,
-.app--inactive .progress {
-  filter: grayscale(1);
-  opacity: 0.6;
-  pointer-events: none;
 }
 
 .muted {
@@ -122,7 +115,25 @@
   margin-top: 20px;
 }
 
-/* ---- Dates ---- */
+/* ---- Dates & boat ---- */
+
+/* Controls on the left, boat cards on the right; stacked (controls first) on narrow screens. */
+.dates-boat {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
+  gap: 24px;
+  align-items: start;
+}
+
+.dates-boat__controls {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .dates-boat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 .period-options {
   display: flex;
@@ -139,7 +150,7 @@
 }
 
 .radio-card {
-  flex: 1 1 200px;
+  flex: 1 1 150px;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -334,7 +345,214 @@
   margin: 12px 0 0;
 }
 
-/* ---- Guests & add-ons ---- */
+.only-selected {
+  margin: 4px 0 8px;
+}
+
+.only-selected:has(input:disabled) {
+  color: var(--c-muted);
+}
+
+.filters {
+  border: 0;
+  border-top: 1px solid var(--c-border);
+  padding: 12px 0 0;
+  margin: 0;
+}
+
+.filters legend {
+  font-weight: 600;
+  padding: 12px 0 6px;
+  float: left;
+  width: 100%;
+}
+
+.filters .guest-grid {
+  clear: both;
+}
+
+.base-rate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--c-brand-tint);
+}
+
+.base-rate__label {
+  display: block;
+  font-weight: 600;
+}
+
+.base-rate__sub {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.base-rate__value {
+  font-size: 1.15rem;
+  text-align: right;
+}
+
+.boats__title {
+  font-size: 1.05rem;
+}
+
+.boat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.boat-list__separator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  color: var(--c-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.boat-list__separator::before,
+.boat-list__separator::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--c-border);
+}
+
+.boat-list__empty {
+  margin: 0;
+}
+
+.boat-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 36px 8px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  cursor: pointer;
+}
+
+.boat-card:hover:not(.boat-card--disabled) {
+  border-color: var(--c-brand);
+}
+
+.boat-card--selected {
+  border: 2px solid var(--c-brand);
+  padding: 7px 35px 7px 7px;
+  background: var(--c-brand-tint);
+}
+
+.boat-card--disabled {
+  cursor: default;
+  background: var(--c-disabled);
+  color: var(--c-disabled-ink);
+}
+
+.boat-card--disabled .boat-card__image {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.boat-card__image {
+  display: block;
+  width: 96px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+/* Neutral stand-in when a boat has no image, or it fails to load. */
+.boat-card__image--placeholder {
+  background: var(--c-disabled) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 24' fill='none' stroke='%238b9aa6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 14h40l-5 7H9z'/%3E%3Cpath d='M10 14V8h22v6M16 8V4h10v4'/%3E%3C/svg%3E") center / 56px auto no-repeat;
+}
+
+.boat-card__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.boat-card__name {
+  overflow-wrap: anywhere;
+}
+
+.boat-card__guests {
+  font-size: 0.9rem;
+  color: var(--c-ink-soft);
+}
+
+.boat-card--disabled .boat-card__guests {
+  color: inherit;
+}
+
+.boat-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-brand-tint);
+  color: var(--c-brand-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.boat-card--selected .badge {
+  background: var(--c-surface);
+}
+
+.boat-card--disabled .badge {
+  background: var(--c-surface);
+  color: var(--c-disabled-ink);
+}
+
+.boat-card__price {
+  margin-top: 2px;
+  font-weight: 700;
+}
+
+.boat-card__reason {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  color: var(--c-muted);
+}
+
+/* The tick-box in the corner shows the selection. */
+.boat-card__tick {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+}
+
+.boat-card--selected .boat-card__tick {
+  border-color: var(--c-brand);
+  background: var(--c-brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E") center / 14px no-repeat;
+}
+
+.boat-card--disabled .boat-card__tick {
+  visibility: hidden;
+}
+
+/* ---- Add-ons ---- */
 
 .inline-choice {
   display: inline-flex;

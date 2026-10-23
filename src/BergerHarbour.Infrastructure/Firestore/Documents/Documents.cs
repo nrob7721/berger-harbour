@@ -94,6 +94,9 @@ public sealed class BoatDocument
     [FirestoreProperty("beddingDescription")] public string? BeddingDescription { get; set; }
     [FirestoreProperty("securityBondCents")] public long SecurityBondCents { get; set; }
     [FirestoreProperty("depositAmountCents")] public long? DepositAmountCents { get; set; }
+    [FirestoreProperty("imageUrl")] public string? ImageUrl { get; set; }
+    [FirestoreProperty("hasSpa")] public bool HasSpa { get; set; }
+    [FirestoreProperty("isPetFriendly")] public bool IsPetFriendly { get; set; }
     [FirestoreProperty("rates")] public List<BoatRateDocument> Rates { get; set; } = [];
     [FirestoreProperty("allowedAddonIds")] public List<string> AllowedAddonIds { get; set; } = [];
     [FirestoreProperty("isActive")] public bool IsActive { get; set; }

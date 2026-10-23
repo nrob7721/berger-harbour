@@ -140,7 +140,6 @@ public static class EmailComposer
     public static string StepLabel(BookingStep step) => step switch
     {
         BookingStep.Details => "Your details",
-        BookingStep.Guests => "Guests",
         BookingStep.Addons => "Add-ons",
         BookingStep.Summary => "Summary",
         _ => "Payment",

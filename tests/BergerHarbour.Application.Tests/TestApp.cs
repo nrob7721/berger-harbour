@@ -127,9 +127,9 @@ public sealed class TestApp
 
     /// <summary>A booking app session up to "Your details": returns the draft id.</summary>
     public async Task<string> DraftAsync(DateOnly start, string email = "jane@example.com", string name = "Jane Citizen",
-        PeriodType periodType = PeriodType.Midweek) =>
-        (await Get<Bookings.OnlineBookingService>().CreateDraftAsync(new Bookings.CreateBookingDraftRequest("pacific-blue",
-            periodType, start, name, email, "0412 345 678", "turnstile-ok"), "1.2.3.4")).DraftId;
+        PeriodType periodType = PeriodType.Midweek, string slug = "pacific-blue") =>
+        (await Get<Bookings.OnlineBookingService>().CreateDraftAsync(new Bookings.CreateBookingDraftRequest(slug,
+            periodType, start, 4, 2, name, email, "0412 345 678", "turnstile-ok"), "1.2.3.4")).DraftId;
 
     /// <summary>The first Monday at least <paramref name="days"/> days from today.</summary>
     public DateOnly MondayAfter(int days)

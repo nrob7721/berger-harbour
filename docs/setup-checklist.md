@@ -352,7 +352,7 @@ Limits: Google Workspace allows about 2,000 emails a day through SMTP, far more 
 ### 5.4 Rate limiting (nothing to configure)
 
 There is no Cloudflare rule: the booking subdomain is not in your Cloudflare zone, and WAF rate limiting is a paid
-feature. Instead `public-api` limits each visitor IP to **30 requests per minute** on `/api/*` (the Stripe webhook is
+feature. Instead `public-api` limits each visitor IP to **60 requests per minute** on `/api/*` (the Stripe webhook is
 exempt) and answers "Too many requests" beyond that. It runs in dev and prod. `public-api` is deployed with a single
 instance so the limit is exact; an operator can change it with the `RATE_LIMIT_PER_MINUTE` environment variable on the
 Cloud Run service (`0` turns it off).

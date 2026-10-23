@@ -11,11 +11,15 @@ public sealed record BoatSummaryDto(
     int MaxNoOfGuests,
     int? AdultBeds,
     int? KidsBeds,
+    string? ImageUrl,
+    bool HasSpa,
+    bool IsPetFriendly,
     bool IsActive);
 
 public sealed record BoatRateDto(string SeasonId, PeriodType PeriodType, decimal Price);
 
 /// <param name="DepositAmount">Empty: the default deposit from Settings applies.</param>
+/// <param name="ImageUrl">An image on bergerhouseboats.com.au, shown on the booking app's boat cards.</param>
 public sealed record BoatDetailDto(
     string Id,
     int Version,
@@ -28,6 +32,9 @@ public sealed record BoatDetailDto(
     string? BeddingDescription,
     decimal SecurityBond,
     decimal? DepositAmount,
+    string? ImageUrl,
+    bool HasSpa,
+    bool IsPetFriendly,
     IReadOnlyList<BoatRateDto> Rates,
     IReadOnlyList<string> AllowedAddonIds,
     bool IsActive,
@@ -45,6 +52,9 @@ public sealed record BoatUpsertRequest(
     string? BeddingDescription,
     decimal SecurityBond,
     decimal? DepositAmount,
+    string? ImageUrl,
+    bool HasSpa,
+    bool IsPetFriendly,
     IReadOnlyList<BoatRateDto>? Rates,
     IReadOnlyList<string>? AllowedAddonIds,
     bool IsActive);

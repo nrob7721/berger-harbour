@@ -11,7 +11,7 @@ namespace BergerHarbour.Infrastructure.Web;
 /// <summary>RATE_LIMIT_PER_MINUTE: requests per client IP per minute. 0 disables the limiter.</summary>
 public sealed record ClientRateLimitOptions(int PermitsPerMinute, IReadOnlyList<PathString> ExemptPrefixes)
 {
-    public const int DefaultPermitsPerMinute = 30;
+    public const int DefaultPermitsPerMinute = 60;
     public const string SettingName = "RATE_LIMIT_PER_MINUTE";
     public const string RejectedTitle = "Too many requests. Please wait a minute and try again.";
 }
@@ -25,7 +25,7 @@ public static class ClientRateLimiting
 {
     private const int SegmentsPerWindow = 6;
 
-    /// <summary>Default 30/min; off in Local unless RATE_LIMIT_PER_MINUTE is set explicitly (tests do).</summary>
+    /// <summary>Default 60/min; off in Local unless RATE_LIMIT_PER_MINUTE is set explicitly (tests do).</summary>
     public static WebApplicationBuilder AddClientRateLimiting(this WebApplicationBuilder builder, params string[] exemptPrefixes)
     {
         var configured = builder.Configuration[ClientRateLimitOptions.SettingName];

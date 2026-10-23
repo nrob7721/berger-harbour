@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace BergerHarbour.Application.Bookings;
 
 /// <summary>
-/// Customer-facing use cases: boat info, availability, add-on capacity, booking drafts, quote, booking with a hold,
+/// Customer-facing use cases: the fleet and boat info, fleet and period availability, add-on capacity, booking drafts, quote, booking with a hold,
 /// completion status. No Customer record is created here; that happens when the deposit is paid.
 /// </summary>
 public sealed class OnlineBookingService(
@@ -37,25 +37,42 @@ public sealed class OnlineBookingService(
 {
     public const int MaxAvailabilitySpanMonths = 15;
 
+    /// <summary>Every active house boat, in display order, with the booking settings.</summary>
+    public async Task<PublicFleetDto> GetFleetAsync(CancellationToken ct = default)
+    {
+        var fleetTask = ActiveHouseBoatsAsync(ct);
+        var catalogueTask = catalogueLoader.LoadAsync(ct);
+        await Task.WhenAll(fleetTask, catalogueTask);
+        var settings = catalogueTask.Result.Settings;
+        return new PublicFleetDto(
+            fleetTask.Result.Select(b => new PublicFleetBoatDto(b.Slug, b.Name, b.ImageUrl, b.MaxNoOfGuests, b.HasSpa,
+                b.IsPetFriendly)).ToList(),
+            new PublicBookingSettingsDto(settings.MinimumLeadTimeDays, settings.BookingsOpenUntil, settings.ContactPhone,
+                settings.ContactEmail, settings.HireTermsUrl, clock.Today(), Format.Time(Stay.CheckInTime),
+                Format.Time(Stay.CheckInWindowEnd), Format.Time(Stay.CheckOutTime)));
+    }
+
+    /// <summary>One house boat, active or not. Inactive boats offer no add-ons.</summary>
     public async Task<PublicBoatDto> GetBoatAsync(string slug, CancellationToken ct = default)
     {
         var boat = await FindHouseBoatAsync(slug, ct);
         var catalogue = await catalogueLoader.LoadAsync(ct);
-        var settings = catalogue.Settings;
         var addons = boat.IsActive
             ? AddonCatalogue.InDisplayOrder(catalogue.Addons.Where(a => a.IsActive && boat.AllowsAddon(a.Id))).Select(a =>
                 new PublicAddonDto(a.Id.Value, a.Name, a.Description, a.PriceOnRequest, a.QuantityApplies,
                     a.Prices is { } p ? new AddonPricesDto(p.Midweek, p.Weekend, p.Week) : null, a.HasCapacity,
                     a.CapacityUnitLabel)).ToList()
             : [];
-        return new PublicBoatDto(boat.Slug, boat.Name, boat.MaxNoOfGuests, boat.AdultBeds, boat.KidsBeds,
-            boat.BeddingDescription, boat.SecurityBond, boat.EffectiveDeposit(settings.DepositAmount), boat.IsActive, addons,
-            new PublicBookingSettingsDto(settings.MinimumLeadTimeDays, settings.BookingsOpenUntil, settings.ContactPhone,
-                settings.ContactEmail, settings.HireTermsUrl, clock.Today(), Format.Time(Stay.CheckInTime),
-                Format.Time(Stay.CheckInWindowEnd), Format.Time(Stay.CheckOutTime)));
+        return new PublicBoatDto(boat.Slug, boat.Name, boat.ImageUrl, boat.MaxNoOfGuests, boat.HasSpa, boat.IsPetFriendly,
+            boat.AdultBeds, boat.KidsBeds, boat.BeddingDescription, boat.SecurityBond,
+            boat.EffectiveDeposit(catalogue.Settings.DepositAmount), boat.IsActive, addons);
     }
 
-    public async Task<AvailabilityDto> GetAvailabilityAsync(string slug, DateOnly from, DateOnly to, CancellationToken ct = default)
+    /// <summary>
+    /// Each active house boat's taken ranges, and the blocked (enquire-only) periods, for [from, to). Never booking or
+    /// customer data.
+    /// </summary>
+    public async Task<FleetAvailabilityDto> GetFleetAvailabilityAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
     {
         if (from >= to)
         {
@@ -67,24 +84,53 @@ public sealed class OnlineBookingService(
             throw RequestValidationException.For("to", $"The range can be at most {MaxAvailabilitySpanMonths} months.");
         }
 
-        var boat = await FindHouseBoatAsync(slug, ct);
-        var now = clock.UtcNow;
-        var bookingsTask = bookings.ListOverlappingAsync(from, to, [BookingStatus.Active, BookingStatus.PendingPayment], boat.Id, ct);
-        var unavailableTask = unavailabilities.ListOverlappingAsync(from, to, boat.Id, ct);
+        var occupancyTask = OccupancyAsync(from, to, ct);
         var catalogueTask = catalogueLoader.LoadAsync(ct);
-        await Task.WhenAll(bookingsTask, unavailableTask, catalogueTask);
+        await Task.WhenAll(occupancyTask, catalogueTask);
+        var (fleet, blocking, unavailable) = occupancyTask.Result;
 
         var window = new Stay(from, to);
-        var unavailable = bookingsTask.Result.Where(b => b.BlocksAvailability(now))
-            .Select(b => new DateRangeDto(b.StartDate, b.EndDate))
-            .Concat(unavailableTask.Result.Select(u => new DateRangeDto(u.Nights.FirstNight, u.Nights.LastNight.AddDays(1))))
-            .OrderBy(r => r.Start)
-            .ToList();
         var enquireOnly = catalogueTask.Result.BlockedPeriods.Where(p => window.Overlaps(p.Nights))
             .OrderBy(p => p.Nights.FirstNight)
             .Select(p => new EnquireOnlyDto(p.Name, p.Nights.FirstNight, p.Nights.LastNight))
             .ToList();
-        return new AvailabilityDto(unavailable, enquireOnly);
+        var boatsAvailability = fleet.Select(boat => new BoatAvailabilityDto(boat.Slug,
+            blocking.Where(b => b.BoatId == boat.Id).Select(b => new DateRangeDto(b.StartDate, b.EndDate))
+                .Concat(unavailable.Where(u => u.BoatId == boat.Id)
+                    .Select(u => new DateRangeDto(u.Nights.FirstNight, u.Nights.LastNight.AddDays(1))))
+                .OrderBy(r => r.Start)
+                .ToList())).ToList();
+        return new FleetAvailabilityDto(enquireOnly, boatsAvailability);
+    }
+
+    /// <summary>
+    /// For one stay: whether each active house boat is free and its hire price. 400 when the stay breaks the period
+    /// shape, lead time, open-until or blocked-period rules. Never booking or customer data.
+    /// </summary>
+    public async Task<PeriodAvailabilityDto> GetPeriodAvailabilityAsync(PeriodType periodType, DateOnly startDate,
+        CancellationToken ct = default)
+    {
+        var catalogue = await catalogueLoader.LoadAsync(ct);
+        var errors = new ValidationErrors();
+        var stay = OnlineBookingValidationStrategy.ValidateStay(periodType, startDate, null, catalogue.Settings,
+            catalogue.BlockedPeriods, clock.Today(), errors);
+        errors.ThrowIfInvalid();
+
+        var (fleet, blocking, unavailable) = await OccupancyAsync(stay!.StartDate, stay.EndDate, ct);
+        var now = clock.UtcNow;
+        return new PeriodAvailabilityDto(fleet.Select(boat =>
+        {
+            var free = BookingAvailabilityService.ConflictingBookings(boat.Id, stay, blocking, now).Count == 0 &&
+                       BookingAvailabilityService.ConflictingUnavailabilities(boat.Id, stay, unavailable).Count == 0;
+            var price = boat.RateFor(PricingService.SeasonFor(stay.StartDate, catalogue.Seasons).Id, periodType);
+            if (price is null)
+            {
+                logger.LogError("{Boat} has no {Period} rate for {Start}; it cannot be booked online", boat.Slug, periodType,
+                    stay.StartDate);
+            }
+
+            return new BoatPeriodDto(boat.Slug, free && price is not null, price);
+        }).ToList());
     }
 
     /// <summary>What is left of a capacity-limited add-on for the dates, across all boats. Nothing else is revealed.</summary>
@@ -107,28 +153,28 @@ public sealed class OnlineBookingService(
                 "We could not verify you are human. Please try the check again.");
         }
 
-        var boat = await FindHouseBoatAsync(request.Slug, ct);
-        if (!boat.IsActive)
-        {
-            throw RequestValidationException.For("slug", "This boat is currently unavailable for online booking.");
-        }
-
+        var boat = await FindDraftBoatAsync(request.Slug, ct);
         var errors = new ValidationErrors();
         var stay = DraftStay(request.PeriodType, request.StartDate, errors);
+        DraftGuests(request.NumberOfAdults, request.NumberOfChildren, errors);
         ContactValidation.Validate(errors, request.FullName, request.Email, request.Mobile).ThrowIfInvalid();
 
-        var draft = BookingDraft.Create(boat.Id, request.PeriodType, stay!, request.FullName!, request.Email!, request.Mobile!,
-            clock.UtcNow);
+        var draft = BookingDraft.Create(boat.Id, request.PeriodType, stay!, request.NumberOfAdults, request.NumberOfChildren,
+            request.FullName!, request.Email!, request.Mobile!, clock.UtcNow);
         await drafts.SaveAsync(draft, ct);
         return new BookingDraftCreatedDto(draft.Id.Value);
     }
 
-    /// <summary>The customer moved forward a step. 404 when the draft is unknown, converted or deleted.</summary>
+    /// <summary>
+    /// The customer moved forward a step, possibly with another boat. 404 when the draft is unknown, converted or deleted.
+    /// </summary>
     public async Task UpdateDraftAsync(string draftId, UpdateBookingDraftRequest request, CancellationToken ct = default)
     {
         var draft = await FindOpenDraftAsync(draftId, ct);
+        var boat = await FindDraftBoatAsync(request.Slug, ct);
         var errors = new ValidationErrors();
         var stay = DraftStay(request.PeriodType, request.StartDate, errors);
+        DraftGuests(request.NumberOfAdults, request.NumberOfChildren, errors);
         ContactValidation.Validate(errors, request.FullName, request.Email, request.Mobile);
         var addons = (request.Addons ?? []).Take(50).ToList();
         if (addons.Any(a => string.IsNullOrWhiteSpace(a.AddonId) || a.Quantity is < 1 or > 99))
@@ -137,9 +183,10 @@ public sealed class OnlineBookingService(
         }
 
         errors.ThrowIfInvalid();
-        draft.Update(request.PeriodType, stay!, request.FullName!, request.Email!, request.Mobile!, request.NumberOfAdults,
-            request.NumberOfChildren, addons.Select(a => new DraftAddonRequest(new AddonId(a.AddonId), a.Quantity)),
-            request.LastStepReached, clock.UtcNow);
+        draft.Update(boat.Id, request.PeriodType, stay!, request.NumberOfAdults, request.NumberOfChildren,
+            request.FullName!, request.Email!, request.Mobile!,
+            addons.Select(a => new DraftAddonRequest(new AddonId(a.AddonId), a.Quantity)), request.LastStepReached,
+            clock.UtcNow);
         await drafts.SaveAsync(draft, ct);
     }
 
@@ -191,7 +238,7 @@ public sealed class OnlineBookingService(
             return booking;
         }, ct);
 
-        await RecordPaymentStepAsync(draft!, request, stay, ct);
+        await RecordPaymentStepAsync(draft!, boat, request, stay, ct);
 
         CheckoutSessionResult checkout;
         try
@@ -293,13 +340,13 @@ public sealed class OnlineBookingService(
     }
 
     /// <summary>The draft now holds what was submitted; a failure here must not stop the payment.</summary>
-    private async Task RecordPaymentStepAsync(BookingDraft draft, CreateOnlineBookingRequest request, Stay stay,
+    private async Task RecordPaymentStepAsync(BookingDraft draft, Boat boat, CreateOnlineBookingRequest request, Stay stay,
         CancellationToken ct)
     {
         try
         {
-            draft.Update(request.PeriodType, stay, request.FullName!, request.Email!, request.Mobile!, request.NumberOfAdults,
-                request.NumberOfChildren,
+            draft.Update(boat.Id, request.PeriodType, stay, request.NumberOfAdults, request.NumberOfChildren,
+                request.FullName!, request.Email!, request.Mobile!,
                 (request.Addons ?? []).Select(a => new DraftAddonRequest(new AddonId(a.AddonId), a.Quantity)),
                 BookingStep.Payment, clock.UtcNow);
             await drafts.SaveAsync(draft, ct);
@@ -321,6 +368,28 @@ public sealed class OnlineBookingService(
         return stay;
     }
 
+    private static void DraftGuests(int numberOfAdults, int numberOfChildren, ValidationErrors errors)
+    {
+        if (numberOfAdults < 1)
+        {
+            errors.Add("numberOfAdults", "At least one adult must be on board.");
+        }
+
+        if (numberOfChildren < 0)
+        {
+            errors.Add("numberOfChildren", "Number of children cannot be negative.");
+        }
+    }
+
+    /// <summary>A draft can only be for a boat that can be booked online.</summary>
+    private async Task<Boat> FindDraftBoatAsync(string slug, CancellationToken ct)
+    {
+        var boat = await FindHouseBoatAsync(slug, ct);
+        return boat.IsActive
+            ? boat
+            : throw RequestValidationException.For("slug", "This boat is currently unavailable for online booking.");
+    }
+
     private async Task<BookingDraft> FindOpenDraftAsync(string draftId, CancellationToken ct)
     {
         var draft = string.IsNullOrWhiteSpace(draftId) || draftId.Length > 100
@@ -332,6 +401,24 @@ public sealed class OnlineBookingService(
     private BookingValidationContext Context(Boat boat, BookingCatalogue catalogue, BookingValidationScope scope,
         BookingDraft? draft, IReadOnlyDictionary<AddonId, int> remaining) =>
         new(boat, catalogue.Settings, catalogue.BlockedPeriods, catalogue.Addons, clock.Today(), scope, draft, remaining);
+
+    private async Task<IReadOnlyList<Boat>> ActiveHouseBoatsAsync(CancellationToken ct) =>
+        Boat.InDisplayOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House)).ToList();
+
+    /// <summary>
+    /// The active house boats, with every booking that blocks availability and every unavailability of any boat in
+    /// [from, to).
+    /// </summary>
+    private async Task<(IReadOnlyList<Boat> Fleet, IReadOnlyList<Booking> Blocking, IReadOnlyList<BoatUnavailability> Unavailable)>
+        OccupancyAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var fleetTask = ActiveHouseBoatsAsync(ct);
+        var bookingsTask = bookings.ListOverlappingAsync(from, to, [BookingStatus.Active, BookingStatus.PendingPayment], null, ct);
+        var unavailableTask = unavailabilities.ListOverlappingAsync(from, to, null, ct);
+        await Task.WhenAll(fleetTask, bookingsTask, unavailableTask);
+        var now = clock.UtcNow;
+        return (fleetTask.Result, bookingsTask.Result.Where(b => b.BlocksAvailability(now)).ToList(), unavailableTask.Result);
+    }
 
     private async Task<Boat> FindHouseBoatAsync(string slug, CancellationToken ct)
     {

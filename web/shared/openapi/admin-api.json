@@ -2620,6 +2620,9 @@
           "beddingDescription",
           "securityBond",
           "depositAmount",
+          "imageUrl",
+          "hasSpa",
+          "isPetFriendly",
           "rates",
           "allowedAddonIds",
           "isActive",
@@ -2679,6 +2682,18 @@
               "number"
             ],
             "format": "double"
+          },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasSpa": {
+            "type": "boolean"
+          },
+          "isPetFriendly": {
+            "type": "boolean"
           },
           "rates": {
             "type": "array",
@@ -2740,6 +2755,9 @@
           "maxNoOfGuests",
           "adultBeds",
           "kidsBeds",
+          "imageUrl",
+          "hasSpa",
+          "isPetFriendly",
           "isActive"
         ],
         "type": "object",
@@ -2774,6 +2792,18 @@
             ],
             "format": "int32"
           },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasSpa": {
+            "type": "boolean"
+          },
+          "isPetFriendly": {
+            "type": "boolean"
+          },
           "isActive": {
             "type": "boolean"
           }
@@ -2796,6 +2826,9 @@
           "beddingDescription",
           "securityBond",
           "depositAmount",
+          "imageUrl",
+          "hasSpa",
+          "isPetFriendly",
           "rates",
           "allowedAddonIds",
           "isActive"
@@ -2846,6 +2879,18 @@
               "number"
             ],
             "format": "double"
+          },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasSpa": {
+            "type": "boolean"
+          },
+          "isPetFriendly": {
+            "type": "boolean"
           },
           "rates": {
             "type": [

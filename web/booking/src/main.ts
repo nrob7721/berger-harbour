@@ -2,51 +2,75 @@ import { addDays, addMonths, firstOfMonth, formatLongDate, type IsoDate } from '
 import { $, $$, clear, h, openDialog } from '@shared/dom';
 import { formatMoney } from '@shared/format';
 import { ApiError } from '@shared/http';
-import { evaluateDay, type AvailabilityData, type BookingWindow, type DayState, type OnlinePeriodType, type Stay } from '@shared/periods';
+import {
+  evaluateFleetDay, type BookingWindow, type DateRange, type DayState, type EnquireOnlyRange, type FleetAvailabilityData,
+  type OnlinePeriodType, type Stay,
+} from '@shared/periods';
 import { phoneField } from '@shared/phone';
-import { publicApi, type BookingStep, type CreateBookingResult, type PublicBoat, type Quote } from './api';
+import {
+  publicApi, type BookingStep, type CreateBookingResult, type PublicBoat, type PublicBookingSettings, type Quote,
+} from './api';
 import { Calendar } from './calendar';
 import { isEmbedded, requestClose } from './embed';
+import {
+  baseHireRateText, boatList, calendarBoats, chooseBoat, keepChoiceValid, largestBoatGuests, onlySelectedCheckbox,
+  removeDisallowedAddons, roomingAcceptanceHolds,
+  type BoatCardView, type BoatChoice, type Filters, type FleetBoat, type PeriodBoat, type PeriodResults, type RequestedBoat,
+  type RoomingAcceptance,
+} from './fleet';
 import {
   adultOptions, capacityView, checkInOutText, childOptions, clampChildren, needsRoomingWarning, selectionText, summaryTimes,
 } from './rules';
 import { mountCheckout } from './stripe';
 import { TurnstileWidget } from './turnstile';
 
-type Step = 'loading' | 'dates' | 'details' | 'guests' | 'addons' | 'summary' | 'payment' | 'complete' | 'error';
-const FLOW: Step[] = ['dates', 'details', 'guests', 'addons', 'summary', 'payment'];
+type Step = 'loading' | 'dates' | 'details' | 'addons' | 'summary' | 'payment' | 'complete' | 'error';
+const FLOW: Step[] = ['dates', 'details', 'addons', 'summary', 'payment'];
 
 /** Which step owns each API validation field, so errors send the customer back to the right place. */
 const FIELD_STEP: Record<string, Step> = {
+  slug: 'dates',
   periodType: 'dates',
   startDate: 'dates',
+  numberOfAdults: 'dates',
+  numberOfChildren: 'dates',
+  roomingWarningAccepted: 'dates',
   fullName: 'details',
   email: 'details',
   mobile: 'details',
   turnstileToken: 'details',
   draftId: 'details',
-  numberOfAdults: 'guests',
-  numberOfChildren: 'guests',
-  roomingWarningAccepted: 'guests',
   addons: 'addons',
   termsAccepted: 'summary',
 };
 
 const state = {
-  slug: '',
-  boat: null as PublicBoat | null,
+  settings: null as PublicBookingSettings | null,
+  /** Active house boats, largest first. */
+  fleet: [] as FleetBoat[],
+  /** The boat named by `?boat=`, if any. */
+  requested: null as RequestedBoat | null,
   periodType: 'Midweek' as OnlinePeriodType,
   selection: null as Stay | null,
-  availability: { unavailable: [], enquireOnly: [] } as AvailabilityData,
+  filters: { adults: 1, children: 0, spa: false, petFriendly: false } as Filters,
+  choice: { selected: null, onlySelected: false } as BoatChoice,
+  /** Results for the selected period, once loaded. */
+  period: null as PeriodResults,
+  availability: { enquireOnly: [], unavailable: new Map() } as FleetAvailabilityData,
   loadedMonths: new Set<string>(),
+  /** Period results per `type|start` and boat details per slug, cached for the session. */
+  periodCache: new Map<string, ReadonlyMap<string, PeriodBoat>>(),
+  boatCache: new Map<string, Promise<PublicBoat>>(),
+  calendarBoats: [] as string[],
   window: { earliestStart: '9999-12-31', bookingsOpenUntil: '0000-01-01' } as BookingWindow,
-  adults: null as number | null,
-  children: 0,
-  roomingText: null as string | null,
+  rooming: null as RoomingAcceptance | null,
   addons: new Map<string, number>(),
+  /** Set when changing boat removed requested add-ons; shown once on the Add-ons step. */
+  addonsRemovedOn: null as string | null,
   draftId: null as string | null,
   quote: null as Quote | null,
   booking: null as CreateBookingResult | null,
+  paymentReached: false,
   step: 'loading' as Step,
 };
 
@@ -57,6 +81,12 @@ const mobile = phoneField({ name: 'mobile', label: 'Mobile number', required: tr
 // ---- Step navigation ---------------------------------------------------------------------------------------------
 
 function show(step: Step): void {
+  if (step === 'dates' && state.paymentReached) {
+    // A hold may have been taken or released since: start from fresh availability and prices.
+    state.paymentReached = false;
+    refreshAvailability();
+  }
+  if (step === 'payment') state.paymentReached = true;
   state.step = step;
   for (const section of $$('section.step')) {
     section.classList.toggle('step--active', section.dataset.step === step);
@@ -84,19 +114,35 @@ function pageNotice(message: string | null, kind: 'error' | 'warning' | 'info' =
 }
 
 function contactText(): string {
-  const s = state.boat!.settings;
+  const s = state.settings!;
   return `${s.contactPhone} / ${s.contactEmail}`;
+}
+
+function boatName(slug: string | null): string | null {
+  if (!slug) return null;
+  return state.fleet.find((b) => b.slug === slug)?.name ?? (state.requested?.slug === slug ? state.requested.name : null);
+}
+
+/** The selected boat's details (beds, deposit, add-ons), fetched once per boat. */
+function boatDetails(slug: string): Promise<PublicBoat> {
+  let details = state.boatCache.get(slug);
+  if (!details) {
+    details = publicApi.boat(slug);
+    details.catch(() => state.boatCache.delete(slug));
+    state.boatCache.set(slug, details);
+  }
+  return details;
 }
 
 // ---- Booking draft -----------------------------------------------------------------------------------------------
 
-const draftKey = () => `bh-booking-draft:${state.slug}`;
+const DRAFT_KEY = 'bh-booking-draft';
 
 function rememberDraft(draftId: string | null): void {
   state.draftId = draftId;
   try {
-    if (draftId) sessionStorage.setItem(draftKey(), draftId);
-    else sessionStorage.removeItem(draftKey());
+    if (draftId) sessionStorage.setItem(DRAFT_KEY, draftId);
+    else sessionStorage.removeItem(DRAFT_KEY);
   } catch {
     // storage may be unavailable (private mode, blocked cookies); the draft then lives for this page only
   }
@@ -104,7 +150,7 @@ function rememberDraft(draftId: string | null): void {
 
 function recallDraft(): string | null {
   try {
-    return sessionStorage.getItem(draftKey());
+    return sessionStorage.getItem(DRAFT_KEY);
   } catch {
     return null;
   }
@@ -114,19 +160,21 @@ function addonRequests() {
   return [...state.addons].map(([addonId, quantity]) => ({ addonId, quantity }));
 }
 
-/** Records progress on the draft (moving forward a step). Failures never block the customer. */
+/** Records progress on the draft (moving forward a step), including a change of boat. Failures never block the customer. */
 async function saveDraft(step: BookingStep): Promise<void> {
-  if (!state.draftId || !state.selection) return;
+  const slug = state.choice.selected;
+  if (!state.draftId || !state.selection || !slug) return;
   const d = details();
   try {
     await publicApi.updateDraft(state.draftId, {
+      slug,
       periodType: state.periodType,
       startDate: state.selection.start,
+      numberOfAdults: state.filters.adults,
+      numberOfChildren: state.filters.children,
       fullName: d.fullName,
       email: d.email,
       mobile: d.mobile ?? null,
-      numberOfAdults: state.adults,
-      numberOfChildren: state.adults === null ? null : state.children,
       addons: addonRequests(),
       lastStepReached: step,
     });
@@ -138,14 +186,18 @@ async function saveDraft(step: BookingStep): Promise<void> {
 // ---- Loading -----------------------------------------------------------------------------------------------------
 
 async function init(): Promise<void> {
-  state.slug = (new URLSearchParams(location.search).get('boat') ?? '').trim().toLowerCase();
-  if (!state.slug) {
-    fatal('No boat was chosen. Please go back to the boat page and press Book Now.');
-    return;
-  }
-
+  const slug = (new URLSearchParams(location.search).get('boat') ?? '').trim().toLowerCase() || null;
   try {
-    state.boat = await publicApi.boat(state.slug);
+    const [fleet, requested] = await Promise.all([publicApi.fleet(), slug ? boatDetails(slug) : null]);
+    state.settings = fleet.settings;
+    state.fleet = fleet.boats;
+    if (requested) {
+      state.requested = {
+        slug: requested.slug, name: requested.name, imageUrl: requested.imageUrl, maxNoOfGuests: requested.maxNoOfGuests,
+        hasSpa: requested.hasSpa, isPetFriendly: requested.isPetFriendly, isActive: requested.isActive,
+      };
+      if (requested.isActive) state.choice = { selected: requested.slug, onlySelected: true };
+    }
   } catch (e) {
     fatal(e instanceof ApiError && e.status === 404
       ? "Sorry, we couldn't find that boat. Please go back and choose a boat from our website."
@@ -153,10 +205,7 @@ async function init(): Promise<void> {
     return;
   }
 
-  const boat = state.boat;
-  const settings = boat.settings;
-  document.title = `Book ${boat.name} — Berger Houseboats`;
-  $('#boat-name').textContent = `Book ${boat.name}`;
+  const settings = state.settings;
   ($('#terms-link') as HTMLAnchorElement).href = settings.hireTermsUrl;
   state.window = {
     earliestStart: addDays(settings.today, settings.minimumLeadTimeDays),
@@ -179,69 +228,68 @@ async function init(): Promise<void> {
 
   setUpDates();
   setUpDetails();
-  setUpGuests();
   setUpAddons();
   setUpSummary();
-  updateTimes();
+  renderDatesStep();
   show('dates');
-
-  if (!boat.isActive) {
-    pageNotice(`This boat is currently unavailable for online booking. Please contact us on ${contactText()}.`, 'warning');
-    document.getElementById('app')!.classList.add('app--inactive');
-    for (const input of $$<HTMLInputElement>('#period-options input')) input.disabled = true;
-    calendar.setDisabled(true);
-    return;
-  }
-
-  calendar.render();
   await loadAvailability(calendar.visibleMonth);
 }
 
 function fatal(message: string): void {
   $('#fatal-error').textContent = message;
-  $('#boat-name').textContent = 'Book a houseboat';
+  $('#app-title').textContent = 'Book a houseboat';
   show('error');
 }
 
-// ---- Dates -------------------------------------------------------------------------------------------------------
+// ---- Dates & boat ------------------------------------------------------------------------------------------------
 
 function dayState(day: IsoDate): DayState {
   if (!state.loadedMonths.has(firstOfMonth(day))) {
     return { status: 'not-in-mode', stay: null, blockedName: null, insideBlockedPeriod: false, clickable: false };
   }
-  return evaluateDay(state.periodType, day, state.availability, state.window);
+  return evaluateFleetDay(state.periodType, day, state.availability, state.calendarBoats, state.window);
 }
 
-/** Fetches availability for a visible month, padded so periods crossing the month edges are evaluated correctly. */
+/**
+ * Fetches every active boat's availability for a visible month (one request), padded so periods crossing the month
+ * edges are evaluated correctly. Months already loaded are not fetched again.
+ */
 async function loadAvailability(month: IsoDate, force = false): Promise<void> {
   const key = firstOfMonth(month);
   if (state.loadedMonths.has(key) && !force) return;
   $('#calendar').setAttribute('aria-busy', 'true');
   try {
-    const result = await publicApi.availability(state.slug, addDays(key, -7), addDays(addMonths(key, 1), 14));
-    const unavailable = new Map(state.availability.unavailable.map((r) => [`${r.start}|${r.end}`, r]));
-    for (const r of result.unavailable) unavailable.set(`${r.start}|${r.end}`, r);
+    const result = await publicApi.availability(addDays(key, -7), addDays(addMonths(key, 1), 14));
+    const unavailable = new Map(state.availability.unavailable);
+    for (const boat of result.boats) {
+      const ranges = new Map((unavailable.get(boat.slug) ?? []).map((r) => [`${r.start}|${r.end}`, r]));
+      for (const r of boat.unavailable) ranges.set(`${r.start}|${r.end}`, r);
+      unavailable.set(boat.slug, [...ranges.values()] as DateRange[]);
+    }
     const enquire = new Map(state.availability.enquireOnly.map((r) => [`${r.firstNight}|${r.name}`, r]));
     for (const r of result.enquireOnly) enquire.set(`${r.firstNight}|${r.name}`, r);
-    state.availability = { unavailable: [...unavailable.values()], enquireOnly: [...enquire.values()] };
+    state.availability = { unavailable, enquireOnly: [...enquire.values()] as EnquireOnlyRange[] };
     state.loadedMonths.add(key);
-  } catch {
-    pageNotice('We could not load availability. Please try again.');
+  } catch (e) {
+    pageNotice(e instanceof ApiError && e.status === 429 ? e.messages.join(' ') : 'We could not load availability. Please try again.');
   } finally {
     $('#calendar').removeAttribute('aria-busy');
     calendar.render();
   }
 }
 
-async function reloadAvailability(): Promise<void> {
-  state.availability = { unavailable: [], enquireOnly: [] };
+/** Forgets cached availability and period results (after a 409, or coming back from Payment) and loads them again. */
+function refreshAvailability(): void {
+  state.availability = { enquireOnly: [], unavailable: new Map() };
   state.loadedMonths.clear();
-  await loadAvailability(calendar.visibleMonth, true);
+  state.periodCache.clear();
+  void loadAvailability(calendar.visibleMonth, true);
+  void loadPeriod();
 }
 
 /** "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)" for the selected dates, or the visible month. */
 function updateTimes(): void {
-  const s = state.boat!.settings;
+  const s = state.settings!;
   const from = state.selection?.start ?? calendar?.visibleMonth ?? s.today;
   $('#times').textContent = checkInOutText(s, from, state.selection?.end ?? from);
 }
@@ -250,16 +298,55 @@ function setUpDates(): void {
   for (const radio of $$<HTMLInputElement>('#period-options input')) {
     radio.addEventListener('change', () => {
       state.periodType = radio.value as OnlinePeriodType;
-      setSelection(null);
+      setSelection(null); // the selected boat is kept
     });
   }
-  const section = $('section[data-step="dates"]');
-  $('[data-next]', section).addEventListener('click', () => {
-    if (state.selection) {
-      pageNotice(null);
-      show('details');
-    }
+
+  const adults = $<HTMLSelectElement>('#adults');
+  const children = $<HTMLSelectElement>('#children');
+  for (const n of adultOptions(largestBoatGuests(state.fleet))) adults.append(h('option', { value: n, selected: n === 1 }, String(n)));
+  renderChildOptions();
+  adults.addEventListener('change', () => {
+    state.filters.adults = Number(adults.value) || 1;
+    renderChildOptions();
+    filtersChanged();
   });
+  children.addEventListener('change', () => {
+    state.filters.children = Number(children.value) || 0;
+    filtersChanged();
+  });
+  $<HTMLInputElement>('#filter-spa').addEventListener('change', (e) => {
+    state.filters.spa = (e.target as HTMLInputElement).checked;
+    filtersChanged();
+  });
+  $<HTMLInputElement>('#filter-pet').addEventListener('change', (e) => {
+    state.filters.petFriendly = (e.target as HTMLInputElement).checked;
+    filtersChanged();
+  });
+  $<HTMLInputElement>('#only-selected').addEventListener('change', (e) => {
+    state.choice = { ...state.choice, onlySelected: (e.target as HTMLInputElement).checked };
+    renderDatesStep();
+  });
+
+  $('section[data-step="dates"] [data-next]').addEventListener('click', () => void continueFromDates());
+}
+
+/** Children: 0 … N − adults, where N is the largest boat; changing adults clamps the children already chosen. */
+function renderChildOptions(): void {
+  const max = largestBoatGuests(state.fleet);
+  const select = $<HTMLSelectElement>('#children');
+  state.filters.children = clampChildren(max, state.filters.adults, state.filters.children);
+  clear(select);
+  for (const n of childOptions(max, state.filters.adults)) {
+    select.append(h('option', { value: n, selected: n === state.filters.children }, String(n)));
+  }
+}
+
+function filtersChanged(): void {
+  clearFieldError('numberOfAdults');
+  clearFieldError('numberOfChildren');
+  keepSelectionValid();
+  renderDatesStep();
 }
 
 function onActivate(_day: IsoDate, dayInfo: DayState): void {
@@ -278,9 +365,218 @@ function setSelection(stay: Stay | null): void {
   state.selection = stay;
   state.quote = null;
   $('#selection-summary').textContent = stay ? selectionText(stay.start, stay.end) : '';
-  ($('section[data-step="dates"] [data-next]') as HTMLButtonElement).disabled = !stay;
+  clearFieldError('startDate');
+  void loadPeriod();
+}
+
+const periodKey = (type: OnlinePeriodType, stay: Stay) => `${type}|${stay.start}`;
+
+/** Each boat's availability and price for the selected period: cached, otherwise one request. */
+async function loadPeriod(): Promise<void> {
+  const stay = state.selection;
+  state.period = stay ? state.periodCache.get(periodKey(state.periodType, stay)) ?? null : null;
+  keepSelectionValid();
+  renderDatesStep();
+  if (!stay || state.period) return;
+
+  const type = state.periodType;
+  try {
+    const result = await publicApi.periodAvailability(type, stay.start);
+    const boats = new Map(result.boats.map((b) => [b.slug, b]));
+    state.periodCache.set(periodKey(type, stay), boats);
+    if (state.selection !== stay || state.periodType !== type) return; // the customer has moved on
+    state.period = boats;
+    keepSelectionValid();
+    renderDatesStep();
+  } catch (e) {
+    if (state.selection !== stay) return;
+    if (e instanceof ApiError && e.status === 400) {
+      setSelection(null);
+      pageNotice(e.messages.join(' '));
+    } else {
+      pageNotice(e instanceof ApiError && e.status === 429 ? e.messages.join(' ') : 'We could not load prices for these dates. Please try again.');
+    }
+  }
+}
+
+/** A change made the selected boat ineligible: deselect it (and untick the checkbox), keeping the period. */
+function keepSelectionValid(): void {
+  const before = state.choice.selected;
+  state.choice = keepChoiceValid(state.choice, state.fleet, state.filters, state.period);
+  if (before && !state.choice.selected) {
+    $('#boat-announcer').textContent = `${boatName(before)} no longer matches your choices and has been deselected.`;
+  }
+}
+
+function selectBoat(slug: string): void {
+  if (state.choice.selected === slug) return;
+  state.choice = chooseBoat(state.choice, slug);
+  clearFieldError('slug');
+  $('#boat-announcer').textContent = `${boatName(slug)} selected.`;
+  renderDatesStep();
+}
+
+/** Redraws everything on the step that depends on the period, guests, filters and selected boat. */
+function renderDatesStep(): void {
+  const { choice, filters } = state;
+  const selectedName = boatName(choice.selected);
+  const title = selectedName ? `Book ${selectedName}` : 'Book a houseboat';
+  $('#app-title').textContent = title;
+  document.title = `${title} — Berger Houseboats`;
+
+  const checkbox = onlySelectedCheckbox(selectedName, choice.onlySelected);
+  const input = $<HTMLInputElement>('#only-selected');
+  input.checked = checkbox.checked;
+  input.disabled = checkbox.disabled;
+  $('#only-selected-label').textContent = checkbox.label;
+
+  state.calendarBoats = calendarBoats(state.fleet, filters, choice.selected, choice.onlySelected);
   updateTimes();
   calendar.render();
+  renderBoats();
+  $('#base-rate').textContent = baseHireRateText(choice.selected, state.period);
+  $<HTMLButtonElement>('section[data-step="dates"] [data-next]').disabled = !state.selection || !choice.selected || !state.period;
+}
+
+const PLACEHOLDER = () => h('div', { class: 'boat-card__image boat-card__image--placeholder', 'aria-hidden': 'true' });
+
+/** One image element per boat, reused across re-renders so images don't reload or flicker. */
+const boatImages = new Map<string, HTMLElement>();
+
+function boatImage(boat: FleetBoat): HTMLElement {
+  let image = boatImages.get(boat.slug);
+  if (!image) {
+    if (boat.imageUrl) {
+      const img = h('img', { class: 'boat-card__image', src: boat.imageUrl, alt: '', loading: 'lazy', decoding: 'async' });
+      img.addEventListener('error', () => {
+        const placeholder = PLACEHOLDER();
+        boatImages.set(boat.slug, placeholder);
+        img.replaceWith(placeholder);
+      }, { once: true });
+      image = img;
+    } else {
+      image = PLACEHOLDER();
+    }
+    boatImages.set(boat.slug, image);
+  }
+  return image;
+}
+
+/** The boat cards: a single-select radio group (arrow keys move and select, Enter/Space select). */
+function renderBoats(): void {
+  const list = $('#boat-list');
+  const focusedSlug = list.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.slug : undefined;
+  clear(list);
+  const view = boatList(state.fleet, state.requested, state.filters, state.period);
+  const cards = [view.requested, ...view.others].filter((c): c is BoatCardView => !!c);
+  const selectable = cards.filter((c) => !c.reason).map((c) => c.boat.slug);
+  const tabStop = selectable.includes(state.choice.selected ?? '') ? state.choice.selected : selectable[0];
+
+  const card = (c: BoatCardView) => {
+    const { boat } = c;
+    const selected = boat.slug === state.choice.selected;
+    const el = h('div', {
+      class: `boat-card${selected ? ' boat-card--selected' : ''}${c.reason ? ' boat-card--disabled' : ''}`,
+      role: 'radio',
+      'aria-checked': selected ? 'true' : 'false',
+      'aria-disabled': c.reason ? 'true' : null,
+      tabindex: boat.slug === tabStop ? 0 : -1,
+      'data-slug': boat.slug,
+    },
+      boatImage(boat),
+      h('div', { class: 'boat-card__body' },
+        h('strong', { class: 'boat-card__name' }, boat.name),
+        h('span', { class: 'boat-card__guests' }, `Up to ${boat.maxNoOfGuests} guests`),
+        boat.hasSpa || boat.isPetFriendly
+          ? h('span', { class: 'boat-card__badges' },
+            boat.hasSpa ? h('span', { class: 'badge' }, 'Spa') : null,
+            boat.isPetFriendly ? h('span', { class: 'badge' }, 'Pet friendly') : null)
+          : null,
+        c.hirePrice !== null ? h('span', { class: 'boat-card__price' }, formatMoney(c.hirePrice)) : null,
+        c.reason ? h('span', { class: 'boat-card__reason' }, c.reason) : null,
+      ),
+      h('span', { class: 'boat-card__tick', 'aria-hidden': 'true' }),
+    );
+    if (!c.reason) {
+      el.addEventListener('click', () => selectBoat(boat.slug));
+    }
+    el.addEventListener('keydown', (e) => onBoatKey(e, boat.slug, selectable));
+    return el;
+  };
+
+  if (view.requested) list.append(card(view.requested));
+  if (view.separator) list.append(h('p', { class: 'boat-list__separator' }, 'Other boats available'));
+  for (const c of view.others) list.append(card(c));
+  if (view.emptyMessage) list.append(h('p', { class: 'boat-list__empty muted' }, view.emptyMessage));
+
+  if (focusedSlug) {
+    (list.querySelector<HTMLElement>(`[data-slug="${CSS.escape(focusedSlug)}"]`) ?? list.querySelector<HTMLElement>('[tabindex="0"]'))?.focus();
+  }
+}
+
+function onBoatKey(e: KeyboardEvent, slug: string, selectable: string[]): void {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (selectable.includes(slug)) selectBoat(slug);
+    return;
+  }
+  const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+  if (step === 0 || selectable.length === 0) return;
+  e.preventDefault();
+  const index = selectable.indexOf(slug);
+  const next = selectable[(index + step + selectable.length) % selectable.length]!;
+  $(`#boat-list [data-slug="${CSS.escape(next)}"]`).focus();
+  selectBoat(next);
+}
+
+/** Continue: shows the rooming warning when needed, drops add-ons the boat doesn't offer, and records the draft. */
+async function continueFromDates(): Promise<void> {
+  const slug = state.choice.selected;
+  if (!state.selection || !slug || !state.period) return;
+  const button = $<HTMLButtonElement>('section[data-step="dates"] [data-next]');
+  button.disabled = true;
+  try {
+    const boat = await boatDetails(slug);
+    const { adults, children } = state.filters;
+    if (needsRoomingWarning(adults, children, boat.adultBeds, boat.kidsBeds) &&
+        !roomingAcceptanceHolds(state.rooming, slug, adults, children) &&
+        !(await confirmRooming(slug, adults, children))) {
+      return;
+    }
+    if (removeDisallowedAddons(state.addons, boat.addons.map((a) => a.id)).length > 0) state.addonsRemovedOn = boat.name;
+    if (state.draftId) void saveDraft('Details');
+    pageNotice(null);
+    show('details');
+  } catch (e) {
+    handleBookingError(e);
+  } finally {
+    renderDatesStep();
+  }
+}
+
+/** Shows the rooming warning (text generated by the server) and records the exact text accepted. */
+async function confirmRooming(slug: string, adults: number, children: number): Promise<boolean> {
+  const quote = await publicApi.quote(slug, {
+    periodType: state.periodType,
+    startDate: state.selection!.start,
+    numberOfAdults: adults,
+    numberOfChildren: children,
+    addons: [],
+  });
+  const text = quote.roomingWarningText;
+  if (!text) return true;
+  const choice = await openDialog({
+    title: 'Please check the sleeping arrangements',
+    body: h('p', {}, text),
+    actions: [
+      { label: 'Cancel', value: 'cancel' },
+      { label: 'Accept', value: 'accept', primary: true },
+    ],
+    dismissValue: 'cancel',
+  });
+  if (choice !== 'accept') return false;
+  state.rooming = { slug, adults, children, text };
+  return true;
 }
 
 // ---- Your details ------------------------------------------------------------------------------------------------
@@ -332,16 +628,18 @@ async function continueFromDetails(): Promise<void> {
   button.disabled = true;
   try {
     if (state.draftId) {
-      await saveDraft('Guests');
+      await saveDraft('Addons');
     }
     if (!state.draftId) {
       // No draft yet, or the old one was completed or deleted.
       if (!validateDetails(true)) return;
       const d = details();
       const created = await publicApi.createDraft({
-        slug: state.slug,
+        slug: state.choice.selected!,
         periodType: state.periodType,
         startDate: state.selection!.start,
+        numberOfAdults: state.filters.adults,
+        numberOfChildren: state.filters.children,
         fullName: d.fullName,
         email: d.email,
         mobile: d.mobile!,
@@ -349,10 +647,10 @@ async function continueFromDetails(): Promise<void> {
       });
       rememberDraft(created.draftId);
       turnstile.reset();
-      void saveDraft('Guests');
+      void saveDraft('Addons');
     }
     pageNotice(null);
-    show('guests');
+    show('addons');
   } catch (e) {
     turnstile.reset();
     handleBookingError(e);
@@ -381,100 +679,11 @@ function clearFieldError(field: string): void {
   wrapper.querySelector('[aria-invalid]')?.removeAttribute('aria-invalid');
 }
 
-// ---- Guests ------------------------------------------------------------------------------------------------------
-
-function setUpGuests(): void {
-  const boat = state.boat!;
-  const adultsSelect = $<HTMLSelectElement>('#adults');
-  const childrenSelect = $<HTMLSelectElement>('#children');
-  for (const n of adultOptions(boat.maxNoOfGuests)) adultsSelect.append(h('option', { value: n }, String(n)));
-  renderChildOptions();
-  $('#bedding-hint').textContent = boat.adultBeds !== null
-    ? `${boat.name} takes up to ${boat.maxNoOfGuests} guests and has ${boat.adultBeds} adult beds and ${boat.kidsBeds ?? 0} kids beds` +
-      `${boat.beddingDescription ? `: ${boat.beddingDescription}` : '.'}`
-    : `${boat.name} takes up to ${boat.maxNoOfGuests} guests.`;
-
-  const onChange = async (select: HTMLSelectElement) => {
-    state.adults = Number(adultsSelect.value) || null;
-    if (select === adultsSelect) renderChildOptions();
-    state.children = Number(childrenSelect.value) || 0;
-    state.roomingText = null;
-    clearFieldError('numberOfAdults');
-    clearFieldError('numberOfChildren');
-    if (state.adults && needsRoomingWarning(state.adults, state.children, boat.adultBeds, boat.kidsBeds)) {
-      if (!(await confirmRooming(state.adults, state.children))) {
-        select.value = select === adultsSelect ? '' : '0';
-        if (select === adultsSelect) state.adults = null;
-        else state.children = 0;
-        renderChildOptions();
-        select.focus();
-      }
-    }
-    updateGuestsNext();
-  };
-  adultsSelect.addEventListener('change', () => void onChange(adultsSelect));
-  childrenSelect.addEventListener('change', () => void onChange(childrenSelect));
-
-  const section = $('section[data-step="guests"]');
-  $('[data-back]', section).addEventListener('click', () => show('details'));
-  $('[data-next]', section).addEventListener('click', () => {
-    void saveDraft('Addons');
-    show('addons');
-  });
-}
-
-/** Children: 0 … max guests − adults; changing adults clamps the children already chosen. */
-function renderChildOptions(): void {
-  const max = state.boat!.maxNoOfGuests;
-  const select = $<HTMLSelectElement>('#children');
-  const adults = state.adults ?? 1;
-  state.children = clampChildren(max, adults, state.children);
-  clear(select);
-  for (const n of childOptions(max, adults)) select.append(h('option', { value: n, selected: n === state.children }, String(n)));
-}
-
-/** Shows the rooming warning (text generated by the server) and records the exact text accepted. */
-async function confirmRooming(adults: number, children: number): Promise<boolean> {
-  let text: string | null;
-  try {
-    const quote = await publicApi.quote(state.slug, {
-      periodType: state.periodType,
-      startDate: state.selection!.start,
-      numberOfAdults: adults,
-      numberOfChildren: children,
-      addons: [],
-    });
-    text = quote.roomingWarningText;
-  } catch (e) {
-    pageNotice(e instanceof ApiError ? e.messages.join(' ') : 'Something went wrong. Please try again.');
-    return false;
-  }
-  if (!text) return true;
-  const choice = await openDialog({
-    title: 'Please check the sleeping arrangements',
-    body: h('p', {}, text),
-    actions: [
-      { label: 'Cancel', value: 'cancel' },
-      { label: 'Accept', value: 'accept', primary: true },
-    ],
-    dismissValue: 'cancel',
-  });
-  if (choice === 'accept') state.roomingText = text;
-  return choice === 'accept';
-}
-
-function updateGuestsNext(): void {
-  const boat = state.boat!;
-  const needsRooming = !!state.adults && needsRoomingWarning(state.adults, state.children, boat.adultBeds, boat.kidsBeds);
-  const ok = !!state.adults && (!needsRooming || !!state.roomingText);
-  ($('section[data-step="guests"] [data-next]') as HTMLButtonElement).disabled = !ok;
-}
-
 // ---- Add-ons -----------------------------------------------------------------------------------------------------
 
 function setUpAddons(): void {
   const section = $('section[data-step="addons"]');
-  $('[data-back]', section).addEventListener('click', () => show('guests'));
+  $('[data-back]', section).addEventListener('click', () => show('details'));
   $('[data-next]', section).addEventListener('click', () => {
     void saveDraft('Summary');
     void goToSummary();
@@ -491,10 +700,10 @@ function addonPrice(prices: { midweek: number; weekend: number; week: number } |
 }
 
 /** Remaining capacity of the capacity-limited add-ons for the selected stay, fetched fresh every time. */
-async function loadRemaining(): Promise<Map<string, number>> {
+async function loadRemaining(addons: PublicBoat['addons']): Promise<Map<string, number>> {
   const stay = state.selection!;
   const remaining = new Map<string, number>();
-  await Promise.all(state.boat!.addons.filter((a) => a.hasCapacity).map(async (a) => {
+  await Promise.all(addons.filter((a) => a.hasCapacity).map(async (a) => {
     try {
       remaining.set(a.id, (await publicApi.addonAvailability(a.id, stay.start, stay.end)).remaining);
     } catch {
@@ -509,14 +718,22 @@ let addonRender = 0;
 async function renderAddons(): Promise<void> {
   const render = ++addonRender; // the step can be activated again while figures load; only the newest render may draw
   const list = $('#addon-list');
-  const addons = state.boat!.addons;
+  const removed = $('#addons-removed');
+  removed.hidden = !state.addonsRemovedOn;
+  removed.textContent = state.addonsRemovedOn
+    ? `Some add-ons you chose aren't offered on ${state.addonsRemovedOn} and have been removed.`
+    : '';
+  state.addonsRemovedOn = null;
+  const boat = await boatDetails(state.choice.selected!);
+  const addons = boat.addons;
   let remaining = new Map<string, number>();
   if (addons.some((a) => a.hasCapacity)) {
     list.setAttribute('aria-busy', 'true');
-    remaining = await loadRemaining();
+    remaining = await loadRemaining(addons);
     if (render !== addonRender) return;
     list.setAttribute('aria-busy', 'false');
   }
+  if (render !== addonRender) return;
   clear(list);
   const shown = addons.map((addon) => ({ addon, view: capacityView(addon, remaining.get(addon.id)) }))
     .filter(({ addon, view }) => {
@@ -578,11 +795,11 @@ async function goToSummary(): Promise<void> {
   const button = $<HTMLButtonElement>('section[data-step="addons"] [data-next]');
   button.disabled = true;
   try {
-    state.quote = await publicApi.quote(state.slug, {
+    state.quote = await publicApi.quote(state.choice.selected!, {
       periodType: state.periodType,
       startDate: state.selection!.start,
-      numberOfAdults: state.adults!,
-      numberOfChildren: state.children,
+      numberOfAdults: state.filters.adults,
+      numberOfChildren: state.filters.children,
       addons: addonRequests(),
     });
     renderSummary(state.quote);
@@ -646,20 +863,23 @@ async function pay(): Promise<void> {
   }
   button.disabled = true;
   const d = details();
+  const slug = state.choice.selected!;
+  const { adults, children } = state.filters;
+  const rooming = roomingAcceptanceHolds(state.rooming, slug, adults, children) ? state.rooming : null;
   try {
     state.booking = await publicApi.createBooking({
       draftId: state.draftId,
-      slug: state.slug,
+      slug,
       periodType: state.periodType,
       startDate: state.selection!.start,
-      numberOfAdults: state.adults!,
-      numberOfChildren: state.children,
+      numberOfAdults: adults,
+      numberOfChildren: children,
       fullName: d.fullName,
       email: d.email,
       mobile: d.mobile ?? null,
       addons: addonRequests(),
-      roomingWarningAccepted: !!state.roomingText,
-      roomingWarningText: state.roomingText,
+      roomingWarningAccepted: !!rooming,
+      roomingWarningText: rooming?.text ?? null,
       termsAccepted: true,
     });
   } catch (e) {
@@ -688,10 +908,11 @@ function handleBookingError(e: unknown): void {
     return;
   }
   if (e.status === 409) {
-    setSelection(null);
-    void reloadAvailability();
+    // Keep the period, guests and filters; the boat is now taken for them, so the customer can choose another.
+    state.choice = { selected: null, onlySelected: false };
+    refreshAvailability();
     show('dates');
-    pageNotice('Sorry, those dates were just taken. Please choose other dates.');
+    pageNotice('Sorry, those dates were just taken.');
     return;
   }
   const fields = Object.keys(e.fieldErrors);

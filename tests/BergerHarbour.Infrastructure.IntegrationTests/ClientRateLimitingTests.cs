@@ -115,12 +115,12 @@ public class ClientRateLimitingTests
     }
 
     [Theory]
-    [InlineData("Production", null, 30)]
-    [InlineData("Development", null, 30)]
+    [InlineData("Production", null, 60)]
+    [InlineData("Development", null, 60)]
     [InlineData("Local", null, 0)]
     [InlineData("Production", "12", 12)]
     [InlineData("Local", "5", 5)]
-    public void Default_is_30_per_minute_except_in_Local_and_the_setting_overrides_it(string environment, string? setting, int expected)
+    public void Default_is_60_per_minute_except_in_Local_and_the_setting_overrides_it(string environment, string? setting, int expected)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = environment });
         if (setting is not null)

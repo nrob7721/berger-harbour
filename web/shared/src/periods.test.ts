@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { dayClasses, evaluateDay, stayForClick, type AvailabilityData, type BookingWindow } from './periods';
+import {
+  dayClasses, evaluateDay, evaluateFleetDay, stayForClick, type AvailabilityData, type BookingWindow, type FleetAvailabilityData,
+} from './periods';
 import { sydneyToday } from './dates';
 
 // Week of Mon 12/10/2026 … Sun 18/10/2026.
@@ -112,6 +114,37 @@ describe('evaluateDay', () => {
     const w: BookingWindow = { earliestStart: d(1, 9), bookingsOpenUntil: d(30, 11, 2027) };
     expect(evaluateDay('Midweek', d(29, 9), availability, w).status).toBe('available');
     expect(evaluateDay('Weekend', d(2), availability, w).status).toBe('enquire');
+  });
+});
+
+describe('evaluateFleetDay', () => {
+  const window: BookingWindow = { earliestStart: d(1), bookingsOpenUntil: d(30, 11, 2027) };
+  const fleet = (unavailable: Record<string, { start: string; end: string }[]>, enquireOnly: FleetAvailabilityData['enquireOnly'] = []) =>
+    ({ enquireOnly, unavailable: new Map(Object.entries(unavailable)) }) satisfies FleetAvailabilityData;
+  // Mid-week Mon 12 → Fri 16: pacific-blue is taken, kalinda is free.
+  const availability = fleet({ 'pacific-blue': [{ start: d(12), end: d(16) }], kalinda: [{ start: d(19), end: d(23) }] });
+
+  it('a period is available when any calendar boat is free for it', () => {
+    expect(evaluateFleetDay('Midweek', d(13), availability, ['pacific-blue', 'kalinda'], window).status).toBe('available');
+    expect(evaluateFleetDay('Midweek', d(20), availability, ['pacific-blue', 'kalinda'], window).status).toBe('available');
+  });
+
+  it('a period is taken when every calendar boat is taken, or there are none', () => {
+    const state = evaluateFleetDay('Midweek', d(13), availability, ['pacific-blue'], window);
+    expect(state.status).toBe('taken');
+    expect(state.clickable).toBe(false);
+    expect(state.stay).toEqual({ start: d(12), end: d(16) });
+    expect(evaluateFleetDay('Midweek', d(13), availability, [], window).status).toBe('taken');
+  });
+
+  it('a boat without taken ranges is free', () => {
+    expect(evaluateFleetDay('Midweek', d(13), availability, ['wanderer'], window).status).toBe('available');
+  });
+
+  it('lead time, open-until and blocked periods apply whatever the boats', () => {
+    const blocked = fleet({}, [{ name: 'Labour Day long weekend', firstNight: d(2), lastNight: d(4) }]);
+    expect(evaluateFleetDay('Weekend', d(2), blocked, ['wanderer'], window).status).toBe('enquire');
+    expect(evaluateFleetDay('Midweek', d(13), availability, ['kalinda'], { ...window, earliestStart: d(14) }).status).toBe('too-soon');
   });
 });
 

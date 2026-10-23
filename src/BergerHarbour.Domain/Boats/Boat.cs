@@ -39,8 +39,9 @@ public sealed partial class Boat : AggregateRoot<BoatId>
     private List<AddonId> _allowedAddonIds;
 
     private Boat(BoatId id, int version, string name, string slug, BoatType type, int maxNoOfGuests, int? adultBeds,
-        int? kidsBeds, string? beddingDescription, decimal securityBond, decimal? depositAmount, IEnumerable<BoatRate> rates,
-        IEnumerable<AddonId> allowedAddonIds, bool isActive, DateTimeOffset createdDate, DateTimeOffset modifiedDate)
+        int? kidsBeds, string? beddingDescription, decimal securityBond, decimal? depositAmount, string? imageUrl, bool hasSpa,
+        bool isPetFriendly, IEnumerable<BoatRate> rates, IEnumerable<AddonId> allowedAddonIds, bool isActive,
+        DateTimeOffset createdDate, DateTimeOffset modifiedDate)
         : base(id, version)
     {
         Name = name;
@@ -52,6 +53,9 @@ public sealed partial class Boat : AggregateRoot<BoatId>
         BeddingDescription = beddingDescription;
         SecurityBond = securityBond;
         DepositAmount = depositAmount;
+        ImageUrl = imageUrl;
+        HasSpa = hasSpa;
+        IsPetFriendly = isPetFriendly;
         _rates = rates.ToList();
         _allowedAddonIds = allowedAddonIds.ToList();
         IsActive = isActive;
@@ -82,6 +86,13 @@ public sealed partial class Boat : AggregateRoot<BoatId>
     /// <summary>This boat's own deposit; when null the Settings default applies (see <see cref="EffectiveDeposit"/>).</summary>
     public decimal? DepositAmount { get; private set; }
 
+    /// <summary>Optional image on the WordPress site, shown on the booking app's boat cards and in Fleet.</summary>
+    public string? ImageUrl { get; private set; }
+
+    public bool HasSpa { get; private set; }
+
+    public bool IsPetFriendly { get; private set; }
+
     public IReadOnlyList<BoatRate> Rates => _rates;
 
     public IReadOnlyList<AddonId> AllowedAddonIds => _allowedAddonIds;
@@ -93,7 +104,7 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     public DateTimeOffset ModifiedDate { get; private set; }
 
-    /// <summary>Everywhere staff see boats: largest first (by max guests), then by name.</summary>
+    /// <summary>Everywhere boats are listed: largest first (by max guests), then by name.</summary>
     public static IEnumerable<Boat> InDisplayOrder(IEnumerable<Boat> boats) =>
         boats.OrderByDescending(b => b.MaxNoOfGuests).ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -103,7 +114,7 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     public static Boat CreateWithId(BoatId id, string name, string slug, BoatType type, int maxNoOfGuests, DateTimeOffset now) =>
         new(id, 0, Guard.Required(name, "name", "Name", 100), ValidateSlug(slug), type, ValidateMaxGuests(maxNoOfGuests),
-            null, null, null, 0m, null, [], [], false, now, now);
+            null, null, null, 0m, null, null, false, false, [], [], false, now, now);
 
     public void UpdateDetails(string name, string slug, int maxNoOfGuests, int? adultBeds, int? kidsBeds,
         string? beddingDescription, decimal securityBond, decimal? depositAmount, DateTimeOffset now)
@@ -126,6 +137,15 @@ public sealed partial class Boat : AggregateRoot<BoatId>
         BeddingDescription = Guard.Optional(beddingDescription, "beddingDescription", "Bedding description", 500);
         SecurityBond = Guard.Money(securityBond, "securityBond", "Security bond");
         DepositAmount = depositAmount is { } deposit ? Guard.PositiveMoney(deposit, "depositAmount", "Deposit") : null;
+        ModifiedDate = now;
+    }
+
+    /// <summary>What customers can filter and see on the booking app's boat cards. None of it is needed to activate.</summary>
+    public void UpdateFeatures(string? imageUrl, bool hasSpa, bool isPetFriendly, DateTimeOffset now)
+    {
+        ImageUrl = ValidateImageUrl(imageUrl);
+        HasSpa = hasSpa;
+        IsPetFriendly = isPetFriendly;
         ModifiedDate = now;
     }
 
@@ -162,7 +182,8 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     /// <summary>
     /// What is missing before the boat can be activated: adult beds, kids beds (0 allowed), bedding description and a
-    /// rate for every season × {Midweek, Weekend, Week}. Empty when the boat is complete.
+    /// rate for every season × {Midweek, Weekend, Week}. Empty when the boat is complete. The image, spa and pet friendly
+    /// flags are not required.
     /// </summary>
     public IReadOnlyList<string> MissingActivationData(IEnumerable<Season> seasons)
     {
@@ -252,12 +273,12 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
     public BoatSnapshot ToSnapshot() =>
         new(Id.Value, Version, Name, Slug, Type, MaxNoOfGuests, AdultBeds, KidsBeds, BeddingDescription, SecurityBond,
-            DepositAmount, _rates.Select(r => new BoatRateSnapshot(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
+            DepositAmount, ImageUrl, HasSpa, IsPetFriendly, _rates.Select(r => new BoatRateSnapshot(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
             _allowedAddonIds.Select(a => a.Value).ToList(), IsActive, CreatedDate, ModifiedDate);
 
     public static Boat FromSnapshot(BoatSnapshot s) =>
         new(new BoatId(s.Id), s.Version, s.Name, s.Slug, s.Type, s.MaxNoOfGuests, s.AdultBeds, s.KidsBeds,
-            s.BeddingDescription, s.SecurityBond, s.DepositAmount,
+            s.BeddingDescription, s.SecurityBond, s.DepositAmount, s.ImageUrl, s.HasSpa, s.IsPetFriendly,
             s.Rates.Select(r => new BoatRate(new SeasonId(r.SeasonId), r.PeriodType, r.Price)),
             s.AllowedAddonIds.Select(a => new AddonId(a)), s.IsActive, s.CreatedDate, s.ModifiedDate);
 
@@ -271,6 +292,27 @@ public sealed partial class Boat : AggregateRoot<BoatId>
 
         return value;
     }
+
+    /// <summary>Empty, or an absolute https:// URL on bergerhouseboats.com.au (with or without www).</summary>
+    private static string? ValidateImageUrl(string? imageUrl)
+    {
+        var value = Guard.Optional(imageUrl, "imageUrl", "Image URL", 1000);
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            !ImageHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase) || !uri.IsDefaultPort || uri.UserInfo.Length > 0)
+        {
+            throw new DomainValidationException("imageUrl",
+                "Image URL must be an https:// link to an image on bergerhouseboats.com.au.");
+        }
+
+        return value;
+    }
+
+    private static readonly string[] ImageHosts = ["bergerhouseboats.com.au", "www.bergerhouseboats.com.au"];
 
     private static int ValidateMaxGuests(int maxNoOfGuests) => maxNoOfGuests >= 1
         ? maxNoOfGuests
@@ -294,6 +336,9 @@ public sealed record BoatSnapshot(
     string? BeddingDescription,
     decimal SecurityBond,
     decimal? DepositAmount,
+    string? ImageUrl,
+    bool HasSpa,
+    bool IsPetFriendly,
     IReadOnlyList<BoatRateSnapshot> Rates,
     IReadOnlyList<string> AllowedAddonIds,
     bool IsActive,

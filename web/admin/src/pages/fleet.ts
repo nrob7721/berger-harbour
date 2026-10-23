@@ -15,10 +15,16 @@ export async function renderFleet(page: HTMLElement): Promise<void> {
       clear(grid);
       for (const boat of boats) {
         grid.append(h('button', { type: 'button', class: 'boat-card', onclick: () => void openBoatDialog(boat.id, reload) },
+          boatImage(boat.imageUrl, 'boat-card__image'),
           h('span', { class: 'boat-card__name' }, boat.name),
           h('span', { class: `badge ${boat.isActive ? 'badge--active' : 'badge--inactive'}` }, boat.isActive ? 'Active' : 'Inactive'),
           h('span', { class: 'boat-card__meta' },
             `Max ${boat.maxNoOfGuests} guests · ${boat.adultBeds ?? '?'} adult + ${boat.kidsBeds ?? '?'} kids beds`),
+          boat.hasSpa || boat.isPetFriendly
+            ? h('span', { class: 'boat-card__features' },
+              boat.hasSpa ? h('span', { class: 'badge badge--feature' }, 'Spa') : null,
+              boat.isPetFriendly ? h('span', { class: 'badge badge--feature' }, 'Pet friendly') : null)
+            : null,
           h('span', { class: 'boat-card__slug' }, boat.slug)));
       }
     } catch (e) {
@@ -31,6 +37,15 @@ export async function renderFleet(page: HTMLElement): Promise<void> {
       h('button', { type: 'button', class: 'button button--primary', onclick: () => void openBoatDialog(null, reload) }, '+ New boat')),
     grid);
   await reload();
+}
+
+/** The boat's image, or a neutral placeholder when it is empty or fails to load. */
+function boatImage(url: string | null, className: string): HTMLElement {
+  const placeholder = () => h('span', { class: `${className} image-placeholder`, 'aria-hidden': 'true' });
+  if (!url) return placeholder();
+  const img = h('img', { class: className, src: url, alt: '', loading: 'lazy', decoding: 'async' });
+  img.addEventListener('error', () => img.replaceWith(placeholder()), { once: true });
+  return img;
 }
 
 async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): Promise<void> {
@@ -61,6 +76,9 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     beddingDescription: boat?.beddingDescription ?? '',
     securityBond: boat?.securityBond ?? 0,
     depositAmount: boat?.depositAmount ?? null as number | null,
+    imageUrl: boat?.imageUrl ?? '',
+    hasSpa: boat?.hasSpa ?? false,
+    isPetFriendly: boat?.isPetFriendly ?? false,
     isActive: boat?.isActive ?? false,
     rates: new Map<string, number>((boat?.rates ?? []).map((r) => [`${r.seasonId}|${r.periodType}`, r.price])),
     allowedAddonIds: new Set(boat?.allowedAddonIds ?? []),
@@ -89,6 +107,12 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     panel.querySelector(`[name="${name}"]`)?.addEventListener('input', () => apply(value(panel, name)));
 
   const detailsTab = (panel: HTMLElement) => {
+    const imagePreview = h('div', { class: 'image-preview' });
+    const showPreview = () => {
+      clear(imagePreview);
+      imagePreview.append(boatImage(draft.imageUrl.trim() || null, 'image-preview__image'));
+    };
+    showPreview();
     panel.append(h('div', { class: 'form-grid' },
       field({ label: 'Name', name: 'name', required: true, value: draft.name }),
       field({ label: 'Slug', name: 'slug', required: true, value: draft.slug, hint: 'Must match the WordPress page URL, e.g. pacific-blue' }),
@@ -101,6 +125,16 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     ),
     field({ label: 'Bedding description', name: 'beddingDescription', textarea: true, value: draft.beddingDescription,
       hint: 'Shown to customers in the rooming warning, e.g. "4 queen bedrooms, bunk area (2 singles)…"' }),
+    field({ label: 'Image URL', name: 'imageUrl', type: 'url', value: draft.imageUrl,
+      hint: 'Link to an image on bergerhouseboats.com.au' }),
+    imagePreview,
+    h('div', { class: 'toggle-row' },
+      h('label', { class: 'toggle', 'data-field': 'hasSpa' },
+        h('input', { type: 'checkbox', name: 'hasSpa', checked: draft.hasSpa, onchange: (e: Event) => (draft.hasSpa = (e.target as HTMLInputElement).checked) }),
+        ' Spa'),
+      h('label', { class: 'toggle', 'data-field': 'isPetFriendly' },
+        h('input', { type: 'checkbox', name: 'isPetFriendly', checked: draft.isPetFriendly, onchange: (e: Event) => (draft.isPetFriendly = (e.target as HTMLInputElement).checked) }),
+        ' Pet friendly')),
     h('label', { class: 'toggle', 'data-field': 'isActive' },
       h('input', { type: 'checkbox', name: 'isActive', checked: draft.isActive, onchange: (e: Event) => (draft.isActive = (e.target as HTMLInputElement).checked) }),
       ' Active (bookable online and by staff)'));
@@ -112,6 +146,11 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
     bind(panel, 'securityBond', (v) => (draft.securityBond = Number(v) || 0));
     bind(panel, 'depositAmount', (v) => (draft.depositAmount = numberOrNull(v)));
     bind(panel, 'beddingDescription', (v) => (draft.beddingDescription = v));
+    panel.querySelector('[name="imageUrl"]')?.addEventListener('change', () => {
+      draft.imageUrl = value(panel, 'imageUrl');
+      showPreview();
+    });
+    bind(panel, 'imageUrl', (v) => (draft.imageUrl = v));
   };
 
   const ratesTab = (panel: HTMLElement) => {
@@ -164,6 +203,9 @@ async function openBoatDialog(id: string | null, onSaved: () => Promise<void>): 
       beddingDescription: draft.beddingDescription || null,
       securityBond: draft.securityBond,
       depositAmount: draft.depositAmount,
+      imageUrl: draft.imageUrl.trim() || null,
+      hasSpa: draft.hasSpa,
+      isPetFriendly: draft.isPetFriendly,
       rates: [...draft.rates].map(([key, price]): BoatRate => {
         const [seasonId, periodType] = key.split('|') as [string, PeriodType];
         return { seasonId, periodType, price };

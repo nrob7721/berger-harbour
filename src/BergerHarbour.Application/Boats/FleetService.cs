@@ -20,7 +20,8 @@ public sealed class FleetService(
     /// <summary>Ordered by max guests (largest first), then name.</summary>
     public async Task<IReadOnlyList<BoatSummaryDto>> ListAsync(CancellationToken ct = default) =>
         Boat.InDisplayOrder(await boats.ListAsync(ct))
-            .Select(b => new BoatSummaryDto(b.Id.Value, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.AdultBeds, b.KidsBeds, b.IsActive))
+            .Select(b => new BoatSummaryDto(b.Id.Value, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.AdultBeds, b.KidsBeds,
+                b.ImageUrl, b.HasSpa, b.IsPetFriendly, b.IsActive))
             .ToList();
 
     public async Task<BoatDetailDto> GetAsync(string id, CancellationToken ct = default) =>
@@ -130,6 +131,7 @@ public sealed class FleetService(
         errors.ThrowIfInvalid();
         boat.UpdateDetails(request.Name, request.Slug, request.MaxNoOfGuests, request.AdultBeds, request.KidsBeds,
             request.BeddingDescription, request.SecurityBond, request.DepositAmount, now);
+        boat.UpdateFeatures(request.ImageUrl, request.HasSpa, request.IsPetFriendly, now);
         boat.SetRates((request.Rates ?? []).Select(r => new BoatRate(new SeasonId(r.SeasonId), r.PeriodType, r.Price)), now);
         boat.SetAllowedAddons((request.AllowedAddonIds ?? []).Select(a => new AddonId(a)), now);
         if (request.IsActive && !boat.IsActive)
@@ -159,7 +161,7 @@ public sealed class FleetService(
 
     private static BoatDetailDto ToDto(Boat b, IReadOnlyList<Season> allSeasons) => new(
         b.Id.Value, b.Version, b.Name, b.Slug, b.Type, b.MaxNoOfGuests, b.AdultBeds, b.KidsBeds, b.BeddingDescription,
-        b.SecurityBond, b.DepositAmount, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
+        b.SecurityBond, b.DepositAmount, b.ImageUrl, b.HasSpa, b.IsPetFriendly, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
         b.AllowedAddonIds.Select(a => a.Value).ToList(), b.IsActive, b.MissingActivationData(allSeasons), b.CreatedDate,
         b.ModifiedDate);
 

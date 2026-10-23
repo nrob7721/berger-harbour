@@ -32,27 +32,50 @@ public sealed record PublicBookingSettingsDto(
     string CheckInWindowEnd,
     string CheckOutTime);
 
-/// <summary>Customer-safe boat data for the booking app. Add-ons are in the admin-defined order.</summary>
+/// <summary>An active house boat on the booking app's "Dates &amp; boat" step.</summary>
+public sealed record PublicFleetBoatDto(
+    string Slug,
+    string Name,
+    string? ImageUrl,
+    int MaxNoOfGuests,
+    bool HasSpa,
+    bool IsPetFriendly);
+
+/// <summary>Every active house boat, largest first then by name, plus the booking settings. Also the warm-up call.</summary>
+public sealed record PublicFleetDto(IReadOnlyList<PublicFleetBoatDto> Boats, PublicBookingSettingsDto Settings);
+
+/// <summary>Customer-safe data for one boat, active or not. Add-ons are in the admin-defined order.</summary>
 public sealed record PublicBoatDto(
     string Slug,
     string Name,
+    string? ImageUrl,
     int MaxNoOfGuests,
+    bool HasSpa,
+    bool IsPetFriendly,
     int? AdultBeds,
     int? KidsBeds,
     string? BeddingDescription,
     decimal SecurityBond,
     decimal DepositAmount,
     bool IsActive,
-    IReadOnlyList<PublicAddonDto> Addons,
-    PublicBookingSettingsDto Settings);
+    IReadOnlyList<PublicAddonDto> Addons);
 
 /// <summary>A half-open range [Start, End) of dates the boat is taken.</summary>
 public sealed record DateRangeDto(DateOnly Start, DateOnly End);
 
 public sealed record EnquireOnlyDto(string Name, DateOnly FirstNight, DateOnly LastNight);
 
-/// <summary>Availability ranges only — never booking or customer data.</summary>
-public sealed record AvailabilityDto(IReadOnlyList<DateRangeDto> Unavailable, IReadOnlyList<EnquireOnlyDto> EnquireOnly);
+/// <summary>The ranges one boat is taken: its blocking bookings and unavailabilities.</summary>
+public sealed record BoatAvailabilityDto(string Slug, IReadOnlyList<DateRangeDto> Unavailable);
+
+/// <summary>Availability ranges of every active house boat — never booking or customer data.</summary>
+public sealed record FleetAvailabilityDto(IReadOnlyList<EnquireOnlyDto> EnquireOnly, IReadOnlyList<BoatAvailabilityDto> Boats);
+
+/// <param name="HirePrice">Null when the boat has no rate for the stay, which then cannot be booked online.</param>
+public sealed record BoatPeriodDto(string Slug, bool Available, decimal? HirePrice);
+
+/// <summary>Each active house boat's availability and hire price for one stay.</summary>
+public sealed record PeriodAvailabilityDto(IReadOnlyList<BoatPeriodDto> Boats);
 
 /// <summary>What is left of a capacity-limited add-on for a stay, across all boats.</summary>
 public sealed record PublicAddonAvailabilityDto(int Remaining);
@@ -61,6 +84,8 @@ public sealed record CreateBookingDraftRequest(
     string Slug,
     PeriodType PeriodType,
     DateOnly StartDate,
+    int NumberOfAdults,
+    int NumberOfChildren,
     string? FullName,
     string? Email,
     string? Mobile,
@@ -69,13 +94,14 @@ public sealed record CreateBookingDraftRequest(
 public sealed record BookingDraftCreatedDto(string DraftId);
 
 public sealed record UpdateBookingDraftRequest(
+    string Slug,
     PeriodType PeriodType,
     DateOnly StartDate,
+    int NumberOfAdults,
+    int NumberOfChildren,
     string? FullName,
     string? Email,
     string? Mobile,
-    int? NumberOfAdults,
-    int? NumberOfChildren,
     IReadOnlyList<BookingAddonRequest>? Addons,
     BookingStep LastStepReached);
 

@@ -101,13 +101,14 @@ public class OnlineBookingFlowTests
     }
 
     [Fact]
-    public async Task Boat_info_has_beds_check_in_window_and_ordered_add_ons()
+    public async Task Boat_info_has_beds_features_and_ordered_add_ons()
     {
         var app = await TestApp.CreateAsync();
         var boat = await app.Get<OnlineBookingService>().GetBoatAsync("pacific-blue");
         Assert.Equal((6, 2), (boat.AdultBeds, boat.KidsBeds));
         Assert.Equal(1000m, boat.DepositAmount);
-        Assert.Equal(("11am", "2pm", "8am"), (boat.Settings.CheckInTime, boat.Settings.CheckInWindowEnd, boat.Settings.CheckOutTime));
+        Assert.Equal(("https://bergerhouseboats.com.au/wp-content/uploads/2025/03/1-12.jpg", true, false),
+            (boat.ImageUrl, boat.HasSpa, boat.IsPetFriendly));
         Assert.Equal(["yabby-pumps", "ice", "bait", "pizza-oven", "fishing-gear", "car-parking", "grocery-service",
             "on-mooring-jetty-stays", "outdoor-heater", "outboard-motor", "welcome-hamper", "skipper"], boat.Addons.Select(a => a.Id));
         var parking = boat.Addons.Single(a => a.Id == "car-parking");
@@ -135,8 +136,9 @@ public class OnlineBookingFlowTests
         var start = app.MondayAfter(40);
         var draftId = await app.DraftAsync(start);
         app.Clock.Advance(TimeSpan.FromMinutes(3));
-        await app.Get<OnlineBookingService>().UpdateDraftAsync(draftId, new UpdateBookingDraftRequest(PeriodType.Midweek, start,
-            "Jane Citizen", "jane@example.com", "+61 412 345 678", 4, 2, [new("ice", 2)], BookingStep.Addons));
+        await app.Get<OnlineBookingService>().UpdateDraftAsync(draftId, new UpdateBookingDraftRequest("pacific-blue",
+            PeriodType.Midweek, start, 4, 2, "Jane Citizen", "jane@example.com", "+61 412 345 678", [new("ice", 2)],
+            BookingStep.Addons));
 
         Assert.Empty(app.Store.Customers.All());
         var draft = BookingDraft.FromSnapshot(Assert.Single(app.Store.BookingDrafts.All()));
@@ -145,7 +147,8 @@ public class OnlineBookingFlowTests
         Assert.Equal(4, draft.NumberOfAdults);
         Assert.Equal("+61412345678", draft.MobileNumber);
         await Assert.ThrowsAsync<NotFoundException>(() => app.Get<OnlineBookingService>().UpdateDraftAsync("unknown",
-            new UpdateBookingDraftRequest(PeriodType.Midweek, start, "Jane", "jane@example.com", "0412 345 678", 1, 0, [], BookingStep.Guests)));
+            new UpdateBookingDraftRequest("pacific-blue", PeriodType.Midweek, start, 1, 0, "Jane", "jane@example.com",
+                "0412 345 678", [], BookingStep.Addons)));
     }
 
     [Fact]
@@ -155,11 +158,13 @@ public class OnlineBookingFlowTests
         var service = app.Get<OnlineBookingService>();
         var start = app.MondayAfter(40);
         var ex = await Assert.ThrowsAsync<RequestValidationException>(() => service.CreateDraftAsync(
-            new CreateBookingDraftRequest("pacific-blue", PeriodType.Midweek, start, "", "bad", "123", "turnstile-ok"), null));
+            new CreateBookingDraftRequest("pacific-blue", PeriodType.Midweek, start, 2, 0, "", "bad", "123", "turnstile-ok"),
+            null));
         Assert.Equal(["email", "fullName", "mobile"], ex.Errors.Keys.Order());
 
         var created = await service.CreateDraftAsync(
-            new CreateBookingDraftRequest("pacific-blue", PeriodType.Midweek, start, "Ana", "ana@example.co.nz", "+64 21 123 4567", "ok"), null);
+            new CreateBookingDraftRequest("pacific-blue", PeriodType.Midweek, start, 2, 0, "Ana", "ana@example.co.nz",
+                "+64 21 123 4567", "ok"), null);
         Assert.NotEmpty(created.DraftId);
     }
 
@@ -219,8 +224,9 @@ public class OnlineBookingFlowTests
         Assert.True(checkout.ExpiresAt < booking.HoldExpiresAt);
         Assert.Empty(app.Emails.Sent); // no email while PendingPayment
 
-        var availability = await app.Get<OnlineBookingService>().GetAvailabilityAsync("pacific-blue", start.AddDays(-7), start.AddDays(30));
-        Assert.Contains(new DateRangeDto(start, start.AddDays(4)), availability.Unavailable);
+        var availability = await app.Get<OnlineBookingService>().GetFleetAvailabilityAsync(start.AddDays(-7), start.AddDays(30));
+        Assert.Contains(new DateRangeDto(start, start.AddDays(4)),
+            availability.Boats.Single(b => b.Slug == "pacific-blue").Unavailable);
     }
 
     [Fact]

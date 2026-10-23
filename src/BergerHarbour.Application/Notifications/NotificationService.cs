@@ -110,8 +110,9 @@ public sealed class NotificationService(
         EmailData data;
         if (key == EmailTemplateKey.StaffAbandonedBooking)
         {
-            var draft = BookingDraft.Create(boat.Id, PeriodType.Midweek, stay, contact.FullName, contact.Email, contact.Phone!, now);
-            draft.Update(PeriodType.Midweek, stay, contact.FullName, contact.Email, contact.Phone!, 6, 2,
+            var draft = BookingDraft.Create(boat.Id, PeriodType.Midweek, stay, 6, 2, contact.FullName, contact.Email,
+                contact.Phone!, now);
+            draft.Update(boat.Id, PeriodType.Midweek, stay, 6, 2, contact.FullName, contact.Email, contact.Phone!,
                 addonList.Take(2).Select(a => new DraftAddonRequest(a.Id, 1)), BookingStep.Addons, now);
             data = new EmailData(boat, contact, settings, addonList, Draft: draft);
         }

@@ -86,17 +86,46 @@ public class RepositoryRoundTripTests : IClassFixture<EmulatorFixture>
     }
 
     [Fact]
+    public async Task Fleet_availability_query_finds_active_and_pending_bookings_across_boats()
+    {
+        var repo = new FirestoreBookingRepository(_fx.Db);
+        var start = new DateOnly(2027, 6, 7);
+        async Task<Booking> Save(DateOnly from, int nights)
+        {
+            var b = Make.StaffBooking(BoatId.New(), from, nights);
+            await LockSaveAsync(b);
+            return b;
+        }
+
+        var first = await Save(start, 4);
+        var second = await Save(start.AddDays(2), 5);
+        var cancelled = await Save(start, 4);
+        cancelled.Cancel(Now);
+        await repo.SaveAsync(cancelled);
+        var before = await Save(start.AddDays(-4), 4); // checks out on the first day of the range
+        var after = await Save(start.AddDays(10), 3);
+
+        var found = (await repo.ListOverlappingAsync(start, start.AddDays(7),
+            [BookingStatus.Active, BookingStatus.PendingPayment])).Select(b => b.Id).ToList();
+        Assert.Contains(first.Id, found);
+        Assert.Contains(second.Id, found);
+        Assert.DoesNotContain(cancelled.Id, found);
+        Assert.DoesNotContain(before.Id, found);
+        Assert.DoesNotContain(after.Id, found);
+    }
+
+    [Fact]
     public async Task Booking_draft_round_trips_and_is_queried_by_email_activity_and_age()
     {
         var repo = new FirestoreBookingDraftRepository(_fx.Db);
         var email = $"draft-{Guid.NewGuid():N}@example.com";
         var boat = BoatId.New();
         var stay = new Stay(new DateOnly(2027, 3, 1), new DateOnly(2027, 3, 5));
-        var draft = BookingDraft.Create(boat, PeriodType.Midweek, stay, "Drafty", email, "0412 345 678", Now);
-        draft.Update(PeriodType.Midweek, stay, "Drafty", email, "0412 345 678", 4, 1, [new DraftAddonRequest(new AddonId("ice"), 2)],
+        var draft = BookingDraft.Create(boat, PeriodType.Midweek, stay, 2, 0, "Drafty", email, "0412 345 678", Now);
+        draft.Update(BoatId.New(), PeriodType.Midweek, stay, 4, 1, "Drafty", email, "0412 345 678", [new DraftAddonRequest(new AddonId("ice"), 2)],
             BookingStep.Addons, Now.AddMinutes(5));
         await repo.SaveAsync(draft);
-        var later = BookingDraft.Create(boat, PeriodType.Midweek, stay, "Drafty", email.ToUpperInvariant(), "0412 345 678", Now.AddHours(1));
+        var later = BookingDraft.Create(boat, PeriodType.Midweek, stay, 2, 0, "Drafty", email.ToUpperInvariant(), "0412 345 678", Now.AddHours(1));
         await repo.SaveAsync(later);
 
         var loaded = await repo.GetAsync(draft.Id);
@@ -129,6 +158,7 @@ public class RepositoryRoundTripTests : IClassFixture<EmulatorFixture>
         var seasons = new[] { Season.CreateNormal() };
         var boat = Boat.Create("Round Trip", "round-trip", BoatType.House, 10, Now);
         boat.UpdateDetails("Round Trip", "round-trip", 10, 6, 0, "3 queens", 1500.25m, 750.50m, Now);
+        boat.UpdateFeatures("https://bergerhouseboats.com.au/wp-content/uploads/round-trip.jpg", true, true, Now);
         boat.SetRates([.. PeriodTypes.Rated.Select(p => new BoatRate(SeasonId.Normal, p, 1234.56m))], Now);
         boat.SetAllowedAddons([new AddonId("ice")], Now);
         boat.Activate(seasons, Now);
@@ -157,6 +187,8 @@ public class RepositoryRoundTripTests : IClassFixture<EmulatorFixture>
         var pacificBlue = (await new FirestoreBoatRepository(_fx.Db).GetBySlugAsync("pacific-blue"))!;
         Assert.True(pacificBlue.IsActive);
         Assert.Equal((6, 2, 1000m), (pacificBlue.AdultBeds, pacificBlue.KidsBeds, pacificBlue.DepositAmount));
+        Assert.Equal(("https://bergerhouseboats.com.au/wp-content/uploads/2025/03/1-12.jpg", true, false),
+            (pacificBlue.ImageUrl, pacificBlue.HasSpa, pacificBlue.IsPetFriendly));
         var kalinda = (await new FirestoreBoatRepository(_fx.Db).GetBySlugAsync("kalinda"))!;
         Assert.True(kalinda.IsActive);
         Assert.Equal((5, 2, (decimal?)null), (kalinda.AdultBeds, kalinda.KidsBeds, kalinda.DepositAmount));

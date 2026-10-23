@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Seeding;
 using Microsoft.AspNetCore.Hosting;
@@ -67,6 +68,8 @@ public class PublicApiRaceTests : IClassFixture<EmulatorFixture>
                 slug = "pacific-blue",
                 periodType = "Midweek",
                 startDate = start.ToString("yyyy-MM-dd"),
+                numberOfAdults = 4,
+                numberOfChildren = 2,
                 fullName = "Racer",
                 email,
                 mobile = "+61412345678",
@@ -101,9 +104,18 @@ public class PublicApiRaceTests : IClassFixture<EmulatorFixture>
         var loser = Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict);
         Assert.Contains("Those dates are no longer available", await loser.Content.ReadAsStringAsync());
 
-        var availability = await client.GetStringAsync(
-            $"/api/boats/pacific-blue/availability?from={start.AddDays(-1):yyyy-MM-dd}&to={start.AddDays(10):yyyy-MM-dd}");
-        Assert.Contains(start.ToString("yyyy-MM-dd"), availability);
+        var availability = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/availability?from={start.AddDays(-1):yyyy-MM-dd}&to={start.AddDays(10):yyyy-MM-dd}");
+        var pacificBlue = availability.GetProperty("boats").EnumerateArray()
+            .Single(b => b.GetProperty("slug").GetString() == "pacific-blue");
+        Assert.Contains(pacificBlue.GetProperty("unavailable").EnumerateArray(),
+            r => r.GetProperty("start").GetString() == start.ToString("yyyy-MM-dd"));
+
+        var period = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/availability/period?periodType=Midweek&startDate={start:yyyy-MM-dd}");
+        var boats = period.GetProperty("boats").EnumerateArray().ToList();
+        Assert.False(boats.Single(b => b.GetProperty("slug").GetString() == "pacific-blue").GetProperty("available").GetBoolean());
+        Assert.True(boats.Single(b => b.GetProperty("slug").GetString() == "kalinda").GetProperty("available").GetBoolean());
     }
 
     [Fact]
