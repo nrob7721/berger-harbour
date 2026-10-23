@@ -12,7 +12,7 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 - House boats can currently only be booked by phone. Availability lives on paper and is duplicated in Excel. Staff cannot keep up with availability enquiries.
 - Customers learn about each house boat on the existing WordPress site (`https://bergerhouseboats.com.au/houseboats/<boat-slug>/`). Each boat has its own page.
 
-**Goal:** let customers see availability and book and pay a deposit for a house boat online, from a "Book Now" button on each boat's WordPress page. Give staff an internal system to manage bookings, the fleet, customers and settings.
+**Goal:** let customers see availability, compare the boats free for their dates, and book and pay a deposit for a house boat online, starting from a "Book Now" button on each boat's WordPress page. Give staff an internal system to manage bookings, the fleet, customers and settings.
 
 ## 2. Scope
 
@@ -52,6 +52,9 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | **Extended payment schedule** | Applies to bookings whose stay overlaps a blocked period flagged `UsesExtendedPaymentSchedule` (Christmas/New Year). 50% of the total is due 120 days before check-in and 100% by 90 days before. All other bookings use the **standard schedule**: 100% due 30 days before check-in. |
 | **Capacity-limited add-on** | An add-on with a `Capacity` shared across **all boats and bookings** (e.g. Car parking: 11 spots in total). Usage is counted per night (§7.5). |
 | **Guests** | Every booking records `NumberOfAdults` (≥ 1) and `NumberOfChildren` (≥ 0, children are under 12). "Guests" means the total of both. |
+| **Requested boat** | The boat named by the booking app's `?boat=<slug>` parameter, i.e. the boat whose "Book Now" button the customer clicked. Optional: the app also works without one. |
+| **Selected boat** | The boat the customer has chosen to book on the "Dates & boat" step (§11.2). It starts as the requested boat when that boat is active, and may be none. |
+| **Candidate boats** | Active `House` boats that match the customer's current filters on the "Dates & boat" step: guests (adults + children ≤ `MaxNoOfGuests`), Spa and Pet friendly. |
 
 **Overlap rules.** Every overlap check in the system compares **nights**:
 - Booking vs booking: `a.Start < b.End && b.Start < a.End`.
@@ -100,6 +103,8 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 21. Add-ons may have a **capacity shared across all boats**, counted on the busiest night of the stay. Online it is a hard limit, checked without a lock. Staff only get a warning.
 22. Abandoned online bookings are reported to staff (#10). They are never stored as customers.
 23. Payment emails (#4 and #7) whose trigger time had already passed when the booking was created are **never sent**.
+24. The booking app's first step, **"Dates & boat"**, searches the whole fleet. The customer picks the period, guests and filters, and chooses one of the candidate boats. The requested boat is **always** listed first. A checkbox "Show {Boat}'s availability only" limits the calendar to the selected boat; otherwise the calendar offers every period at least one candidate boat is free for.
+25. Boats have an optional **image URL** (an image on the WordPress site, shown on the booking app's boat cards), and **Spa** and **Pet friendly** flags that customers can filter by.
 
 ## 5. Architecture overview
 
@@ -128,7 +133,7 @@ External: Stripe (payments), Gmail SMTP (email), Cloudflare Turnstile (bot prote
   This avoids Cloud Run custom domain mapping and lets the frontends call APIs same-origin.
 - **CORS:** both APIs only allow their own frontend origin (`https://bookings.bergerhouseboats.com.au` and `https://berger-admin.pages.dev` respectively; `https://berger-booking-dev.pages.dev` and `https://berger-admin-dev.pages.dev` in dev). The origin has no default in code: a service without one refuses to start, so an environment can never fall back to another environment's frontend. There are no wildcard origins and credentials are not allowed cross-origin. Since traffic is proxied same-origin, CORS is defence in depth.
 - **Instances:** `public-api` runs with `max-instances=1`, `admin-api` with `max-instances=2`. At the expected scale (about 1000 bookings a year, one staff user at a time) one public instance is enough, and the per-IP rate limiter (§8) keeps its state in memory, so it is only exact on a single instance.
-- **Cold starts:** both services run with `min-instances=0` and are published with ReadyToRun. There is no separate "wake-up" endpoint. The booking app calls `GET /api/boats/{slug}` as soon as it loads, which wakes the service while a skeleton loader is shown.
+- **Cold starts:** both services run with `min-instances=0` and are published with ReadyToRun. There is no separate "wake-up" endpoint. The booking app calls `GET /api/boats` (and `GET /api/boats/{slug}` for the requested boat) as soon as it loads, which wakes the service while a skeleton loader is shown.
 
 ## 6. Repository layout
 
@@ -202,12 +207,15 @@ Any write that can create or move occupancy for a boat (create or update a booki
 | `DepositAmount` | Optional money (> 0 when set). When empty, `BusinessSettings.DepositAmount` applies. **Effective deposit** = boat value ?? Settings value. |
 | `Rates` | List of `BoatRate { SeasonId, PeriodType (Midweek/Weekend/Week/LongWeekend), Price }` |
 | `AllowedAddonIds` | Add-ons offered for this boat |
+| `ImageUrl` | Optional. An absolute `https://` URL whose host is `bergerhouseboats.com.au` or `www.bergerhouseboats.com.au` (an image on the WordPress site). Shown on the booking app's boat cards and in Fleet. |
+| `HasSpa` | bool, default false |
+| `IsPetFriendly` | bool, default false |
 | `IsActive` | Inactive boats cannot be booked online or by staff, but their history is kept. Boats are never deleted. |
 | `CreatedDate`, `ModifiedDate`, `Version` | |
 
-**Invariant:** a boat can only be **activated** when `AdultBeds`, `KidsBeds` (0 allowed), `BeddingDescription` and a rate for **every season × {Midweek, Weekend, Week}** are present.
+**Invariant:** a boat can only be **activated** when `AdultBeds`, `KidsBeds` (0 allowed), `BeddingDescription` and a rate for **every season × {Midweek, Weekend, Week}** are present. `ImageUrl`, `HasSpa` and `IsPetFriendly` are not required.
 
-**Ordering:** everywhere the admin app lists boats (timeline rows, Fleet grid, every boat dropdown), boats are sorted by `MaxNoOfGuests` descending, then `Name`.
+**Ordering:** everywhere boats are listed (admin timeline rows, Fleet grid, every boat dropdown, and the booking app's "Other boats available" list), boats are sorted by `MaxNoOfGuests` descending, then `Name`.
 
 #### Customer (aggregate)
 `Id`, `FullName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164; required for online bookings, optional for staff-created), `SecondaryPhone` (E.164, optional, staff-entered only, empty when the customer is created), `CreatedDate`, `ModifiedDate`, `Version`.
@@ -282,12 +290,12 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 | Field | Notes |
 |---|---|
 | `Id` | Random and unguessable (≥ 128 bits). Returned to the booking app, which keeps it in `sessionStorage`. |
-| `BoatId` | |
-| `PeriodType`, `StartDate`, `EndDate` | As selected so far |
+| `BoatId` | The selected boat. Updated when the customer goes back and chooses another boat. |
+| `PeriodType`, `StartDate`, `EndDate` | As selected on the "Dates & boat" step |
+| `NumberOfAdults`, `NumberOfChildren` | As selected on the "Dates & boat" step |
 | `FullName`, `Email` (normalised), `MobileNumber` (E.164) | Required when the draft is created |
-| `NumberOfAdults`, `NumberOfChildren` | Optional, filled in as the customer progresses |
 | `AddonRequests` | List of `{ AddonId, Quantity }` |
-| `LastStepReached` | `Details` \| `Guests` \| `Addons` \| `Summary` \| `Payment` |
+| `LastStepReached` | `Details` \| `Addons` \| `Summary` \| `Payment` |
 | `LastActivityAt` | Instant, updated on every create or update |
 | `ConvertedBookingId`, `ConvertedAt` | Set when its booking becomes Active |
 | `AbandonedNotifiedAt` | Set when email #10 is sent |
@@ -390,11 +398,13 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 ### 8.1 public-api (customer-facing, no login)
 | Method & route | Purpose |
 |---|---|
-| `GET /api/boats/{slug}` | Customer-safe boat data: name, maxNoOfGuests, adultBeds, kidsBeds, beddingDescription, securityBond, effective depositAmount, isActive, allowed add-ons in admin-defined order (id, name, description, priceOnRequest, quantityApplies, prices by period type, hasCapacity, capacityUnitLabel), plus booking settings (minimum lead time, bookings open until, contact phone/email, hire terms URL). Also the warm-up call. |
-| `GET /api/boats/{slug}/availability?from=&to=` | Returns only **ranges**, never booking or customer data: `{ unavailable: [{start, end}], enquireOnly: [{firstNight, lastNight}] }`. `unavailable` = blocking bookings (as `[start,end)`) and unavailabilities. `enquireOnly` = blocked periods. Max span 15 months. |
+| `GET /api/boats` | Every **active `House`** boat, ordered by maxNoOfGuests desc, then name: `{ boats: [{ slug, name, imageUrl, maxNoOfGuests, hasSpa, isPetFriendly }], settings }`, where `settings` holds the booking settings (minimum lead time, bookings open until, contact phone/email, hire terms URL). Also the warm-up call. |
+| `GET /api/boats/{slug}` | Customer-safe data for one boat, active or not: name, imageUrl, maxNoOfGuests, hasSpa, isPetFriendly, adultBeds, kidsBeds, beddingDescription, securityBond, effective depositAmount, isActive, allowed add-ons in admin-defined order (id, name, description, priceOnRequest, quantityApplies, prices by period type, hasCapacity, capacityUnitLabel). Used for the requested boat on load and for the selected boat in later steps. `404` for an unknown slug or a non-House boat. |
+| `GET /api/availability?from=&to=` | Fleet availability for every active House boat. Returns only **ranges**, never booking or customer data: `{ enquireOnly: [{firstNight, lastNight}], boats: [{ slug, unavailable: [{start, end}] }] }`. `unavailable` = the boat's blocking bookings (as `[start,end)`) and unavailabilities. `enquireOnly` = blocked periods. Max span 15 months. |
+| `GET /api/availability/period?periodType=&startDate=` | For one stay: `{ boats: [{ slug, available, hirePrice }] }` for every active House boat. `available` = no blocking booking or unavailability overlaps the stay; `hirePrice` comes from `PricingService` (§7.4). `400` if the stay fails the period shape, lead time, open-until or blocked-period rules (§7.7 rules 2–5). Returns no booking or customer data. |
 | `GET /api/addons/{addonId}/availability?startDate=&endDate=` | Returns `{ remaining }` for a capacity-limited add-on across all boats (§7.5), and nothing else. `404` if the add-on has no capacity. |
-| `POST /api/booking-drafts` | Body: `{ slug, periodType, startDate, fullName, email, mobile, turnstileToken }`. Verifies Turnstile, validates the details and creates a `BookingDraft`. Returns `{ draftId }`. Never creates a Customer. |
-| `PUT /api/booking-drafts/{draftId}` | Body: `{ periodType, startDate, fullName, email, mobile, numberOfAdults, numberOfChildren, addons[{addonId, quantity}], lastStepReached }`. Updates the draft and `LastActivityAt`. `404` if the draft is unknown, converted or deleted. |
+| `POST /api/booking-drafts` | Body: `{ slug, periodType, startDate, numberOfAdults, numberOfChildren, fullName, email, mobile, turnstileToken }`. Verifies Turnstile, validates the details and creates a `BookingDraft`. Returns `{ draftId }`. Never creates a Customer. |
+| `PUT /api/booking-drafts/{draftId}` | Body: `{ slug, periodType, startDate, numberOfAdults, numberOfChildren, fullName, email, mobile, addons[{addonId, quantity}], lastStepReached }`. Updates the draft (including its boat) and `LastActivityAt`. `404` if the draft is unknown, converted or deleted. |
 | `POST /api/boats/{slug}/quote` | `{ periodType, startDate, numberOfAdults, numberOfChildren, addons[] }` → hire price, season name, add-on prices, amount due at checkout, payment schedule with due dates, rooming warning text if applicable. Runs the online validation rules (except the draft, terms and acceptance) and returns their errors. |
 | `POST /api/bookings` | Body: `{ draftId, slug, periodType, startDate, numberOfAdults, numberOfChildren, fullName, email, mobile, addons[{addonId, quantity}], roomingWarningAccepted, roomingWarningText, termsAccepted }`. Validates, creates a `PendingPayment` hold (atomic) holding a `CustomerDetails` snapshot (**no Customer is created yet**), updates the draft, creates a Stripe Embedded Checkout session (`expires_at` = now + hold duration, minimum 30 min), and returns `{ reference, clientSecret }`. |
 | `GET /api/bookings/{reference}/status?session_id=` | Used by the completion screen. Returns status and basic summary only if `session_id` matches the booking. |
@@ -404,7 +414,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 
 **Abuse protection:**
 - Turnstile is required on `POST /api/booking-drafts`. `POST /api/bookings` requires a valid, unconverted draft id.
-- **Rate limiting** (`public-api` only): a middleware allows **30 requests per client IP per minute** on `/api/*` (sliding window, `System.Threading.RateLimiting`, in memory, idle IP buckets dropped by the framework). The IP is the forwarded `CF-Connecting-IP`. The Stripe webhook is exempt. It runs straight after the proxy-secret check and before any controller or Firestore access, so requests without the secret never use permits. Over the limit it returns `429` with `Retry-After` and a ProblemDetails title ("Too many requests. Please wait a minute and try again.") that the booking app shows as-is. `RATE_LIMIT_PER_MINUTE` overrides the limit (`0` disables; the default is 30 everywhere except `Local`, where it is off). Cloudflare's WAF rate limiting is not used (it needs the domain on Cloudflare and a paid plan). The limit is best-effort: it relies on `public-api` running one instance (§5).
+- **Rate limiting** (`public-api` only): a middleware allows **60 requests per client IP per minute** on `/api/*` (sliding window, `System.Threading.RateLimiting`, in memory, idle IP buckets dropped by the framework). The IP is the forwarded `CF-Connecting-IP`. The Stripe webhook is exempt. It runs straight after the proxy-secret check and before any controller or Firestore access, so requests without the secret never use permits. Over the limit it returns `429` with `Retry-After` and a ProblemDetails title ("Too many requests. Please wait a minute and try again.") that the booking app shows as-is. `RATE_LIMIT_PER_MINUTE` overrides the limit (`0` disables; the default is 60 everywhere except `Local`, where it is off). Cloudflare's WAF rate limiting is not used (it needs the domain on Cloudflare and a paid plan). The limit is best-effort: it relies on `public-api` running one instance (§5). It is sized for a customer comparing boats on the "Dates & boat" step, which also caches its availability and price responses (§11.2) so browsing back and forth does not repeat requests.
 - The proxy secret is required (except on the webhook).
 - Strict CORS.
 - Request size limits.
@@ -419,7 +429,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 | Area | Routes |
 |---|---|
 | Bookings | `GET /api/bookings?from=&to=&includeInactive=` (timeline data incl. customer name (from the Customer or the `CustomerDetails` snapshot), status, isStandby, paymentStatus, reference; boats ordered by maxNoOfGuests desc, then name) · `GET /api/bookings/search?q=` (name, email or reference, including `CustomerDetails` snapshots) · `GET /api/bookings/{id}` · `POST /api/bookings` · `PUT /api/bookings/{id}` (boat, dates, period type, adults, children, check-in/check-out times, standby, comments, hire price, status Active/Cancelled, customer contact details incl. secondary phone; includes `version`) · `POST /api/bookings/{id}/recalculate-price` · `POST /api/bookings/{id}/addons` · `PUT /api/bookings/{id}/addons/{lineId}` (quantity, unit price) · `DELETE /api/bookings/{id}/addons/{lineId}` · `POST /api/bookings/{id}/payments` (manual payment: amount, date, note) · `POST /api/bookings/{id}/send-payment-link` (sends email #4 immediately for the amount due now) · `GET /api/bookings/quote?boatId=&periodType=&startDate=` (pre-fill price) · `GET /api/addons/{addonId}/availability?startDate=&endDate=&excludeBookingId=` (remaining capacity) |
-| Fleet | `GET /api/boats` (ordered by maxNoOfGuests desc, then name) · `GET /api/boats/{id}` · `POST /api/boats` · `PUT /api/boats/{id}` (all editable fields incl. adult beds, kids beds, deposit, rates, allowed add-ons, active flag) · `GET /api/boats/{id}/unavailabilities` · `POST /api/boats/{id}/unavailabilities` · `PUT /api/boats/{id}/unavailabilities/{uid}` · `DELETE /api/boats/{id}/unavailabilities/{uid}` |
+| Fleet | `GET /api/boats` (ordered by maxNoOfGuests desc, then name) · `GET /api/boats/{id}` · `POST /api/boats` · `PUT /api/boats/{id}` (all editable fields incl. adult beds, kids beds, deposit, image URL, spa, pet friendly, rates, allowed add-ons, active flag) · `GET /api/boats/{id}/unavailabilities` · `POST /api/boats/{id}/unavailabilities` · `PUT /api/boats/{id}/unavailabilities/{uid}` · `DELETE /api/boats/{id}/unavailabilities/{uid}` |
 | Customers | `GET /api/customers?q=` (read-only list) · `GET /api/customers/by-email?email=` (used by the booking dialog to pre-fill) · `GET /api/customers/{id}/bookings` (all statuses, ordered by StartDate, newest first) |
 | Settings | `GET/PUT /api/settings/business` · CRUD `/api/settings/seasons` · CRUD `/api/settings/blocked-periods` · CRUD `/api/settings/addons` (incl. capacity and capacity unit label; delete = deactivate) · `PUT /api/settings/addons/order` (body: the full ordered list of add-on ids; the server rewrites `SortOrder`) · `GET /api/settings/email-templates` · `PUT /api/settings/email-templates/{key}` · `POST /api/settings/email-templates/{key}/test` (sends a sample to the staff alert address) |
 | Jobs | `POST /api/jobs/process-notifications`. **Not** behind Access. It validates a Google OIDC token: issuer Google, audience = service URL, email = the Cloud Scheduler service account. |
@@ -527,18 +537,25 @@ Each boat page gets this HTML block (deliver it as `/wordpress/book-now-block.ht
   - It listens for `postMessage` `{ type: 'bh-booking:close' }`, accepted **only** from origin `https://bookings.bergerhouseboats.com.au`.
 - The booking app sends:
   - `Content-Security-Policy: frame-ancestors https://bergerhouseboats.com.au https://www.bergerhouseboats.com.au` (configured in Pages `_headers`)
-  - a CSP compatible with Stripe.js and Turnstile.
+  - a CSP compatible with Stripe.js and Turnstile, whose `img-src` also allows `https://bergerhouseboats.com.au` and `https://www.bergerhouseboats.com.au` (boat images).
 
 ### 11.2 Flow
-The app is a single page with steps, in this order: **Dates → Your details → Guests → Add-ons → Summary → Payment → Complete**. The progress is visible. The layout is responsive and works at 360px width (16px gutters, no horizontal scroll) and in the ~900×700 modal. Once a booking draft exists, moving forward through each step updates it (`PUT /api/booking-drafts/{draftId}`).
+The app is a single page with steps, in this order: **Dates & boat → Your details → Add-ons → Summary → Payment → Complete**. The progress is visible. The layout is responsive and works at 360px width (16px gutters, no horizontal scroll) and in the ~900×700 modal. Once a booking draft exists, moving forward through each step updates it (`PUT /api/booking-drafts/{draftId}`).
 
-1. **Load:** read `?boat=`. Show a skeleton while `GET /api/boats/{slug}` loads.
+1. **Load:** read the optional `?boat=`. Show a skeleton while `GET /api/boats` and, when a boat is requested, `GET /api/boats/{slug}` load.
    - Unknown slug → friendly error.
-   - Inactive boat → everything greyed out, with an info message at the top: "This boat is currently unavailable for online booking. Please contact us on {phone} / {email}."
-2. **Dates:**
+   - No `?boat=` → there is no requested boat and no boat is selected.
+   - Active requested boat → it becomes the selected boat, and "Show {Boat}'s availability only" starts **ticked**.
+   - Inactive requested boat → its card is greyed (see Boat cards below) and no boat is selected.
+2. **Dates & boat:** the customer chooses the period, guests and filters, and the boat. On desktop and in the modal the controls are in a left column and the boat cards in a right column. At ≤ 768px everything stacks: the left column's controls in order, then the cards.
+
+   **Left column, top to bottom:** period radio buttons · check-in/check-out times line · calendar and legend · "Selected: …" line · "Show {Boat}'s availability only" checkbox · filters (Adults, Children, Spa, Pet friendly) · Base hire rate · **Continue**.
+
+   **Calendar:**
    - Radio buttons: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, **Week (Mon–Mon or Fri–Fri)**.
    - A classic month calendar with previous/next navigation and a legend. Above it, show **"Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)"**, with the time zone label (§3) for the selected dates, or for the visible month when nothing is selected. When the check-in and check-out dates fall in different zones (the stay crosses a daylight-saving change), each part carries its own label: "Check-in 11am – 2pm (AEST/NSW) · Check-out from 8am (AEDT/NSW)".
-   - Availability is fetched for the visible months.
+   - Availability for the visible months is fetched with `GET /api/availability`, which covers every active House boat in one call. Filters, the checkbox and card clicks are applied in the browser and send no requests.
+   - **Calendar boats:** the selected boat when "Show {Boat}'s availability only" is ticked; otherwise all candidate boats.
    - **Clickable days per mode:**
      - Mid-week: Mon–Fri clickable; Sat and Sun disabled.
      - Weekend: Fri, Sat, Sun, Mon clickable; Tue–Thu disabled.
@@ -552,37 +569,68 @@ The app is a single page with steps, in this order: **Dates → Your details →
    - Below the calendar, a line states the selection without repeating the times, e.g. **"Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026."** (weekday + `dd/MM/yyyy`). The same text is announced in the ARIA live region.
    - **Greying is per period, not per day:** a day is disabled in a mode when the period it maps to is unavailable or invalid. For example, a Monday on which a weekend booking checks out is still clickable in Mid-week mode.
    - A period is unavailable if:
-     - it overlaps `unavailable` ranges;
+     - no calendar boat is free for it (every calendar boat has an `unavailable` range overlapping it, or there are no calendar boats);
      - it starts before today + lead time;
      - it ends after `BookingsOpenUntil`.
    - **Blocked periods:** days inside `enquireOnly` ranges are greyed out with a distinct style. If the period a click maps to overlaps a blocked period, show a pop-up instead of selecting: "Bookings over {period name} must be made by phone or email: {phone} / {email}." Example: Mid-week mode, click Tue 18/12 → Mon 17/12–Fri 21/12 overlaps Christmas → pop-up.
-   - Changing the radio option clears the selection.
+   - Selecting a period calls `GET /api/availability/period` for it, which gives each boat's availability and hire price for that stay.
+   - Changing the period type clears the selected period. The selected boat is kept.
+
+   **"Show {Boat}'s availability only" checkbox:**
+   - `{Boat}` is the selected boat's name. Ticked, the calendar shows only that boat's availability. Unticked, a period is free when **any** candidate boat is free for it.
+   - With no selected boat, the checkbox is unticked and disabled, and reads "Show the selected boat's availability only". When a boat becomes selected, the checkbox is enabled (still unticked).
+   - Selecting a different boat card never changes the checkbox. While it is ticked, the calendar follows the newly selected boat.
+
+   **Filters:**
+   - **Adults** (`1…N`, default 1) and **Children (Under 12)** (`0…N − adults`, default 0), where N is the largest `MaxNoOfGuests` among active House boats. Changing adults clamps children so the total never exceeds N.
+   - **Spa** and **Pet friendly** checkboxes, unticked by default. Ticked, only boats with that feature are candidates.
+   - Candidate boats (§3) are the active House boats with adults + children ≤ `MaxNoOfGuests` and every ticked feature.
+
+   **Boat cards:**
+   - The cards are a single-select **radio group**. The whole card is clickable and keyboard-operable (arrow keys, Enter/Space) with visible focus, and a small tick-box indicator in its corner shows the selection. The selected boat's name is announced in the ARIA live region. Greyed cards cannot be selected.
+   - Each card shows the boat's image (`imageUrl`, or a neutral placeholder when it is empty or fails to load), its **name**, "**Up to {n} guests**", a **Spa** and/or **Pet friendly** badge when set, and, once a period is selected, the boat's **hire price** for that period.
+   - **The requested boat is always the first card**, whatever its state. When it cannot be selected it is greyed, with one short grey reason underneath; the first that applies is shown:
+     1. "Not available for online booking" (inactive)
+     2. "Not available for selected dates"
+     3. "Too small for {n} guests"
+     4. "Doesn't match your filters" (Spa or Pet friendly)
+   - Below it, a text separator **"Other boats available"** and the other candidate boats, ordered by `MaxNoOfGuests` descending, then `Name` (without a requested boat, the separator is not shown). Before a period is selected, every candidate boat is shown. Once a period is selected, only the candidates free for it are shown; when there are none, the list says "No other boats are available for these dates.", or "No boats match your filters for these dates." when no candidate boat at all is free for the period.
+
+   **Base hire rate:** labelled "Base hire rate" with the sub-label "Excludes add-ons". It shows the selected boat's hire price for the selected period (e.g. `$4,060.00`), or "Select dates and a boat" until both are chosen.
+
+   **Keeping the selection valid:**
+   - When a change to the period, guests, Spa or Pet friendly makes the selected boat ineligible (not free for the period, too small for the guests, or missing a ticked feature), it is deselected. If "Show {Boat}'s availability only" was ticked, it becomes unticked and disabled, and the calendar shows all candidate boats.
+   - Changing a filter never clears the selected period, even when no candidate boat is free for it any more.
+
+   **Continue** is enabled only when a period and a selected boat are chosen. The selected boat's details come from `GET /api/boats/{slug}`.
+   - If `adults + children > AdultBeds + KidsBeds` of the selected boat, Continue first shows a modal **rooming warning** with the bedding description, e.g. "This boat has {AdultBeds} adult beds and {KidsBeds} children's beds ({BeddingDescription}). With {n} guests, some guests will need to share beds. Please make sure your group's sleeping arrangements suit this layout." It has an **Accept** button, which continues, and a **Cancel** button, which stays on this step. The booking cannot continue without accepting. The exact text shown is sent with the booking.
+   - An acceptance holds while the selected boat and guest numbers stay the same. If either changes, the warning is shown again on the next Continue when it still applies.
+
+   **Caching:** fleet availability per month, period results per (period type, start date) and boat details per slug are cached for the session, so browsing back and forth repeats no requests. The availability and period caches are cleared after a `409` at Payment and whenever this step is shown again after the Payment step was reached.
 3. **Your details:**
    - Full name, email and mobile, all required and validated.
    - The mobile field has a searchable **country code selector** defaulting to **Australia (+61)**, validated with `libphonenumber-js` and sent as E.164. Bookings may come from overseas.
    - The Turnstile widget.
    - A short note: "If you don't finish your booking, our team may contact you to help."
    - On Continue: `POST /api/booking-drafts` the first time (then keep `draftId` in `sessionStorage`), or `PUT` if a draft already exists.
-4. **Guests:**
-   - Two dropdowns: **Adults** (`1…MaxNoOfGuests`) and **Children (Under 12)** (`0…MaxNoOfGuests − adults`). Changing adults clamps children so the total never exceeds max guests.
-   - If `adults + children > AdultBeds + KidsBeds`, show a modal **rooming warning** with the bedding description, e.g. "This boat has {AdultBeds} adult beds and {KidsBeds} children's beds ({BeddingDescription}). With {n} guests, some guests will need to share beds. Please make sure your group's sleeping arrangements suit this layout." It has an **Accept** button and a Cancel button. Cancel returns to the guest selection. The booking cannot continue without accepting. The exact text shown is sent with the booking.
-5. **Add-ons:**
-   - Checkboxes for the allowed add-ons, in the admin-defined order, with a quantity input where `QuantityApplies`.
+4. **Add-ons:**
+   - Checkboxes for the selected boat's allowed add-ons, in the admin-defined order, with a quantity input where `QuantityApplies`.
    - Each shows a price for the selected period type, or "Price on request".
+   - If the customer went back and selected a different boat, requested add-ons the new boat does not allow are removed, with the notice "Some add-ons you chose aren't offered on {Boat} and have been removed."
    - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates **every time the Add-ons step is shown** (never cache it: going back to change the dates, or returning from the Summary, must show current figures). Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"; "{X} available for your dates" when no unit label is set). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
    - Notice: "Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods."
-6. **Summary:**
+5. **Summary:**
    - Server quote showing boat, a **Check-in** row and a **Check-out** row, each with its date, time and the time zone label (§3) for that date (e.g. "Check-in: Fri 16/10/2026, 11am – 2pm AEDT/NSW" and "Check-out: Fri 23/10/2026, from 8am AEDT/NSW"; across a daylight-saving change each row shows its own label), adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
    - Terms checkbox: "I accept the [Hire Terms and Procedures]" (link opens in a new tab).
    - Button: **Pay ${amount}**, enabled only once the terms are accepted.
-7. **Payment:** `POST /api/bookings` → mount Stripe Embedded Checkout.
-   - On `409`, return to the Dates step with "Sorry, those dates were just taken."
+6. **Payment:** `POST /api/bookings` → mount Stripe Embedded Checkout.
+   - On `409`, return to the Dates & boat step with "Sorry, those dates were just taken." The period, guests and filters are kept, availability is fetched again, and the boat (now unavailable) is deselected, so the customer can choose another boat that is free for the same dates.
    - On a capacity `400`, return to the Add-ons step with the message and refreshed remaining figures.
-8. **Complete:** poll `/status` until `Active` (show "Confirming…" for up to ~30s, then say an email will follow). Show the reference and "A confirmation email has been sent to {email}". In the modal, show a **Close** button that posts `bh-booking:close`.
+7. **Complete:** poll `/status` until `Active` (show "Confirming…" for up to ~30s, then say an email will follow). Show the reference and "A confirmation email has been sent to {email}". In the modal, show a **Close** button that posts `bh-booking:close`.
 
 **Pay page** `/pay/?token=`: shows the booking summary, total, paid, owing and amount due now, with a **Pay** button that mounts Embedded Checkout. If nothing is owing, show a "Nothing to pay" state.
 
-Accessibility: keyboard-operable calendar (arrow keys, Enter), visible focus, ARIA labels and live region for selection, contrast AA.
+Accessibility: keyboard-operable calendar (arrow keys, Enter) and boat cards (a radio group: arrow keys, Enter/Space), visible focus, ARIA labels and live region for the selected period and boat, contrast AA.
 
 ## 12. Admin app (`berger-admin.pages.dev`)
 
@@ -637,10 +685,10 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - Version conflicts show "reload and retry".
 
 ### 12.2 Fleet
-- A grid of boat cards: name, max guests, adult beds + kids beds, an active/inactive badge.
+- A grid of boat cards: image thumbnail (or a placeholder), name, max guests, adult beds + kids beds, Spa and Pet friendly badges when set, an active/inactive badge.
 - "+ New boat".
 - Clicking a card opens a dialog with tabs:
-  - **Details:** Name, Slug, MaxNoOfGuests, Number of adult beds, Number of kids beds, BeddingDescription, SecurityBond, **Deposit** (optional; help text "Leave empty to use the default deposit of ${default} from Settings"), Active toggle (activation shows the missing data if the invariant fails).
+  - **Details:** Name, Slug, MaxNoOfGuests, Number of adult beds, Number of kids beds, BeddingDescription, SecurityBond, **Deposit** (optional; help text "Leave empty to use the default deposit of ${default} from Settings"), **Image URL** (optional; help text "Link to an image on bergerhouseboats.com.au", with a small preview of the image underneath), **Spa** and **Pet friendly** checkboxes, Active toggle (activation shows the missing data if the invariant fails).
   - **Rates:** a grid of seasons × {Midweek, Weekend, Week, LongWeekend}.
   - **Add-ons:** checklist of allowed add-ons.
   - **Unavailabilities:** a scrollable table (first night, last night, comments) with edit and delete, and a **"+ New Unavailability"** button.
@@ -673,7 +721,7 @@ Sections:
   - All add-ons except the outboard motor are seeded as `PriceOnRequest = true` until staff enter prices.
   - Ice, Bait and Car parking have `QuantityApplies = true`.
   - Car parking has `Capacity = 11` and `CapacityUnitLabel = "car spots"`.
-- **Boats** (all 14 are seeded with beds, bedding, bond, rates and every add-on allowed, taken from each boat's page on bergerhouseboats.com.au; only Pacific Blue is active, the rest stay inactive until staff verify them in Fleet; staff must verify slugs against WordPress URLs). Own deposits: Pacific Blue, Ocean Spirit and Island Dream $1000, Runaway Bear $250; every other boat uses the Settings default. The full data is in `SeedService.cs`; Pacific Blue is the reference:
+- **Boats** (all 14 are seeded with beds, bedding, bond, rates and every add-on allowed, taken from each boat's page on bergerhouseboats.com.au; only Pacific Blue is active, the rest stay inactive until staff verify them in Fleet; staff must verify slugs against WordPress URLs). Own deposits: Pacific Blue, Ocean Spirit and Island Dream $1000, Runaway Bear $250; every other boat uses the Settings default. Each boat's `ImageUrl` is the first image on its page (`https://bergerhouseboats.com.au/houseboats/<boat-slug>/`), and `HasSpa` and `IsPetFriendly` are set where the page says so; anything that cannot be confirmed from the page is left empty or `false` for staff to complete in Fleet. The full data is in `SeedService.cs`; Pacific Blue is the reference:
 
 | Name | Slug | Max guests |
 |---|---|---|
@@ -726,7 +774,7 @@ Sections:
 - **Firestore collections:**
   - `boats`, `bookings`, `bookingDrafts`, `customers`, `customerEmails`, `boatUnavailabilities`, `boatLocks`
   - `seasons`, `blockedPeriods`, `addons`, `emailTemplates`, `settings`, `counters`
-  - Composite indexes go in `firestore.indexes.json` (e.g. bookings by `boatId` + `status` + `startDate`; bookings by `addonIds` (array-contains) + `status` + `startDate`; unavailabilities by `boatId` + `firstNight`; bookingDrafts by `email` + `lastActivityAt`).
+  - Composite indexes go in `firestore.indexes.json` (e.g. bookings by `boatId` + `status` + `startDate`; bookings by `status` + `startDate` (fleet availability); bookings by `addonIds` (array-contains) + `status` + `startDate`; unavailabilities by `boatId` + `firstNight`; bookingDrafts by `email` + `lastActivityAt`).
 - **Logging and alerts:**
   - Structured logging to Cloud Logging. Never log card data or full tokens.
   - Log-based alert policies email the staff alert address on: webhook processing errors, job failures, and paid-but-expired bookings.
@@ -759,7 +807,8 @@ Sections:
   - Stand-by superseding.
   - Guest rules: adults ≥ 1, adults + children ≤ max guests (online), rooming warning trigger (`adults + children > AdultBeds + KidsBeds`).
   - Add-on capacity: busiest-night calculation including the four worked examples in §7.5; stand-by, Cancelled, Expired, Superseded and expired holds don't count; excluding a booking being edited.
-  - Boat activation invariant.
+  - Boat activation invariant (image URL, spa and pet friendly not required).
+  - Boat `ImageUrl` validation: empty allowed; only absolute `https://` URLs on `bergerhouseboats.com.au` or `www.bergerhouseboats.com.au` accepted.
   - Customer email normalisation; phone number E.164 normalisation.
   - Booking draft abandonment rules.
 - **Application tests:**
@@ -768,6 +817,8 @@ Sections:
   - Abandoned drafts: threshold, latest draft per email only, suppression after a booking for that email becomes Active, deletion after retention.
   - Webhook handling: idempotent replay, deposit activation creating/updating the Customer and converting the draft, expired-hold conflict path creating no Customer.
   - An expired hold never creates or changes a Customer.
+  - Fleet availability (`GET /api/availability`) and period availability (`GET /api/availability/period`): only active House boats are included; blocking bookings and unavailabilities make a boat unavailable while stand-by, Cancelled, Expired, Superseded bookings and expired holds do not; hire prices match `PricingService`; no booking or customer data is returned; invalid stays (period shape, lead time, open-until, blocked periods) return `400`.
+  - Updating a draft with a different boat changes its `BoatId`, and `POST /api/bookings` then accepts it for that boat.
 - **Integration tests (Firestore emulator):**
   - Repositories round-trip.
   - **Concurrent booking race → exactly one winner.**
@@ -775,12 +826,14 @@ Sections:
   - Optimistic concurrency 409.
   - Customer email uniqueness under concurrency.
   - Add-on capacity queries across boats.
+  - Fleet availability query across boats.
   - Rate limiter: the request over the limit gets `429` + `Retry-After`; another IP is unaffected; the Stripe webhook is exempt; requests without the proxy secret are rejected before the limiter and use no permits; `0` disables it; invalid settings stop startup.
 - **Frontend:** unit tests (Vitest) for:
   - the calendar period mapping, per-period greying logic, and highlighting of non-clickable days inside a selection;
   - the check-in/check-out line, including the AEST/NSW and AEDT/NSW labels and the split label for a stay that crosses a daylight-saving change;
   - the "Selected: …" text (dates only, no times), and the Summary's check-in and check-out rows (each with its own zone label);
-  - children dropdown clamping, and the capacity "remaining" display and hiding;
+  - children dropdown clamping (to the fleet's largest max guests), and the capacity "remaining" display and hiding;
+  - Dates & boat step: calendar greying with the checkbox unticked (a period is free when any candidate boat is free, after the guest, Spa and Pet friendly filters) and ticked (selected boat only); the checkbox's enabled, disabled and ticked states, including selecting another card leaving it unchanged; deselecting the selected boat when the period or a filter makes it ineligible, without clearing the period; the requested boat always first; the requested boat's reason precedence (inactive → dates → too small → filters); hiding other boats not free for the period and the two empty-list messages; Base hire rate states; the rooming warning on Continue and re-showing it after the boat or guests change; add-ons removed after changing boat;
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
   - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning;
   - admin timeline lane assignment by check-in/check-out time (a standard changeover shares a lane; clashing custom times get a new lane).
@@ -795,7 +848,7 @@ Sections:
    3. Stripe account, webhook endpoint (`checkout.session.completed`, `checkout.session.expired`), payment method domains, switching from test to live keys.
    4. Gmail SMTP: 2-Step Verification and a Google app password for `info@bergerhouseboats.com.au`, and checking SPF, DKIM and DMARC for `bergerhouseboats.com.au` at its existing DNS host.
    5. Cloudflare Pages projects (booking custom domain; admin on `pages.dev` with no custom domain), `_headers`, Access app on the admin `pages.dev` address + Google IdP + policy, Turnstile.
-   6. Run the seed. In the admin app, complete every boat (adult beds, kids beds, bedding, bond, optional deposit, rates, allowed add-ons) and activate it. Set add-on prices, order and car parking capacity. Enter blocked periods (Easter, long weekends) up to "bookings open until". Review email templates. Fill in contact details.
+   6. Run the seed. In the admin app, complete every boat (adult beds, kids beds, bedding, bond, optional deposit, image URL, spa, pet friendly, rates, allowed add-ons) and activate it. Set add-on prices, order and car parking capacity. Enter blocked periods (Easter, long weekends) up to "bookings open until". Review email templates. Fill in contact details.
    7. **Before go-live: staff enter every existing future booking** from paper/Excel as staff bookings, recording payments already received as manual payments. Past bookings are not entered.
    8. End-to-end test in Stripe test mode, then switch to live keys.
    9. Paste the HTML block into each of the 14 WordPress boat pages.
