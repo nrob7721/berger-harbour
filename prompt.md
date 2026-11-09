@@ -118,6 +118,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 32. **Fields are validated as soon as they lose focus**, in every form of both apps (§6.1). The server repeats every check on save.
 33. On the admin timeline, clicking an empty cell (or "+ New", using today) pre-fills the **Mid-week or Weekend period containing that day**, the same mapping as the booking app's calendar: Mon–Thu → Mid-week, Fri–Sun → Weekend (§12.1).
 34. Customers have an optional free-text **Address**, entered by staff only. The booking app never asks for it.
+35. **Backend code follows build-enforced organisation rules** (§7.9): one top-level type per file; one thin controller per resource, each paired with one application service (§8); pure booking validation strategies; a separate repository interface and Firestore implementation per aggregate; typed ids and value objects throughout the domain. Analyzers and architecture tests fail the build when a rule is broken.
 
 ## 5. Architecture overview
 
@@ -152,16 +153,24 @@ External: Stripe (payments), Gmail SMTP (email), Cloudflare Turnstile (bot prote
 
 ```
 /src
-  BergerHarbour.Domain/            # aggregates, value objects, domain services, repository interfaces
+  BergerHarbour.Domain/            # aggregates, typed ids, value objects, domain services, repository interfaces (§7.9)
     Boats/  Bookings/  BookingDrafts/  Customers/  Unavailabilities/  Settings/  Shared/
-  BergerHarbour.Application/       # use cases, validation strategies, ports (IPaymentGateway, IEmailSender, IClock, ITurnstileVerifier, IBoatScheduleLock, ...)
-  BergerHarbour.Infrastructure/    # Firestore/, Stripe/, Email/ (Gmail SMTP), Turnstile/, Cloudflare/ (Access JWT validation), Web/ (hosting defaults, proxy secret, rate limiting)
-  BergerHarbour.PublicApi/         # ASP.NET Core controllers for customers + Stripe webhook
-  BergerHarbour.AdminApi/          # ASP.NET Core controllers for staff + jobs endpoint
+  BergerHarbour.Application/       # application services (one per controller, §8), collaborators, DTOs
+    Abstractions/                  # ports: IPaymentGateway, IEmailSender, IClock, ITurnstileVerifier, IBoatScheduleLock, IBookingReferenceGenerator
+    Boats/  Bookings/  Bookings/Validation/  BookingDrafts/  Customers/  Unavailabilities/  Settings/  Notifications/  Payments/  Seed/
+      Dtos/                        # in each area: request and response records
+  BergerHarbour.Infrastructure/
+    Firestore/                     # Repositories/, Documents/, the boat lock, the reference counter, collection names
+    Stripe/  Email/ (Gmail SMTP)  Turnstile/  Cloudflare/ (Access JWT validation)  Time/ (SystemClock)
+    Web/                           # hosting defaults, proxy secret, rate limiting
+  BergerHarbour.PublicApi/         # Controllers/ for customers + Stripe webhook (§8)
+  BergerHarbour.AdminApi/          # Controllers/ for staff + jobs endpoint (§8)
 /tests
   BergerHarbour.Domain.Tests/
   BergerHarbour.Application.Tests/
   BergerHarbour.Infrastructure.IntegrationTests/   # against the Firestore emulator
+  BergerHarbour.ArchitectureTests/                 # layer and structure rules (§7.9)
+Directory.Build.props  .editorconfig  stylecop.json   # analyzer rules (§7.9)
 /web
   shared/        # components, lib (http client, generated API types), utils, styles (§6.1)
   booking/       # React app (Bulletproof structure) + functions/api/[[path]].ts
@@ -229,14 +238,21 @@ firestore.indexes.json
   - Validation and invariants are encapsulated in domain objects (constructors, factory methods and intention-revealing methods such as `booking.Cancel()`, `booking.RecordPayment(...)`, `boat.Deactivate()`). Domain objects are never in an invalid state. There are no public setters on aggregates.
   - **Small aggregates referencing each other by Id** (Vaughn Vernon). Aggregates: `Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`. If a natural root appears later, they can be merged; do not pre-merge.
   - **Domain services** for cross-aggregate rules, e.g. `BookingAvailabilityService` (overlap checks given loaded bookings, unavailabilities and blocked periods), `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory` (period type + clicked date → stay), `FrequentFloaterService` (§7.8).
-- **Repositories:** one repository and interface per aggregate. **Interfaces live next to their aggregate in the Domain project** (e.g. `Domain/Bookings/IBookingRepository.cs`). Implementations live in `Infrastructure/Firestore`.
-- **Validation strategy pattern** for booking requests: `IBookingRequestValidationStrategy`.
-  - `OnlineBookingValidationStrategy` is registered in `PublicApi`. It enforces period shape, lead time, open-until, blocked periods, adult/child limits, rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
-  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer: first name, last name and a valid email are required; Mobile and Secondary mobile are optional but must be valid mobile numbers; Address is at most 500 characters. It applies on create and on every update. Guest, bed and capacity limits are returned as non-blocking warnings.
+- **Repositories:** one repository interface and one implementation per aggregate.
+  - The interface is its own file next to its aggregate in the Domain project (`Domain/Bookings/IBookingRepository.cs`), never declared inside the aggregate's file.
+  - The implementation is `Infrastructure/Firestore/Repositories/Firestore<Aggregate>Repository.cs` (§7.9).
+- **Validation strategy pattern** for booking requests, in `Application/Bookings/Validation/`, one type per file:
+  - `IBookingRequestValidationStrategy` has one method: `ValidationErrors Validate(BookingRequest request, BookingValidationContext context)`. It is **synchronous and pure**. Strategies have no constructor dependencies and do no I/O: no repositories, no ports, no clock.
+  - `BookingRequest` is the request as either channel sends it: period type, start date, end date (staff only), adults, children, contact details, add-on quantities, and the online acceptance fields (rooming warning, terms, draft id). Fields a channel doesn't send are empty.
+  - `BookingValidationContext` holds everything the rules need. The calling application service loads it before validating: the boat, `BusinessSettings`, blocked periods, add-on definitions, today (Australia/Sydney) and the scope. Online it also holds the booking draft and the remaining capacity of each capacity-limited add-on for the stay (§7.5).
+  - `BookingValidationScope` is `Quote` or `Submit`. `Quote` skips the draft, terms, rooming acceptance and contact details.
+  - `OnlineBookingValidationStrategy` is registered in `PublicApi`. It enforces the rules in §7.7: period shape, lead time, open-until, blocked periods, adult/child limits, rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
+  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer: first name, last name and a valid email are required; Mobile and Secondary mobile are optional but must be valid mobile numbers; Address is at most 500 characters. It applies on create and on every update.
+  - Strategies return errors only. Staff's non-blocking warnings come from `StaffBookingWarnings`, a separate class that is not a strategy: guests above berth, guests above beds, add-on capacity exceeded, and a custom time clashing with a same-day changeover. It is pure too and works on data the application service has loaded.
   - Both strategies are always followed by the availability invariant (decision 15), which is not part of either strategy.
 - **Money:** `decimal` AUD in the domain, stored as integer cents. All amounts include GST.
 - **Dates:** `DateOnly` in the domain, stored as `yyyy-MM-dd` strings, which sort correctly for range queries. Times of day are `TimeOnly`, stored as `HH:mm`. Instants are stored as UTC timestamps.
-- **Mobile numbers:** every customer number (Mobile and Secondary mobile) must be a **mobile** number.
+- **Mobile numbers:** every customer number (Mobile and Secondary mobile) must be a **mobile** number, held as a `MobileNumber` value object.
   - It must be valid for its country and of number type `MOBILE`, or `FIXED_LINE_OR_MOBILE` for countries where the two can't be told apart (e.g. the US and Canada). Landlines are rejected.
   - It is checked with `libphonenumber-csharp` on the server and `libphonenumber-js` in the browser. The error is "Enter a valid mobile number for the selected country."
   - It is stored in E.164 format (e.g. `+61412345678`), and shown in national format for Australian numbers and international format for others.
@@ -492,9 +508,74 @@ Repeat customers get a perk. Staff decide what it is; the system only flags them
   - As a badge in the admin booking dialog (§12.1).
   - Not on the Customers page.
 
+### 7.9 Code organisation
+These rules apply to every backend project, tests included. The build enforces them (see **Enforcement**). They are not relaxed for small types.
+
+- **One top-level type per file.**
+  - Every class, record, interface, enum and struct is in its own file, named after the type (`BoatId.cs`, `SaveBoatRequest.cs`, `IClock.cs`). Nested private types are the only exception.
+  - There are no catch-all files such as `Ports.cs`, `Dtos.cs`, `DomainServices.cs`, `Repositories.cs` or `Documents.cs`.
+- **Folders follow areas.** In each project, types sit in an area folder (§6) and the namespace matches the folder.
+- **Domain:**
+  - An aggregate's file contains only the aggregate. Its typed id, child entities, value objects, enums and repository interface each have their own file in the same folder, e.g. `Domain/Boats/`: `Boat.cs`, `BoatId.cs`, `BoatRate.cs`, `BoatType.cs`, `IBoatRepository.cs`.
+  - **Typed ids:** every aggregate has one, a `readonly record struct` wrapping the string value: `BoatId`, `BookingId`, `BookingDraftId`, `CustomerId`, `BoatUnavailabilityId`, `SeasonId`, `BlockedPeriodId` and `AddonId` (for `AddonDefinition`). `EmailTemplate` is keyed by `EmailTemplateKey`, and `BusinessSettings` is a singleton. Domain, Application, ports and repositories use typed ids everywhere. Plain strings appear only in DTOs, routes and Firestore documents.
+  - **Value objects** carry every rule about a value's format: `EmailAddress`, `MobileNumber`, `BookingReference`, `StayRange`, `NightRange`, `DayMonth`.
+    - Each is immutable and built only through a factory that validates, e.g. `EmailAddress.Create(raw)` throws a field error.
+    - It is the type of every field it applies to: `Customer.Email`, `BookingDraft.Email` and `CustomerDetails.Email` are `EmailAddress`, and the mobile fields are `MobileNumber`.
+    - Static helper classes never stand in for a value object. Money stays `decimal` (§7.1).
+  - Each domain service (§7.1) has its own file, and so does each record it returns.
+- **Application:**
+  - **One application service per controller**, named `<Name>Service`, in its area folder. §8 lists the pairs. A service holds that controller's use cases and nothing else.
+  - Services never call each other. Logic that several services need lives in a domain service or in a collaborator class in the area folder (e.g. `CustomerRegistry`, `BookingNotifier`, `ReferenceDataLoader`, `StaffBookingWarnings`). A collaborator is never injected into a controller.
+  - **DTOs** (request and response records) sit in the area's `Dtos/` folder, one per file, never in a service's file.
+  - **Ports** are interfaces in `Application/Abstractions/`, one per file, and the records they use have their own files there too. Application contains no implementation of a port: `SystemClock` and the Firestore, Stripe, SMTP and Turnstile implementations all live in Infrastructure.
+  - Booking request validation is described in §7.1.
+- **Infrastructure (Firestore):**
+  - `Firestore/Repositories/Firestore<Aggregate>Repository.cs`: exactly one repository per aggregate, implementing that aggregate's interface.
+  - `Firestore/Documents/<Aggregate>Document.cs`: one document class per aggregate, plus one per embedded type, each in its own file. Each document holds its own `From(aggregate)` and `ToDomain()` mapping.
+  - A shared helper for versioned reads and writes is allowed as an internal collaborator of the repositories. It is never a repository itself, and nothing outside `Firestore/` uses it.
+  - The boat lock (`FirestoreBoatScheduleLock`), the booking reference counter and the collection names each have their own file.
+- **APIs:**
+  - Each API has exactly the controllers listed in §8, one per resource, each in its own file in `Controllers/`. A nested resource with its own noun (`/api/boats/{id}/unavailabilities`, `/api/boats/{slug}/quote`) gets its own controller.
+  - **Controllers are thin.** A controller binds the request, calls one method of its application service and maps the result to an HTTP response. Its only constructor parameters are that one service and, optionally, an `ILogger<T>`. It has no repositories, ports or domain logic.
+  - Authentication (the Access JWT, the jobs endpoint's OIDC token) and the proxy secret are checked in middleware or filters, never in controller bodies.
+- **Tests:**
+  - Each test class covers one production class or use case. It is named `<Class>Tests` and sits in the folder matching that class, e.g. `Application.Tests/Bookings/Validation/OnlineBookingValidationStrategyTests.cs`.
+  - Fakes are one per file in the test project's `Fakes/` folder.
+- **Enforcement:**
+  - **Analyzers:** `Directory.Build.props` references `StyleCop.Analyzers` for every project.
+    - `.editorconfig` sets **SA1402** (one type per file) and **SA1649** (file name matches the type) to `error`, and every other StyleCop rule to `none`.
+    - `stylecop.json` sets `maintainabilityRules.topLevelTypes` to `class`, `interface`, `struct`, `enum` and `delegate`, so records, enums and interfaces all count.
+    - With `TreatWarningsAsErrors` on, a violation fails the build.
+  - **Architecture tests:** `BergerHarbour.ArchitectureTests` checks the structural rules by plain reflection over the assemblies (§15).
+
 ## 8. API
 
 All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times are `HH:mm`, mobile numbers are E.164, and money is a decimal number in AUD. Validation failures return `400` with ProblemDetails and per-field errors. Overlaps return `409`.
+
+**Controllers.** Each API has exactly these controllers. Each one is thin and paired with one application service (§7.9).
+
+| API | Controller | Routes | Application service |
+|---|---|---|---|
+| public | `BoatsController` | `GET /api/boats`, `GET /api/boats/{slug}` | `BoatCatalogueService` |
+| public | `BoatQuotesController` | `POST /api/boats/{slug}/quote` | `OnlineQuoteService` |
+| public | `AvailabilityController` | `GET /api/availability`, `GET /api/availability/period` | `AvailabilityService` |
+| public, admin | `AddonAvailabilityController` | `GET /api/addons/{addonId}/availability` | `AddonAvailabilityService` |
+| public | `BookingDraftsController` | `/api/booking-drafts` | `BookingDraftService` |
+| public | `BookingsController` | `POST /api/bookings`, `…/{bookingId}/release`, `…/{bookingId}/status` | `OnlineBookingService` |
+| public | `PaymentsController` | `/api/payments/{token}` | `PaymentLinkService` |
+| public | `StripeWebhookController` | `POST /api/stripe/webhook` | `StripeWebhookService` |
+| admin | `BookingsController` | `/api/bookings`, incl. search, quote, payments and send-payment-link | `StaffBookingService` |
+| admin | `BoatsController` | `/api/boats` | `BoatService` |
+| admin | `BoatUnavailabilitiesController` | `/api/boats/{id}/unavailabilities` | `BoatUnavailabilityService` |
+| admin | `CustomersController` | `/api/customers` | `CustomerService` |
+| admin | `BusinessSettingsController` | `/api/settings/business` | `BusinessSettingsService` |
+| admin | `SeasonsController` | `/api/settings/seasons` | `SeasonService` |
+| admin | `BlockedPeriodsController` | `/api/settings/blocked-periods` | `BlockedPeriodService` |
+| admin | `AddonDefinitionsController` | `/api/settings/addons` | `AddonDefinitionService` |
+| admin | `EmailTemplatesController` | `/api/settings/email-templates` | `EmailTemplateService` |
+| admin | `JobsController` | `POST /api/jobs/process-notifications` | `NotificationJobService` |
+
+`AddonAvailabilityController` exists in both APIs, and both use the same `AddonAvailabilityService`. Only the admin one accepts `excludeBookingId`.
 
 ### 8.1 public-api (customer-facing, no login)
 | Method & route | Purpose |
@@ -544,11 +625,12 @@ Staff-created bookings (`POST /api/bookings`):
 - Email, first name and last name are required. The email and any mobile numbers must be valid (§7.1), on create and on update. The customer is matched or created by email.
 - Status is `Active` immediately. `CreatedBy = SystemUser`. The reference and `ActivatedAt` are set at creation.
 - Validated by `InternalBookingValidationStrategy` plus the availability invariant.
-- Responses include non-blocking `warnings[]` (guests above berth, guests above beds, add-on capacity exceeded, custom time clashing with a same-day changeover).
+- Responses include non-blocking `warnings[]` from `StaffBookingWarnings` (§7.1): guests above berth, guests above beds, add-on capacity exceeded, custom time clashing with a same-day changeover.
 - If it is not a stand-by, email #1 is sent.
 - If it becomes Active and overlaps stand-bys, they are superseded.
 
 ### 8.3 Stripe
+- `StripeWebhookController` passes the raw body and the `Stripe-Signature` header to `StripeWebhookService`. The service verifies and parses the event through the `IPaymentGateway` port, so Stripe types stay in Infrastructure.
 - Only synchronous methods (card + wallets) are allowed, so `checkout.session.completed` means paid.
 - Checkout session `metadata`: `bookingId`, `purpose` (`Deposit` | `Payment`).
 - **`checkout.session.completed`:**
@@ -934,7 +1016,7 @@ Sections:
   - Structured logging to Cloud Logging. Never log card data or full tokens.
   - Log-based alert policies email the staff alert address on: webhook processing errors, job failures, and paid-but-expired bookings.
 - **CI/CD (GitHub Actions):**
-  - On PR: build, unit tests, integration tests against the Firestore emulator, web typecheck/lint/build.
+  - On PR: build (with the §7.9 analyzer rules as errors), unit and architecture tests, integration tests against the Firestore emulator, web typecheck/lint/build.
   - On `main`: build and push both containers **once** (tagged with the commit SHA) → deploy both Cloud Run services to **dev** → build the frontends with dev's keys and deploy the dev Pages projects.
   - On a published GitHub Release (tag `vX.Y.Z`, pre-releases ignored): after approval by the `production` environment's required reviewers, deploy that commit's existing images to **prod** (fail if they do not exist, i.e. the commit never went through dev; never rebuild) → rebuild the frontends with prod's keys and deploy the prod Pages projects. Rolling back is re-running an older release's deploy.
   - Per-environment values live in GitHub Environments `dev` and `production` with the same variable names. Concurrency groups `deploy-dev` and `deploy-prod`.
@@ -974,8 +1056,10 @@ Sections:
   - Frequent Floater: the ±1 year boundaries around the anchor; only other Active non-stand-by bookings count; an existing booking is anchored at `ActivatedAt`.
   - AddonDefinition: price on request clears prices; the capacity unit label is cleared without a capacity.
   - Booking draft abandonment rules.
+- **Organisation:** every test class follows §7.9: one production class or use case per test class, named `<Class>Tests`, in the matching folder.
 - **Application tests:**
-  - Online vs internal validation strategies (including capacity hard limit online vs warning for staff).
+  - Online and internal validation strategies as pure unit tests, each given a `BookingRequest` and a `BookingValidationContext`, including the online add-on capacity hard limit.
+  - `StaffBookingWarnings`: guests above berth, guests above beds, add-on capacity exceeded (a warning, not an error), and changeover time clashes.
   - Notification job, using a fake clock and short offsets: idempotency; which emails at which instants; #4 and #7 skipped when their trigger had passed at creation; #7 never sent for a milestone already due at creation; #1 including the payment link for late bookings; #6 sent for bookings created inside the pre-hire window.
   - Abandoned drafts: threshold, latest draft per email only, suppression after a booking for that email becomes Active, deletion after retention.
   - Webhook handling: idempotent replay, deposit activation creating/updating the Customer and converting the draft, expired-hold conflict path creating no Customer.
@@ -998,6 +1082,12 @@ Sections:
   - Add-on capacity queries across boats.
   - Fleet availability query across boats.
   - Rate limiter: the request over the limit gets `429` + `Retry-After`; another IP is unaffected; the Stripe webhook is exempt; requests without the proxy secret are rejected before the limiter and use no permits; `0` disables it; invalid settings stop startup.
+- **Architecture tests** (`BergerHarbour.ArchitectureTests`, plain reflection, §7.9):
+  - Domain references no other project in the solution. Application references only Domain. Neither API project references the other.
+  - Every aggregate (a type deriving from `AggregateRoot`) has a typed id, and an `I<Aggregate>Repository` in its own Domain namespace. Exactly one `Firestore<Aggregate>Repository` in Infrastructure implements it.
+  - Every controller has one constructor, whose parameters are exactly one application service (an Application type whose name ends in `Service`) and optionally an `ILogger<T>`. Within one API, no two controllers use the same service.
+  - No Application type implements a port from `Application.Abstractions`.
+  - Every `IBookingRequestValidationStrategy` implementation has only a parameterless constructor.
 - **Frontend:** Vitest + React Testing Library, with MSW mocking the API. Pure rules (period mapping, greying, time-zone labels, lane assignment) are plain unit tests; behaviour is tested through the components. At least:
   - the calendar period mapping, per-period greying logic, and highlighting of non-clickable days inside a selection;
   - adjacent-month cells: muted, not clickable, and showing the muted selection colour when the selection extends into them;
@@ -1030,7 +1120,7 @@ Sections:
 
 ## 16. Deliverables
 
-1. The full solution as laid out in §6, building and passing all tests.
+1. The full solution as laid out in §6 and organised as in §7.9, building with the analyzer rules as errors and passing all tests, including the architecture tests.
 2. `/wordpress/book-now-block.html`.
 3. `/docs/setup-checklist.md`, a step-by-step checklist a non-developer can follow:
    1. **Booking subdomain:** add `bookings.bergerhouseboats.com.au` as a custom domain of the `berger-booking` Pages project, then add one CNAME at the existing DNS host (and check CAA records). The existing DNS and email are otherwise not changed. Fallback if no CNAME is possible: buy a separate domain.
@@ -1045,9 +1135,9 @@ Sections:
 4. A final summary listing anything not implemented and every assumption you made.
 
 **Suggested build order:**
-1. Domain + unit tests.
+1. Analyzer rules, architecture tests, Domain + unit tests.
 2. Firestore infrastructure + integration tests.
-3. Application use cases.
+3. Application services.
 4. APIs.
 5. Booking app.
 6. Admin app.
