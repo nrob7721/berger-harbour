@@ -115,6 +115,9 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 29. Every customer phone number must be a **mobile** number.
 30. **Nothing is saved until the user saves.** A form, including the add-on lines of a booking, is saved only by its main button. While any backend request runs, the button that started it is disabled and shows progress (§6.1).
 31. Customers can go **back from the Payment step**. Doing so releases their hold.
+32. **Fields are validated as soon as they lose focus**, in every form of both apps (§6.1). The server repeats every check on save.
+33. On the admin timeline, clicking an empty cell (or "+ New", using today) pre-fills the **Mid-week or Weekend period containing that day**, the same mapping as the booking app's calendar: Mon–Thu → Mid-week, Fri–Sun → Weekend (§12.1).
+34. Customers have an optional free-text **Address**, entered by staff only. The booking app never asks for it.
 
 ## 5. Architecture overview
 
@@ -176,7 +179,7 @@ firestore.indexes.json
 - **Libraries:**
   - **TanStack Query** for all server data (queries, caching and mutations). A mutation's pending state drives the busy buttons described below.
   - **React Router** in the admin app only (`/bookings`, `/fleet`, `/customers`, `/settings`). The booking app's steps are internal state, not routes. The pay page `/pay/` is a separate Vite entry of the booking app.
-  - **React Hook Form + zod** for forms, with `useFieldArray` for a booking's add-on lines. The API's per-field ProblemDetails errors are mapped onto the matching form fields. Client-side validation is a convenience; the server is authoritative.
+  - **React Hook Form + zod** for forms, with `useFieldArray` for a booking's add-on lines, in `onTouched` mode (see Field validation below). The API's per-field ProblemDetails errors are mapped onto the matching form fields. Client-side validation is a convenience; the server is authoritative.
   - **`@stripe/react-stripe-js`** for Embedded Checkout, **`@marsidev/react-turnstile`** for Turnstile, and **`libphonenumber-js`** behind the shared `MobileInput` component.
   - **No global client-state library.** The booking app's step state (period, guests, filters, selected boat, details, add-ons, draft id) lives in one `useReducer` behind a React context. The draft id is also kept in `sessionStorage`. Everything else is server data (TanStack Query) or local to a component.
 - **Bulletproof React layout**, in each app:
@@ -210,6 +213,12 @@ firestore.indexes.json
   - In a dialog, the other actions and the fields are locked while it saves.
   - On success, the dialog closes, a toast confirms, and the data it changed (e.g. the timeline) refreshes.
   - On error, the dialog stays open with the error shown and everything the user typed kept.
+- **Field validation (both apps, every form):**
+  - A field is validated when it loses focus, so an invalid email, mobile or number is reported straight away, not on save. Leaving a required field empty shows its "Required" error.
+  - Once a field shows an error, it is re-validated on every change, so the error clears as soon as the value is fixed. Changing the country in `MobileInput` re-validates a number already entered.
+  - Rules that involve two fields (e.g. Berth ≥ adult beds + kids beds, first night ≤ last night, start date < end date) are checked when either field loses focus, and the error shows on the field that owns it.
+  - The main button stays enabled. Pressing it validates every field and moves focus to the first invalid one.
+  - Rules only the server can check (overlaps, version conflicts, unknown email placeholders, online add-on capacity) are reported on save.
 - **No intermediate saves:** a form is saved only by its main button ("Create booking", "Save changes", "Save"). Editing part of a form, such as adding an add-on line, never saves anything and never resets other fields.
 
 ## 7. Backend
@@ -223,7 +232,7 @@ firestore.indexes.json
 - **Repositories:** one repository and interface per aggregate. **Interfaces live next to their aggregate in the Domain project** (e.g. `Domain/Bookings/IBookingRepository.cs`). Implementations live in `Infrastructure/Firestore`.
 - **Validation strategy pattern** for booking requests: `IBookingRequestValidationStrategy`.
   - `OnlineBookingValidationStrategy` is registered in `PublicApi`. It enforces period shape, lead time, open-until, blocked periods, adult/child limits, rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
-  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer. Guest, bed and capacity limits are returned as non-blocking warnings.
+  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer: first name, last name and a valid email are required; Mobile and Secondary mobile are optional but must be valid mobile numbers; Address is at most 500 characters. It applies on create and on every update. Guest, bed and capacity limits are returned as non-blocking warnings.
   - Both strategies are always followed by the availability invariant (decision 15), which is not part of either strategy.
 - **Money:** `decimal` AUD in the domain, stored as integer cents. All amounts include GST.
 - **Dates:** `DateOnly` in the domain, stored as `yyyy-MM-dd` strings, which sort correctly for range queries. Times of day are `TimeOnly`, stored as `HH:mm`. Instants are stored as UTC timestamps.
@@ -232,6 +241,12 @@ firestore.indexes.json
   - It is checked with `libphonenumber-csharp` on the server and `libphonenumber-js` in the browser. The error is "Enter a valid mobile number for the selected country."
   - It is stored in E.164 format (e.g. `+61412345678`), and shown in national format for Australian numbers and international format for others.
   - The business's contact phone (Settings) is not restricted.
+- **Email addresses:** one rule, in the `EmailAddress` value object, for every email in the system (customers, booking drafts, the staff alert and contact emails in Settings). The browser uses the same rule.
+  - Checked after trimming; at most 254 characters.
+  - Exactly one `@`, with a non-empty local part without spaces.
+  - The domain is two or more dot-separated labels of letters, digits and hyphens. No label is empty or starts or ends with `-`. The last label (the top-level domain) is letters only and at least 2 long.
+  - Accepted: `jane@gmail.com`, `jane@bigpond.net.au`, `jane@example.co.uk`. Rejected: `jane@gmail`, `jane@b.c`, `jane@gmail..com`, `jane@-gmail.com`, `jane@gmail.c0m`, `jane smith@gmail.com`.
+  - The error is "Enter a valid email address."
 - `IClock` abstraction for all time access (tests must control time).
 - **Optimistic concurrency:** every aggregate has an integer `Version`. Admin update requests include the version. A mismatch returns `409 Conflict` with "This record was changed elsewhere — reload and retry."
 - OpenAPI document generated by both APIs. TypeScript types for the frontends are generated from it (e.g. `openapi-typescript`) as part of the web build.
@@ -275,12 +290,13 @@ Any write that can create or move occupancy for a boat (create or update a booki
 **Ordering:** everywhere boats are listed (admin timeline rows, Fleet grid, every boat dropdown, and the booking app's "Other boats available" list), boats are sorted by `Berth` descending, then `Name`.
 
 #### Customer (aggregate)
-`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile; required for online bookings, optional for staff-created), `SecondaryMobileNumber` (E.164 mobile, optional, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
+`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile; required for online bookings, optional for staff-created), `SecondaryMobileNumber` (E.164 mobile, optional, staff-entered only, empty when the customer is created), `Address` (optional, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
 
 - The customer's name is displayed everywhere as `FirstName LastName`.
+- `Address` is free text, possibly several lines, with no format rules. It is trimmed, stored empty when blank, and at most 500 characters. It is not available to email templates.
 - `Comments` are staff-only notes about the customer (e.g. preferences, history). They are shared by all of the customer's bookings, edited from the Customers page and the booking dialog, never shown to the customer, and never available to email templates.
 - Email uniqueness is enforced with a `customerEmails/{normalisedEmail}` index document written in the same transaction.
-- When an existing email books again, `FirstName`, `LastName` and `MobileNumber` are updated to the latest values. `SecondaryMobileNumber` and `Comments` are only ever changed by staff.
+- When an existing email books again, `FirstName`, `LastName` and `MobileNumber` are updated to the latest values. `SecondaryMobileNumber`, `Address` and `Comments` are only ever changed by staff.
 - Online, the customer is created or updated **only when the booking becomes Active** (deposit paid), from the booking's `CustomerDetails` snapshot. Abandoned drafts and expired holds never create or change a customer.
 
 #### BoatUnavailability (aggregate)
@@ -461,7 +477,7 @@ Milestones are instants relative to check-in (**StartDate 11:00 Australia/Sydney
 7. If `NumberOfAdults + NumberOfChildren > AdultBeds + KidsBeds`: rooming acceptance is present and its text matches the warning the server would generate.
 8. Terms accepted.
 9. Every add-on is active and in `boat.AllowedAddonIds`. `Quantity >= 1`, and it is 1 when `!QuantityApplies`. For capacity-limited add-ons, `Quantity <= remaining` (§7.5).
-10. First name, last name, email (valid format) and mobile (a valid mobile number for its country, §7.1, E.164) are required.
+10. First name, last name, email (a valid email address, §7.1) and mobile (a valid mobile number for its country, §7.1, E.164) are required.
 11. A valid, unconverted `BookingDraft` id for this boat is supplied. (Turnstile was verified when the draft was created.)
 
 Then the availability invariant runs inside `IBoatScheduleLock`.
@@ -514,18 +530,18 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 
 | Area | Routes |
 |---|---|
-| Bookings | `GET /api/bookings?from=&to=&includeInactive=` (timeline data incl. customer name (from the Customer or the `CustomerDetails` snapshot), status, isStandby, paymentStatus, reference (empty for holds); boats ordered by berth desc, then name) · `GET /api/bookings/search?q=` (name, email or reference, including `CustomerDetails` snapshots) · `GET /api/bookings/{id}` (includes the customer's comments and `frequentFloater`, §7.8) · `POST /api/bookings` · `PUT /api/bookings/{id}` (boat, dates, period type, adults, children, check-in/check-out times, standby, booking comments, customer comments, hire price, status Active/Cancelled, customer contact details incl. secondary mobile, and the full `addonLines` list; includes `version`) · `POST /api/bookings/quote` (body: `{ boatId, periodType, startDate, addonIds[] }` → `{ hirePrice, addonPrices: [{ addonId, unitPrice }] }`, where either price is `null` when staff must enter it; used to pre-fill the hire price and new add-on lines and for "Recalculate from rates"; saves nothing) · `POST /api/bookings/{id}/payments` (manual payment: amount, date, note) · `POST /api/bookings/{id}/send-payment-link` (sends email #4 immediately for the amount due now) · `GET /api/addons/{addonId}/availability?startDate=&endDate=&excludeBookingId=` (remaining capacity) |
+| Bookings | `GET /api/bookings?from=&to=&includeInactive=` (timeline data incl. customer name (from the Customer or the `CustomerDetails` snapshot), status, isStandby, paymentStatus, reference (empty for holds); every boat, active or not, with `isActive`, ordered by berth desc, then name) · `GET /api/bookings/search?q=` (name, email or reference, including `CustomerDetails` snapshots) · `GET /api/bookings/{id}` (includes the customer's address, comments and `frequentFloater`, §7.8) · `POST /api/bookings` · `PUT /api/bookings/{id}` (boat, dates, period type, adults, children, check-in/check-out times, standby, booking comments, customer comments, hire price, status Active/Cancelled, customer contact details incl. secondary mobile and address, and the full `addonLines` list; includes `version`) · `POST /api/bookings/quote` (body: `{ boatId, periodType, startDate, addonIds[] }` → `{ hirePrice, addonPrices: [{ addonId, unitPrice }] }`, where either price is `null` when staff must enter it; used to pre-fill the hire price and new add-on lines and for "Recalculate from rates"; saves nothing) · `POST /api/bookings/{id}/payments` (manual payment: amount, date, note) · `POST /api/bookings/{id}/send-payment-link` (sends email #4 immediately for the amount due now) · `GET /api/addons/{addonId}/availability?startDate=&endDate=&excludeBookingId=` (remaining capacity) |
 | Fleet | `GET /api/boats` (ordered by berth desc, then name) · `GET /api/boats/{id}` · `POST /api/boats` · `PUT /api/boats/{id}` (all editable fields incl. adult beds, kids beds, deposit, image URL, spa, pet friendly, rates, allowed add-ons, active flag) · `GET /api/boats/{id}/unavailabilities` · `POST /api/boats/{id}/unavailabilities` · `PUT /api/boats/{id}/unavailabilities/{uid}` · `DELETE /api/boats/{id}/unavailabilities/{uid}` |
-| Customers | `GET /api/customers?q=` · `GET /api/customers/by-email?email=` (used by the booking dialog to pre-fill contact details and customer comments; includes `frequentFloater` anchored at now, §7.8) · `PUT /api/customers/{id}/comments` (body: `{ comments, version }`) · `GET /api/customers/{id}/bookings` (all statuses, ordered by StartDate, newest first) |
+| Customers | `GET /api/customers?q=` · `GET /api/customers/by-email?email=` (used by the booking dialog to pre-fill contact details, address and customer comments; includes `frequentFloater` anchored at now, §7.8) · `PUT /api/customers/{id}/comments` (body: `{ comments, version }`) · `GET /api/customers/{id}/bookings` (all statuses, ordered by StartDate, newest first) |
 | Settings | `GET/PUT /api/settings/business` (incl. bank account name, BSB and account number) · CRUD `/api/settings/seasons` · CRUD `/api/settings/blocked-periods` · CRUD `/api/settings/addons` (incl. capacity and capacity unit label; delete = deactivate) · `PUT /api/settings/addons/order` (body: the full ordered list of add-on ids; the server rewrites `SortOrder`) · `GET /api/settings/email-templates` · `PUT /api/settings/email-templates/{key}` · `POST /api/settings/email-templates/{key}/test` (sends a sample to the staff alert address) |
 | Jobs | `POST /api/jobs/process-notifications`. **Not** behind Access. It validates a Google OIDC token: issuer Google, audience = service URL, email = the Cloud Scheduler service account. |
 
 **Add-on lines on staff bookings:** `POST /api/bookings` and `PUT /api/bookings/{id}` carry the booking's complete `addonLines: [{ id?, addonId, quantity, unitPrice }]`. A line without an `id` is new. Existing lines with an `id` are updated. Existing lines left out are deleted. There are no separate add-on line endpoints; lines change only when the booking is saved.
 
-**Customer comments on staff bookings:** `POST` and `PUT` carry `customerComments`, which are saved to the booking's Customer in the same request, like the contact details. They are ignored for a booking without a Customer (an online hold or a paid-but-expired booking).
+**Customer fields on staff bookings:** `POST` and `PUT` carry the contact details (first name, last name, email, mobile, secondary mobile), `address` and `customerComments`. They are saved to the booking's Customer in the same request. They are ignored for a booking without a Customer (an online hold or a paid-but-expired booking).
 
 Staff-created bookings (`POST /api/bookings`):
-- Email, first name and last name are required. The customer is matched or created by email.
+- Email, first name and last name are required. The email and any mobile numbers must be valid (§7.1), on create and on update. The customer is matched or created by email.
 - Status is `Active` immediately. `CreatedBy = SystemUser`. The reference and `ActivatedAt` are set at creation.
 - Validated by `InternalBookingValidationStrategy` plus the availability invariant.
 - Responses include non-blocking `warnings[]` (guests above berth, guests above beds, add-on capacity exceeded, custom time clashing with a same-day changeover).
@@ -707,7 +723,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 
    **Caching:** fleet availability per month, period results per (period type, start date) and boat details per slug are cached for the session (TanStack Query, never stale within the session), so browsing back and forth repeats no requests. The availability and period caches are cleared after a `409` at Payment and whenever this step is shown again after the Payment step was reached.
 3. **Your details:**
-   - First name, last name, email and mobile, all required and validated.
+   - First name, last name, email (§7.1) and mobile, all required, each validated when it loses focus (§6.1).
    - The mobile field (`MobileInput`) has a searchable **country code selector** defaulting to **Australia (+61)**. It only accepts a mobile number (§7.1), is validated with `libphonenumber-js` and is sent as E.164. Bookings may come from overseas.
    - The Turnstile widget.
    - A short note: "If you don't finish your booking, our team may contact you to help."
@@ -741,10 +757,11 @@ Accessibility: keyboard-operable calendar (arrow keys, Enter) and boat cards (a 
 
 ## 12. Admin app (`berger-admin.pages.dev`)
 
-Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed by berth (largest first), then name. Saving and busy states follow §6.1: nothing is saved until the form's main button is pressed, and buttons are disabled with progress while their request runs.
+Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed by berth (largest first), then name. Saving, busy states and field validation follow §6.1: nothing is saved until the form's main button is pressed, buttons are disabled with progress while their request runs, and every field is validated when it loses focus.
 
 ### 12.1 Bookings
 - **Full-screen timeline:** one row per boat (sticky boat-name column), one column per day, Prev/Next and Today buttons, weekend columns shaded.
+- **Inactive boats** keep their row, with the name muted, so their history stays visible. Their empty cells are not clickable (no pointer, no hover), but their bars still open the booking dialog.
 - **Week | Month toggle** (a segmented control next to Today):
   - **Month view:** one column per day of the month, stretched to fill the width, like the week view. It only scrolls horizontally when the columns would be narrower than about 28px (e.g. on a tablet); it then keeps that minimum width. Prev/Next move one month; Today goes to the current month. Title e.g. "October 2026".
   - **Week view:** 7 columns, **Mon → Sun**, stretched to fill the width (no horizontal scroll). Prev/Next move one week; Today goes to the week containing today. Title e.g. "Mon 19/10/2026 – Sun 25/10/2026".
@@ -758,7 +775,11 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
   - Styles: `Active` (solid, tinted by payment status), `PendingPayment` (dashed outline), stand-by (hatched).
   - Unavailabilities are grey blocks positioned with the standard times, from 11am on `FirstNight` to 8am on the day after `LastNight`, so they line up with booking bars. Blocked periods are a labelled column band across all rows, covering whole days.
   - "Show inactive" toggle reveals Cancelled, Expired and Superseded bookings (faded).
-- **"+ New" button**, and clicking an empty cell, opens the booking dialog (the cell pre-fills boat and start date).
+- **"+ New" button**, and clicking an empty cell of an active boat, opens the booking dialog for a new booking:
+  - The cell pre-fills the boat. "+ New" leaves the boat empty and uses today as the day.
+  - The period type and dates come from the day, with the booking app's click mapping (§11.2): **Mon–Thu → Mid-week**, Mon→Fri of that week; **Fri–Sun → Weekend**, the Fri→Mon containing the day. The start date can be earlier than the day clicked (e.g. clicking Thu 15/10/2026 gives Mon 12/10/2026 → Fri 16/10/2026).
+  - The period is pre-filled even when it overlaps another booking or an unavailability; saving then reports the conflict (see Behaviour below).
+  - This only sets the starting values. Week, LongWeekend and Custom are never chosen automatically. Afterwards, changing the start date keeps the period type and re-derives the end date, and choosing a period type re-derives the end date from the start date.
 - Clicking a bar opens the same dialog in edit mode.
 - **Search box:** name, email or reference → results list → opens the dialog.
 
@@ -769,16 +790,18 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - **Number of adults** (≥ 1) and **number of children** (≥ 0). Show a non-blocking warning if the total is above the boat's berth or above `AdultBeds + KidsBeds`.
 - **Check-in time** (default 11am) and **check-out time** (default 8am). Staff-only. Show a non-blocking warning when a custom time clashes with a same-day changeover on that boat (this booking's check-in is earlier than the previous booking's check-out on the same day, or its check-out is later than the next booking's check-in).
 - **Customer:**
-  - **Email** (required). On blur, it looks up an existing customer and pre-fills the names, mobiles and customer comments. If the email is changed to another existing customer, those fields reload from that customer.
+  - **Email** (required, §7.1). On blur it is validated. When it is valid, it looks up an existing customer and pre-fills the names, mobiles, address and customer comments; when it is invalid, the error shows and no lookup is made. If the email is changed to another existing customer, those fields reload from that customer.
   - **First name** and **Last name** (required).
   - **Mobile** (optional) and **Secondary mobile** (optional, empty by default). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1).
+  - **Address** (optional), a multi-line text area below Secondary mobile. Free text, at most 500 characters.
+  - On a booking that has no Customer yet (an online hold, or a paid-but-expired booking), the whole customer section, including Customer comments below, is disabled with "Available once the booking is confirmed". The details entered online are shown read-only (see below).
 - **Frequent Floater badge:** "⭐ Frequent Floater" next to the customer's name when §7.8 applies. A new booking is checked against now, after the email lookup; an existing booking is anchored at its `ActivatedAt`. A tooltip gives the number of other bookings.
 - Stand-by checkbox
 - **Booking comments** (stored on the booking)
 - **Customer comments**, directly below:
   - Stored on the Customer and shared by all of their bookings.
   - Pre-filled from the customer, and saved to the Customer when the booking is saved.
-  - Disabled, with "Available once the booking is confirmed", on a booking that has no Customer yet (an online hold, or a paid-but-expired booking).
+  - Disabled on a booking that has no Customer yet, like the rest of the customer section.
 - Hire price: pre-filled and editable, with a "Recalculate from rates" button that re-prices the hire price and add-on lines in the form (§7.4)
 - Status (Active/Cancelled editable; other statuses read-only)
 
@@ -823,10 +846,11 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 ### 12.3 Customers
 - A table: name, email, mobile, secondary mobile, created date. A client-side text filter.
 - Each customer row has a **dropdown expander**:
-  - At the top, a **Customer comments** text area with a **Save** button (`PUT /api/customers/{id}/comments`). Version conflicts show "reload and retry".
-  - Below it, all of that customer's bookings, loaded on expand from `GET /api/customers/{id}/bookings`: reference, boat, dates, period type, status and payment status. All statuses are shown, with inactive ones faded, ordered by StartDate, newest first.
+  - At the top, the customer's **Address** (read-only; "No address" when empty).
+  - Below it, a **Customer comments** text area with a **Save** button (`PUT /api/customers/{id}/comments`). Version conflicts show "reload and retry".
+  - Then all of that customer's bookings, loaded on expand from `GET /api/customers/{id}/bookings`: reference, boat, dates, period type, status and payment status. All statuses are shown, with inactive ones faded, ordered by StartDate, newest first.
   - Clicking a booking opens the **same booking dialog** as clicking its bar on the Bookings timeline.
-- Nothing else is editable here. Contact details are updated from the booking dialog.
+- Nothing else is editable here. Contact details and the address are updated from the booking dialog.
 
 ### 12.4 Settings
 Sections:
@@ -941,7 +965,7 @@ Sections:
   - Boat activation invariant (image URL, spa and pet friendly not required).
   - Boat `Berth >= AdultBeds + KidsBeds` on create and on edit, active or not.
   - Boat `ImageUrl` validation: empty allowed; only absolute `https://` URLs on `bergerhouseboats.com.au` or `www.bergerhouseboats.com.au` accepted.
-  - Customer email normalisation; mobile number E.164 normalisation; an Australian mobile accepted, an Australian landline rejected, a `FIXED_LINE_OR_MOBILE` number (e.g. US) accepted.
+  - Customer email normalisation; the email rule's accepted and rejected examples (§7.1), including `.com.au` and `.co.uk` accepted and a missing or numeric top-level domain rejected; customer address trimmed, blank stored empty, over 500 characters rejected; mobile number E.164 normalisation; an Australian mobile accepted, an Australian landline rejected, a `FIXED_LINE_OR_MOBILE` number (e.g. US) accepted.
   - Booking references:
     - The format comes from the last name and `StartDate` (`SMITH-2701150`).
     - Name clean-up: accents, apostrophes, hyphens, spaces, the 20-character limit and the `GUEST` fallback.
@@ -961,7 +985,8 @@ Sections:
   - References: online bookings get one when the deposit is paid (including paid-but-expired), staff bookings at creation; expired and released holds get none and use up no suffix.
   - Release (`POST /api/bookings/{bookingId}/release`): expires the Stripe session and the booking and frees the dates; a wrong draft id is rejected; an already Active booking returns `409`; repeating it is harmless.
   - Staff bookings with `addonLines`: new lines added, edited lines updated, left-out lines deleted; `POST /api/bookings/quote` pre-fill and recalculation prices (null for price on request, LongWeekend and Custom).
-  - Customer comments are saved from staff booking create/update and from `PUT /api/customers/{id}/comments`; online activation never changes comments or the secondary mobile.
+  - Customer comments are saved from staff booking create/update and from `PUT /api/customers/{id}/comments`; the address is saved from staff booking create/update; online activation never changes comments, the secondary mobile or the address.
+  - Staff booking create **and update** reject an invalid email or mobile with a field error (e.g. changing an existing booking's email to `jane@gmail`).
   - Email #2 renders `{{FrequentFloaterNotice}}` only for a Frequent Floater booking; the bank placeholders render the Settings values (BSB as `123-456`) or empty.
 - **Integration tests (Firestore emulator):**
   - Repositories round-trip.
@@ -987,6 +1012,8 @@ Sections:
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
   - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning;
   - admin timeline lane assignment by check-in/check-out time (a standard changeover shares a lane; clashing custom times get a new lane);
+  - admin new-booking pre-fill for a clicked day of every weekday: Mon–Thu → Mid-week Mon→Fri of that week, Fri–Sun → Weekend Fri→Mon containing it; "+ New" applies the same rule to today with no boat; empty cells of inactive boats are not clickable while their bars still open;
+  - field validation on blur: an invalid email or mobile shows its error when the field loses focus, the error clears as the value is fixed, and pressing the main button focuses the first invalid field;
   - admin month view filling the width, and scrolling only below the minimum column width;
   - admin booking dialog:
     - Adding, editing and removing add-on lines sends no request.
@@ -995,7 +1022,8 @@ Sections:
     - Per-line totals update as quantity and unit price change.
     - The live price breakdown (Total, Paid, Owing, the unpriced-line note) and the "Schedule updates when you save" note.
     - The Frequent Floater badge.
-    - Customer comments: pre-filled on email lookup, and disabled without a Customer.
+    - Address and customer comments: pre-filled on email lookup, and disabled (with the whole customer section) without a Customer.
+    - No customer lookup for an invalid email.
     - Manual payment and Send payment link are disabled while there are unsaved changes.
   - add-on settings: price on request disables and clears the unit prices; an empty capacity disables and clears the unit label;
   - the booking reference shown on Complete, and "Pending payment" bar labels for holds.
