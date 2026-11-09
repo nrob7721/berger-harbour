@@ -27,6 +27,14 @@ describe('Your details', () => {
   });
 
   it('creates the draft once, showing a busy button that cannot be submitted twice', async () => {
+    // Hold the response until the busy button has been clicked, so it cannot land mid-click on a slow machine.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.post('*/api/booking-drafts', async ({ request }) => {
+      apiState.calls.push({ method: request.method, path: new URL(request.url).pathname, body: await request.clone().json() });
+      await gate;
+      return HttpResponse.json({ draftId: 'draft-1' });
+    }));
     renderWithBooking(<DetailsStep />, { ...base, draftId: null });
     const user = userEvent.setup();
     await fill(user);
@@ -36,6 +44,8 @@ describe('Your details', () => {
     const busy = await screen.findByRole('button', { name: 'Saving…' });
     expect(busy).toBeDisabled();
     await user.click(busy);
+    expect(currentState().step).toBe('dates');
+    release();
     await waitFor(() => expect(currentState().step).toBe('addons'));
     const posts = apiState.calls.filter((c) => c.method === 'POST' && c.path === '/api/booking-drafts');
     expect(posts).toHaveLength(1);
