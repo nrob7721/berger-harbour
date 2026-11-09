@@ -20,6 +20,8 @@ AI - DO NOT IMPLEMENT YET
         1. This will be a normal calendar with a 1 week period per line
         1. User will create price availabilities differently i.e. instead of season periods per 
         1. When user clicks a day, there is an option to create an availability or a booking. A booking cannot be created if there is no existing availability for a BBQ boat
+        1. Creating an availability
+            1. Pop-up occurs where the user selects the period of availability, the days of the week it applies to
 1. Fleet
     1. Open decision - should House Boats and BBQ boats have separate menu items under fleet?
     1. Most properties will be shared except BBQ boats will NOT need AdultBeds, KidsBeds, BeddingDescription, TotalBeds and Rates
