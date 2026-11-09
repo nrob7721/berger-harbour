@@ -2262,6 +2262,7 @@
           "email",
           "mobile",
           "secondaryMobile",
+          "address",
           "comments",
           "createdDate",
           "version"
@@ -2287,6 +2288,12 @@
             ]
           },
           "secondaryMobile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
             "type": [
               "null",
               "string"
@@ -2623,6 +2630,7 @@
           "lastName",
           "mobile",
           "secondaryMobile",
+          "address",
           "addonLines"
         ],
         "type": "object",
@@ -2699,6 +2707,12 @@
             ]
           },
           "secondaryMobile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
             "type": [
               "null",
               "string"
@@ -3604,6 +3618,7 @@
           "lastName",
           "mobile",
           "secondaryMobile",
+          "address",
           "addonLines",
           "version"
         ],
@@ -3693,6 +3708,12 @@
             ]
           },
           "secondaryMobile": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "address": {
             "type": [
               "null",
               "string"

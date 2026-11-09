@@ -249,3 +249,7 @@
   color: var(--c-danger);
   font-size: 14px;
 }
+
+.wide {
+  grid-column: 1 / -1;
+}

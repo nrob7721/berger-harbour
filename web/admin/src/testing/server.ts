@@ -22,7 +22,7 @@ export const addons: Addon[] = [
 ];
 
 export const customer: Customer = {
-  id: 'c-1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678', secondaryMobile: null,
+  id: 'c-1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678', secondaryMobile: null, address: null,
   comments: 'Likes the top deck', createdDate: '2026-01-01T00:00:00Z', version: 3,
 };
 

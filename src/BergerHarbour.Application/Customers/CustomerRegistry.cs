@@ -9,7 +9,7 @@ namespace BergerHarbour.Application.Customers;
 /// <summary>Matches customers by normalised email, creating them when needed.</summary>
 public sealed class CustomerRegistry(ICustomerRepository customers, IClock clock)
 {
-    /// <summary>Online activation: create, or update names and mobile. Secondary mobile and comments are never touched.</summary>
+    /// <summary>Online activation: create, or update names and mobile. Secondary mobile, address and comments are never touched.</summary>
     public async Task<Customer> UpsertFromOnlineBookingAsync(CustomerDetails d, CancellationToken ct = default)
     {
         async Task<Customer> Attempt()
@@ -28,7 +28,7 @@ public sealed class CustomerRegistry(ICustomerRepository customers, IClock clock
     }
 
     /// <summary>
-    /// Staff booking dialog: the matching customer (or a new one, not yet saved) with the dialog's contact details and comments applied.
+    /// Staff booking dialog: the matching customer (or a new one, not yet saved) with the dialog's contact details, address and comments applied.
     /// Saved by <see cref="CommitStaffChangesAsync"/> once the booking itself has been saved.
     /// </summary>
     public async Task<Customer> PrepareFromStaffAsync(ContactInput c, string? customerComments, CancellationToken ct = default)
@@ -36,7 +36,7 @@ public sealed class CustomerRegistry(ICustomerRepository customers, IClock clock
         var email = EmailAddress.Require(c.Email);
         var customer = await customers.GetByEmailAsync(email, ct)
                        ?? Customer.Create(c.FirstName ?? "", c.LastName ?? "", email, c.Mobile, clock.UtcNow);
-        customer.UpdateContactDetails(c.FirstName ?? "", c.LastName ?? "", c.Mobile, c.SecondaryMobile);
+        customer.UpdateContactDetails(c.FirstName ?? "", c.LastName ?? "", c.Mobile, c.SecondaryMobile, c.Address);
         customer.UpdateComments(customerComments);
         return customer;
     }
@@ -53,7 +53,7 @@ public sealed class CustomerRegistry(ICustomerRepository customers, IClock clock
         {
             var current = await customers.GetByEmailAsync(prepared.Email, ct);
             if (current is null) throw;
-            current.UpdateContactDetails(prepared.FirstName, prepared.LastName, prepared.MobileNumber, prepared.SecondaryMobileNumber);
+            current.UpdateContactDetails(prepared.FirstName, prepared.LastName, prepared.MobileNumber, prepared.SecondaryMobileNumber, prepared.Address);
             current.UpdateComments(prepared.Comments);
             await customers.SaveAsync(current, ct);
             return current;

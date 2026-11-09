@@ -1,5 +1,4 @@
 import { useId, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -7,7 +6,7 @@ import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { useToast } from '@shared/components/Toast/Toast';
-import { applyServerErrors } from '@shared/lib/forms';
+import { applyServerErrors, useAppForm } from '@shared/lib/forms';
 import { errorMessage } from '@shared/lib/http';
 import { formatDate, formatTimestamp, todayInSydney } from '@shared/utils/dates';
 import { formatMoney } from '@shared/utils/money';
@@ -83,7 +82,8 @@ type PaymentForm = z.infer<typeof paymentSchema>;
 
 function ManualPaymentDialog({ detail, onClose, onSaved }: { detail: BookingDetail; onClose: () => void; onSaved: (d: BookingDetail) => void }) {
   const ids = { amount: useId(), date: useId(), note: useId() };
-  const { register, handleSubmit, setError, formState: { errors } } = useForm<PaymentForm>({
+  // Each field is validated when it loses focus (§6.1).
+  const { register, handleSubmit, setError, formState: { errors } } = useAppForm<PaymentForm>({
     resolver: zodResolver(paymentSchema),
     defaultValues: { amount: Math.max(0, detail.amountDueNow) || undefined, date: todayInSydney(), note: '' },
   });

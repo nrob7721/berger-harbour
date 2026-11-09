@@ -4,20 +4,36 @@ using PhoneNumbers;
 
 namespace BergerHarbour.Domain.Shared;
 
+/// <summary>
+/// The one email rule for the whole system (§7.1), mirrored by <c>web/shared/src/utils/email.ts</c>: after trimming, at most 254
+/// characters; exactly one <c>@</c>; a non-empty local part without spaces; a domain of two or more dot-separated labels of letters,
+/// digits and hyphens, none empty or starting or ending with <c>-</c>; a top-level domain of at least 2 letters.
+/// </summary>
 public static partial class EmailAddress
 {
     public const string InvalidMessage = "Enter a valid email address.";
 
-    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
-    private static partial Regex Pattern();
+    [GeneratedRegex(@"^[A-Za-z0-9-]+$")]
+    private static partial Regex Label();
+
+    [GeneratedRegex(@"^[A-Za-z]{2,}$")]
+    private static partial Regex TopLevelDomain();
 
     /// <summary>Lower-cased and trimmed.</summary>
     public static string Normalise(string? email) => (email ?? "").Trim().ToLowerInvariant();
 
     public static bool IsValid(string? email)
     {
-        var n = Normalise(email);
-        return n.Length is > 0 and <= 254 && Pattern().IsMatch(n);
+        var e = (email ?? "").Trim();
+        if (e.Length is 0 or > 254) return false;
+        var parts = e.Split('@');
+        if (parts.Length != 2) return false;
+        var (local, domain) = (parts[0], parts[1]);
+        if (local.Length == 0 || local.Any(char.IsWhiteSpace)) return false;
+        var labels = domain.Split('.');
+        if (labels.Length < 2) return false;
+        if (labels.Any(l => !Label().IsMatch(l) || l.StartsWith('-') || l.EndsWith('-'))) return false;
+        return TopLevelDomain().IsMatch(labels[^1]);
     }
 
     /// <summary>Validates and normalises, or throws a field error.</summary>

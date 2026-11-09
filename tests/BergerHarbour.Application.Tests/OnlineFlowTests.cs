@@ -81,17 +81,18 @@ public class OnlineFlowTests
     }
 
     [Fact]
-    public async Task Existing_customer_is_updated_but_comments_and_secondary_mobile_are_kept()
+    public async Task Existing_customer_is_updated_but_comments_secondary_mobile_and_address_are_kept()
     {
         var staff = await _h.Admin.CreateAsync(_h.StaffRequest("2027-05-03", "2027-05-07", email: "jane@example.com", customerComments: "Prefers upper deck"));
         var customer = _h.Db.Customers.All.Single();
-        customer.UpdateContactDetails("Janey", "Smith", "0400 111 222", "0499 999 999");
+        customer.UpdateContactDetails("Janey", "Smith", "0400 111 222", "0499 999 999", "1 River Rd\nMannum SA 5238");
         await _h.Db.SaveAsync(customer);
         await _h.BookOnlineAsync();
         var updated = _h.Db.Customers.All.Single();
         Assert.Equal("Jane", updated.FirstName);
         Assert.Equal("+61412345678", updated.MobileNumber);
         Assert.Equal("+61499999999", updated.SecondaryMobileNumber);
+        Assert.Equal("1 River Rd\nMannum SA 5238", updated.Address);
         Assert.Equal("Prefers upper deck", updated.Comments);
         Assert.NotNull(staff);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api, boats, emptyTimeline } from '@/testing/server';
 import { renderAdmin } from '@/testing/render';
@@ -56,9 +56,58 @@ describe('Timeline', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'New booking for Misty Blue on 21/10/2026' }));
     expect(opened).toEqual([['b-mb', '2026-10-21']]);
   });
+
+  it('keeps inactive boats with muted names: their empty cells are not clickable but their bars still open', async () => {
+    const opened: string[] = [];
+    const newBookings: string[] = [];
+    const data = {
+      ...emptyTimeline,
+      boats: emptyTimeline.boats.map((b) => (b.slug === 'misty-blue' ? { ...b, isActive: false } : b)),
+      bookings: [booking({ id: 'old', boatId: 'b-mb', startDate: '2026-10-19', endDate: '2026-10-23' })],
+    };
+    renderAdmin(<Timeline range={rangeFor('week', '2026-10-19')} data={data} todayIso="2026-10-01" onOpenBooking={(id) => opened.push(id)} onNewBooking={(b) => newBookings.push(b)} />);
+    const row = screen.getByTestId('row-misty-blue');
+    expect(within(row).getByRole('rowheader')).toHaveClass('muted');
+    expect(screen.queryByRole('button', { name: /New booking for Misty Blue/ })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('cell-misty-blue-2026-10-24'));
+    expect(newBookings).toEqual([]);
+    await user.click(screen.getByTestId('bar-old'));
+    expect(opened).toEqual(['old']);
+    expect(screen.getAllByRole('button', { name: /New booking for Pacific Blue/ })).toHaveLength(7);
+  });
 });
 
 describe('Bookings page', () => {
+  it.each([
+    ['2026-10-15', 'Midweek', '2026-10-12', '2026-10-16'], // Thu → the Mid-week of that week
+    ['2026-10-18', 'Weekend', '2026-10-16', '2026-10-19'], // Sun → the Weekend containing it
+  ])('clicking an empty cell on %s pre-fills the boat and %s %s → %s', async (day, periodType, start, end) => {
+    api.timeline = emptyTimeline;
+    renderAdmin(<BookingsPage todayIso="2026-10-21" />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Week' }));
+    await user.click(screen.getByRole('button', { name: '‹ Prev' }));
+    await user.click(await screen.findByRole('button', { name: `New booking for Pacific Blue on ${day.split('-').reverse().join('/')}` }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByRole('option', { name: 'Pacific Blue' }); // boats loaded
+    expect(within(dialog).getByLabelText('Boat')).toHaveValue('b-pb');
+    expect(within(dialog).getByLabelText('Period type')).toHaveValue(periodType);
+    expect(within(dialog).getByLabelText('Start date')).toHaveValue(start);
+    expect(within(dialog).getByLabelText('End date')).toHaveValue(end);
+  });
+
+  it('"+ New" uses today with no boat', async () => {
+    api.timeline = emptyTimeline;
+    renderAdmin(<BookingsPage todayIso="2026-10-22" />); // a Thursday
+    await userEvent.setup().click(screen.getByRole('button', { name: '+ New' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Boat')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Period type')).toHaveValue('Midweek');
+    expect(within(dialog).getByLabelText('Start date')).toHaveValue('2026-10-19');
+    expect(within(dialog).getByLabelText('End date')).toHaveValue('2026-10-23');
+  });
+
   it('switches between month and week, remembering the view', async () => {
     api.timeline = emptyTimeline;
     renderAdmin(<BookingsPage todayIso="2026-10-21" />);

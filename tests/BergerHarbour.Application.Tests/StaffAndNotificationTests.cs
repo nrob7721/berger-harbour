@@ -115,6 +115,45 @@ public class StaffBookingTests
     }
 
     [Fact]
+    public async Task Address_is_saved_from_staff_create_and_update_and_returned_by_the_lookup()
+    {
+        var created = await _h.Admin.CreateAsync(_h.StaffRequest("2027-03-08", "2027-03-12", address: "  1 River Rd\nMannum SA 5238  "));
+        Assert.Equal("1 River Rd\nMannum SA 5238", created.Booking.Customer!.Address);
+        var updated = await _h.Admin.UpdateAsync(created.Booking.Id, _h.UpdateRequest(created.Booking, r => r with { Address = "2 Wharf St" }));
+        Assert.Equal("2 Wharf St", updated.Booking.Customer!.Address);
+        var lookup = await _h.Get<CustomerAdminService>().GetByEmailAsync("john@example.com");
+        Assert.Equal("2 Wharf St", lookup.Customer.Address);
+        var cleared = await _h.Admin.UpdateAsync(created.Booking.Id, _h.UpdateRequest(updated.Booking, r => r with { Address = "  " }));
+        Assert.Null(cleared.Booking.Customer!.Address);
+        var e = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            _h.Admin.UpdateAsync(created.Booking.Id, _h.UpdateRequest(cleared.Booking, r => r with { Address = new string('a', 501) })));
+        Assert.Contains("address", e.Errors.Keys);
+    }
+
+    [Theory]
+    [InlineData("jane@gmail")]
+    [InlineData("jane@gmail.c0m")]
+    public async Task Staff_create_and_update_reject_an_invalid_email(string email)
+    {
+        var create = await Assert.ThrowsAsync<DomainValidationException>(() => _h.Admin.CreateAsync(_h.StaffRequest("2027-03-08", "2027-03-12", email: email)));
+        Assert.Equal([EmailAddress.InvalidMessage], create.Errors["email"]);
+        var created = await _h.Admin.CreateAsync(_h.StaffRequest("2027-03-08", "2027-03-12"));
+        var update = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            _h.Admin.UpdateAsync(created.Booking.Id, _h.UpdateRequest(created.Booking, r => r with { Email = email })));
+        Assert.Equal([EmailAddress.InvalidMessage], update.Errors["email"]);
+    }
+
+    [Fact]
+    public async Task Staff_update_rejects_an_invalid_mobile()
+    {
+        var created = await _h.Admin.CreateAsync(_h.StaffRequest("2027-03-08", "2027-03-12"));
+        var e = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            _h.Admin.UpdateAsync(created.Booking.Id, _h.UpdateRequest(created.Booking, r => r with { Mobile = "02 9876 5432", SecondaryMobile = "12345" })));
+        Assert.Equal([MobileNumber.InvalidMessage], e.Errors["mobile"]);
+        Assert.Equal([MobileNumber.InvalidMessage], e.Errors["secondaryMobile"]);
+    }
+
+    [Fact]
     public async Task Changing_the_email_moves_the_booking_to_that_customer()
     {
         await _h.Admin.CreateAsync(_h.StaffRequest("2027-05-03", "2027-05-07", email: "other@example.com", lastName: "Other"));

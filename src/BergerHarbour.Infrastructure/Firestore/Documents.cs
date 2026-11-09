@@ -92,6 +92,7 @@ public sealed class CustomerDoc : Doc
     [FirestoreProperty("email")] public string Email { get; set; } = "";
     [FirestoreProperty("mobileNumber")] public string? MobileNumber { get; set; }
     [FirestoreProperty("secondaryMobileNumber")] public string? SecondaryMobileNumber { get; set; }
+    [FirestoreProperty("address")] public string? Address { get; set; }
     [FirestoreProperty("comments")] public string? Comments { get; set; }
 
     public static CustomerDoc From(Customer c)
@@ -99,14 +100,14 @@ public sealed class CustomerDoc : Doc
         var d = new CustomerDoc
         {
             FirstName = c.FirstName, LastName = c.LastName, Email = c.Email, MobileNumber = c.MobileNumber,
-            SecondaryMobileNumber = c.SecondaryMobileNumber, Comments = c.Comments,
+            SecondaryMobileNumber = c.SecondaryMobileNumber, Address = c.Address, Comments = c.Comments,
         };
         d.CopyAudit(c);
         return d;
     }
 
     public Customer ToDomain(string id) =>
-        Customer.Rehydrate(id, FirstName, LastName, Email, MobileNumber, SecondaryMobileNumber, Comments, Version, CreatedDate, ModifiedDate);
+        Customer.Rehydrate(id, FirstName, LastName, Email, MobileNumber, SecondaryMobileNumber, Address, Comments, Version, CreatedDate, ModifiedDate);
 }
 
 [FirestoreData]

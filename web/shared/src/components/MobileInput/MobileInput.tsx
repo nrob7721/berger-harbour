@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type Ref } from 'react';
 import type { CountryCode } from 'libphonenumber-js/max';
 import { countries, splitNumber, toE164 } from '../../utils/phone';
 import styles from './MobileInput.module.css';
@@ -8,14 +8,17 @@ export interface MobileInputProps {
   /** E.164 when valid, otherwise what the user typed (with the calling code), so validation can explain the problem. */
   value: string | null | undefined;
   onChange: (value: string) => void;
+  /** Also called after a country is chosen while a number is entered, so the number is re-validated for the new country. */
   onBlur?: () => void;
+  /** The number input, e.g. a form field's ref so a failed save can focus it. */
+  ref?: Ref<HTMLInputElement>;
   disabled?: boolean;
   invalid?: boolean;
   'aria-describedby'?: string;
 }
 
 /** A mobile number with a searchable country code selector, defaulting to Australia (+61). */
-export function MobileInput({ id, value, onChange, onBlur, disabled, invalid, ...aria }: MobileInputProps) {
+export function MobileInput({ id, value, onChange, onBlur, ref, disabled, invalid, ...aria }: MobileInputProps) {
   const initial = useMemo(() => splitNumber(value), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [country, setCountry] = useState<CountryCode>(initial.country);
   const [national, setNational] = useState(initial.national);
@@ -70,6 +73,7 @@ export function MobileInput({ id, value, onChange, onBlur, disabled, invalid, ..
         {selected.code} +{selected.callingCode} <span aria-hidden="true">▾</span>
       </button>
       <input
+        ref={ref}
         id={id}
         className={styles.number}
         type="tel"
@@ -114,6 +118,7 @@ export function MobileInput({ id, value, onChange, onBlur, disabled, invalid, ..
                     setOpen(false);
                     setSearch('');
                     emit(c.code, national);
+                    if (national.trim() !== '') onBlur?.();
                   }}
                 >
                   <span>{c.name}</span>

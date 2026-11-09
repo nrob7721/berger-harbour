@@ -1,11 +1,10 @@
 import { useId, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { useToast } from '@shared/components/Toast/Toast';
-import { applyServerErrors } from '@shared/lib/forms';
+import { applyServerErrors, rules, useAppForm } from '@shared/lib/forms';
 import { errorMessage } from '@shared/lib/http';
 import { formatDate } from '@shared/utils/dates';
 import { Section } from '@/components/Section';
@@ -60,11 +59,16 @@ interface Form {
   usesExtendedPaymentSchedule: boolean;
 }
 
+/** First night ≤ last night; the error belongs to Last night. */
+const lastNotBeforeFirst = (last: string, form: { firstNight: string }) =>
+  !last || !form.firstNight || last >= form.firstNight || "The last night can't be before the first night.";
+
 function BlockedPeriodDialog({ period, onClose }: { period: BlockedPeriod | null; onClose: () => void }) {
   const base = useId();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const { register, handleSubmit, setError, formState: { errors } } = useForm<Form>({
+  // Each field is validated when it loses focus (§6.1).
+  const { register, handleSubmit, setError, formState: { errors } } = useAppForm<Form>({
     defaultValues: {
       name: period?.name ?? '', firstNight: period?.firstNight ?? '', lastNight: period?.lastNight ?? '',
       usesExtendedPaymentSchedule: period?.usesExtendedPaymentSchedule ?? false,
@@ -78,11 +82,7 @@ function BlockedPeriodDialog({ period, onClose }: { period: BlockedPeriod | null
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: keys.blockedPeriods }); toast.show('Blocked period saved.'); onClose(); },
     onError: (e) => applyServerErrors(e, setError, ['name', 'firstNight', 'lastNight']),
   });
-  const submit = handleSubmit((v) => {
-    if (!v.firstNight) return setError('firstNight', { message: 'Enter the first night.' });
-    if (!v.lastNight) return setError('lastNight', { message: 'Enter the last night.' });
-    save.mutate(v);
-  });
+  const submit = handleSubmit((v) => save.mutate(v));
   return (
     <Dialog open title={period ? `Edit ${period.name}` : 'New blocked period'} onClose={onClose} locked={save.isPending} size="sm"
       footer={<>
@@ -93,13 +93,15 @@ function BlockedPeriodDialog({ period, onClose }: { period: BlockedPeriod | null
       <form onSubmit={submit} noValidate>
         <fieldset className={styles.fieldset} disabled={save.isPending}>
           <Field label="Name" htmlFor={`${base}-n`} error={errors.name?.message}>
-            <input id={`${base}-n`} className={inputClass} placeholder="Easter 2027" {...register('name')} />
+            <input id={`${base}-n`} className={inputClass} placeholder="Easter 2027"
+              {...register('name', { validate: { required: rules.required('Name is required.'), max: rules.maxLength(100, 'Name') } })} />
           </Field>
           <Field label="First night" htmlFor={`${base}-f`} error={errors.firstNight?.message}>
-            <input id={`${base}-f`} type="date" className={inputClass} {...register('firstNight')} />
+            <input id={`${base}-f`} type="date" className={inputClass} {...register('firstNight', { validate: rules.required('Enter the first night.'), deps: 'lastNight' })} />
           </Field>
           <Field label="Last night" htmlFor={`${base}-l`} error={errors.lastNight?.message}>
-            <input id={`${base}-l`} type="date" className={inputClass} {...register('lastNight')} />
+            <input id={`${base}-l`} type="date" className={inputClass}
+              {...register('lastNight', { validate: { required: rules.required('Enter the last night.'), order: lastNotBeforeFirst } })} />
           </Field>
           <label className={styles.checkLabel}>
             <input type="checkbox" {...register('usesExtendedPaymentSchedule')} /> Extended payment schedule (50% at 120 days, 100% at 90 days)

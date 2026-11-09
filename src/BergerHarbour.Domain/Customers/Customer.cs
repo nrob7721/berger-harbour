@@ -11,6 +11,8 @@ public sealed class Customer : AggregateRoot
     public string Email { get; private set; } = "";
     public string? MobileNumber { get; private set; }
     public string? SecondaryMobileNumber { get; private set; }
+    /// <summary>Free text, possibly several lines, staff-entered only. Not available to email templates.</summary>
+    public string? Address { get; private set; }
     /// <summary>Staff-only notes shared by all of the customer's bookings.</summary>
     public string? Comments { get; private set; }
 
@@ -36,18 +38,18 @@ public sealed class Customer : AggregateRoot
     }
 
     public static Customer Rehydrate(string id, string firstName, string lastName, string email, string? mobile, string? secondaryMobile,
-        string? comments, int version, DateTimeOffset created, DateTimeOffset modified)
+        string? address, string? comments, int version, DateTimeOffset created, DateTimeOffset modified)
     {
         var c = new Customer
         {
             Id = id, FirstName = firstName, LastName = lastName, Email = email, MobileNumber = mobile,
-            SecondaryMobileNumber = secondaryMobile, Comments = comments,
+            SecondaryMobileNumber = secondaryMobile, Address = address, Comments = comments,
         };
         c.RestoreAudit(version, created, modified);
         return c;
     }
 
-    /// <summary>An existing customer booked again online: names and mobile take the latest values. Secondary mobile and comments are never touched.</summary>
+    /// <summary>An existing customer booked again online: names and mobile take the latest values. Secondary mobile, address and comments are never touched.</summary>
     public void UpdateFromOnlineBooking(string firstName, string lastName, string mobile)
     {
         var errors = new ValidationErrors();
@@ -60,20 +62,27 @@ public sealed class Customer : AggregateRoot
         MobileNumber = m;
     }
 
-    /// <summary>Staff edit contact details from the booking dialog.</summary>
-    public void UpdateContactDetails(string firstName, string lastName, string? mobile, string? secondaryMobile)
+    public const int AddressMaxLength = 500;
+
+    /// <summary>Staff edit contact details and the address from the booking dialog.</summary>
+    public void UpdateContactDetails(string firstName, string lastName, string? mobile, string? secondaryMobile, string? address)
     {
         var errors = new ValidationErrors();
         var first = errors.Capture(() => Text.Required(firstName, "firstName", "First name", 100));
         var last = errors.Capture(() => Text.Required(lastName, "lastName", "Last name", 100));
         var m = errors.Capture(() => Shared.MobileNumber.Optional(mobile, "mobile"));
         var s = errors.Capture(() => Shared.MobileNumber.Optional(secondaryMobile, "secondaryMobile"));
+        var a = errors.Capture(() => NormaliseAddress(address));
         errors.ThrowIfAny();
         FirstName = first!;
         LastName = last!;
         MobileNumber = m;
         SecondaryMobileNumber = s;
+        Address = a;
     }
+
+    /// <summary>Trimmed; empty when blank; at most 500 characters, or a field error.</summary>
+    public static string? NormaliseAddress(string? address) => Text.Optional(address, "address", "Address", AddressMaxLength);
 
     public void UpdateComments(string? comments) =>
         Comments = Text.Optional(comments, "customerComments", "Customer comments", 4000);

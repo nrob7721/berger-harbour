@@ -131,15 +131,15 @@ public sealed class Harness
 
     public CreateStaffBookingRequest StaffRequest(string start, string end, string? boatSlug = "pacific-blue", PeriodType type = PeriodType.Custom,
         string email = "john@example.com", string lastName = "Smith", bool standby = false, decimal hire = 4000,
-        IReadOnlyList<StaffAddonLineInput>? lines = null, string? customerComments = null, int adults = 2) =>
+        IReadOnlyList<StaffAddonLineInput>? lines = null, string? customerComments = null, int adults = 2, string? address = null) =>
         new(Boat(boatSlug!).Id.Value, type, D(start), D(end), adults, 0, "11:00", "08:00", standby, null, customerComments, hire, email, "John",
-            lastName, "0412 000 111", null, lines ?? []);
+            lastName, "0412 000 111", null, address, lines ?? []);
 
     public UpdateStaffBookingRequest UpdateRequest(AdminBookingDetail d, Func<UpdateStaffBookingRequest, UpdateStaffBookingRequest>? change = null)
     {
         var r = new UpdateStaffBookingRequest(d.BoatId, d.PeriodType, d.StartDate, d.EndDate, d.NumberOfAdults, d.NumberOfChildren, d.CheckInTime,
             d.CheckOutTime, d.IsStandby, d.BookingComments, d.Customer?.Comments, d.HirePrice, d.Status, d.Customer?.Email, d.Customer?.FirstName,
-            d.Customer?.LastName, d.Customer?.Mobile, d.Customer?.SecondaryMobile,
+            d.Customer?.LastName, d.Customer?.Mobile, d.Customer?.SecondaryMobile, d.Customer?.Address,
             d.AddonLines.Select(l => new StaffAddonLineInput(l.Id, l.AddonId, l.Quantity, l.UnitPrice)).ToList(), d.Version);
         return change is null ? r : change(r);
     }

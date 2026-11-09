@@ -18,6 +18,7 @@ export interface TimelineProps {
   data: TimelineData | undefined;
   todayIso: IsoDate;
   onOpenBooking: (id: string) => void;
+  /** An empty cell of an active boat was clicked. */
   onNewBooking: (boatId: string, date: IsoDate) => void;
 }
 
@@ -67,7 +68,7 @@ export function Timeline({ range, data, todayIso, onOpenBooking, onNewBooking }:
               <div className={`${styles.name} ${boat.isActive ? '' : styles.muted}`} role="rowheader">{boat.name}</div>
               <div className={styles.track} style={{ height: count * LANE_PX + 8 }}>
                 <div className={styles.cells} style={columns}>
-                  {range.days.map((d) => (
+                  {range.days.map((d) => boat.isActive ? (
                     <button
                       key={d}
                       type="button"
@@ -75,6 +76,9 @@ export function Timeline({ range, data, todayIso, onOpenBooking, onNewBooking }:
                       aria-label={`New booking for ${boat.name} on ${formatDate(d)}`}
                       onClick={() => onNewBooking(boat.id, d)}
                     />
+                  ) : (
+                    // An inactive boat keeps its row for history, but its empty cells can't start a booking.
+                    <div key={d} className={`${styles.cell} ${styles.static} ${weekend(d) ? styles.weekend : ''}`} data-testid={`cell-${boat.slug}-${d}`} />
                   ))}
                 </div>
                 {data.blockedPeriods.map((p) => {

@@ -1518,6 +1518,7 @@ export interface components {
             email: string;
             mobile: null | string;
             secondaryMobile: null | string;
+            address: null | string;
             comments: null | string;
             /** Format: date-time */
             createdDate: string;
@@ -1626,6 +1627,7 @@ export interface components {
             lastName: string;
             mobile: null | string;
             secondaryMobile: null | string;
+            address: null | string;
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
         };
         CustomerBookingItem: {
@@ -1882,6 +1884,7 @@ export interface components {
             lastName: null | string;
             mobile: null | string;
             secondaryMobile: null | string;
+            address: null | string;
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
             /** Format: int32 */
             version: number;

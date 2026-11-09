@@ -46,6 +46,7 @@ public sealed record AdminCustomer(
     string Email,
     string? Mobile,
     string? SecondaryMobile,
+    string? Address,
     string? Comments,
     DateTimeOffset CreatedDate,
     int Version);
@@ -115,6 +116,7 @@ public sealed record CreateStaffBookingRequest(
     string LastName,
     string? Mobile,
     string? SecondaryMobile,
+    string? Address,
     IReadOnlyList<StaffAddonLineInput>? AddonLines);
 
 public sealed record UpdateStaffBookingRequest(
@@ -136,6 +138,7 @@ public sealed record UpdateStaffBookingRequest(
     string? LastName,
     string? Mobile,
     string? SecondaryMobile,
+    string? Address,
     IReadOnlyList<StaffAddonLineInput>? AddonLines,
     int Version);
 

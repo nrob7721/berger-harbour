@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -7,8 +7,9 @@ import { Turnstile } from '@marsidev/react-turnstile';
 import { Button } from '@shared/components/Button/Button';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { MobileInput } from '@shared/components/MobileInput/MobileInput';
-import { applyServerErrors } from '@shared/lib/forms';
+import { applyServerErrors, useAppForm } from '@shared/lib/forms';
 import { ApiError, errorMessage } from '@shared/lib/http';
+import { EMAIL_ERROR, isValidEmail } from '@shared/utils/email';
 import { isValidMobile, MOBILE_ERROR } from '@shared/utils/phone';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { env } from '@/config/env';
@@ -17,13 +18,11 @@ import { useBooking, type ContactDetails } from '@/lib/booking-state';
 import { draftBody } from '@/lib/draft';
 import styles from './DetailsStep.module.css';
 
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 const schema = z.object({
   firstName: z.string().trim().min(1, 'First name is required.').max(100),
   lastName: z.string().trim().min(1, 'Last name is required.').max(100),
-  email: z.string().trim().min(1, 'Email is required.').regex(EMAIL, 'Enter a valid email address.'),
-  mobile: z.string().refine((v) => isValidMobile(v), MOBILE_ERROR),
+  email: z.string().trim().min(1, 'Email is required.').refine(isValidEmail, EMAIL_ERROR),
+  mobile: z.string().min(1, 'Mobile is required.').refine((v) => isValidMobile(v), MOBILE_ERROR),
 });
 
 type Form = z.infer<typeof schema>;
@@ -35,7 +34,8 @@ export function DetailsStep() {
   const [token, setToken] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const needsTurnstile = !state.draftId;
-  const { register, handleSubmit, control, setError, formState: { errors } } = useForm<Form>({
+  // Each field is validated when it loses focus (§6.1).
+  const { register, handleSubmit, control, setError, formState: { errors } } = useAppForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: state.details ?? { firstName: '', lastName: '', email: '', mobile: '' },
   });
@@ -102,7 +102,7 @@ export function DetailsStep() {
               control={control}
               name="mobile"
               render={({ field }) => (
-                <MobileInput id={ids.mobile} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={save.isPending} />
+                <MobileInput id={ids.mobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={save.isPending} />
               )}
             />
           </Field>

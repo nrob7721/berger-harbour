@@ -97,23 +97,47 @@ describe('Booking dialog: customer', () => {
     expect(screen.getByText('⭐ Frequent Floater')).toHaveAttribute('title', '2 other bookings within a year');
   });
 
-  it('pre-fills names, mobiles and customer comments from an email lookup and flags a Frequent Floater', async () => {
-    api.lookups['jane@example.com'] = { customer, frequentFloater: { isFrequentFloater: true, otherBookingCount: 1 } };
-    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', startDate: '2026-10-12' }} onClose={() => {}} />);
+  it('pre-fills names, mobiles, address and customer comments from an email lookup and flags a Frequent Floater', async () => {
+    api.lookups['jane@example.com'] = { customer: { ...customer, address: '1 River Rd\nMannum SA 5238' }, frequentFloater: { isFrequentFloater: true, otherBookingCount: 1 } };
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Email'), 'jane@example.com');
     await user.tab();
     await waitFor(() => expect(screen.getByLabelText('First name')).toHaveValue('Jane'));
     expect(screen.getByLabelText('Customer comments')).toHaveValue('Likes the top deck');
+    expect(screen.getByLabelText('Address')).toHaveValue('1 River Rd\nMannum SA 5238');
     expect(screen.getByText('⭐ Frequent Floater')).toHaveAttribute('title', '1 other booking within a year');
   });
 
-  it('disables customer comments for a booking without a customer', async () => {
+  it('validates the email on blur and makes no lookup when it is invalid', async () => {
+    api.lookups['jane@gmail'] = { customer, frequentFloater: { isFrequentFloater: false, otherBookingCount: 0 } };
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'jane@gmail');
+    await user.tab();
+    expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(api.calls.some((c) => c.path.startsWith('/api/customers/by-email'))).toBe(false);
+    expect(screen.getByLabelText('First name')).toHaveValue('');
+    await user.type(screen.getByLabelText('Email'), '.com');
+    await waitFor(() => expect(screen.queryByText('Enter a valid email address.')).not.toBeInTheDocument());
+  });
+
+  it('shows an invalid mobile as soon as the field loses focus', async () => {
+    const { user } = await openExisting();
+    const secondary = screen.getByLabelText('Secondary mobile');
+    await user.type(secondary, '02 9876 5432');
+    await user.tab();
+    expect(await screen.findByText('Enter a valid mobile number for the selected country.')).toBeInTheDocument();
+  });
+
+  it('disables the whole customer section, including address and customer comments, for a booking without a customer', async () => {
     await openExisting({
       customer: null, createdBy: 'Customer', status: 'PendingPayment', reference: null,
       customerDetails: { firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com', mobileNumber: '+61412000111' },
     });
-    expect(screen.getByLabelText('Customer comments')).toBeDisabled();
+    for (const label of ['Email', 'First name', 'Last name', 'Mobile', 'Secondary mobile', 'Address', 'Customer comments'])
+      expect(screen.getByLabelText(label)).toBeDisabled();
+    expect(screen.getByLabelText('Booking comments')).toBeEnabled();
     expect(screen.getByText('Available once the booking is confirmed')).toBeInTheDocument();
     expect(screen.getByText(/Ann Lee · ann@example.com/)).toBeInTheDocument();
   });
@@ -121,12 +145,51 @@ describe('Booking dialog: customer', () => {
 
 describe('Booking dialog: saving', () => {
   it('pre-fills the end date and hire price for a new booking', async () => {
-    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', startDate: '2026-10-12' }} onClose={() => {}} />);
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
     expect(screen.getByLabelText('Period type')).toHaveValue('Midweek'); // a Monday
     expect(screen.getByLabelText('End date')).toHaveValue('2026-10-16');
     await waitFor(() => expect(screen.getByLabelText('Hire price')).toHaveValue(4060));
     await userEvent.setup().selectOptions(screen.getByLabelText('Period type'), 'Week');
     expect(screen.getByLabelText('End date')).toHaveValue('2026-10-19');
+  });
+
+  it('validates start < end when either date loses focus and shows it on the end date', async () => {
+    const { user } = await openExisting({ periodType: 'Custom' });
+    const end = screen.getByLabelText('End date');
+    fireEvent.change(end, { target: { value: '2026-10-10' } });
+    fireEvent.blur(end);
+    expect(await screen.findByText('The end date must be after the start date.')).toBeInTheDocument();
+    fireEvent.change(end, { target: { value: '2026-10-20' } });
+    await waitFor(() => expect(screen.queryByText('The end date must be after the start date.')).not.toBeInTheDocument());
+    await user.click(screen.getByLabelText('Start date'));
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-25' } }); // Custom keeps a later end date only
+    fireEvent.blur(screen.getByLabelText('Start date'));
+    expect(screen.getByLabelText('End date')).toHaveValue('2026-10-26');
+  });
+
+  it('pressing the main button validates every field and focuses the first invalid one, sending nothing', async () => {
+    const { user } = await openExisting();
+    await user.clear(screen.getByLabelText('First name'));
+    const email = screen.getByLabelText('Email');
+    await user.clear(email);
+    await user.type(email, 'jane@gmail.c0m');
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'a'.repeat(501) } });
+    const button = screen.getByRole('button', { name: 'Save changes' });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(await screen.findByText('First name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(screen.getByText('Address must be 500 characters or fewer.')).toBeInTheDocument();
+    expect(email).toHaveFocus();
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('sends the address with the booking', async () => {
+    const { onClose, user } = await openExisting();
+    await user.type(screen.getByLabelText('Address'), '  2 Wharf St  ');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(writes()[0].body).toMatchObject({ address: '2 Wharf St' });
   });
 
   it('locks the form and shows progress while saving, then closes on success', async () => {

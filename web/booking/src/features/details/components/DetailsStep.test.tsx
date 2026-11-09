@@ -59,6 +59,51 @@ describe('Your details', () => {
     expect(currentState().step).toBe('dates');
   });
 
+  it('validates each field when it loses focus and clears the error once fixed', async () => {
+    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    const user = userEvent.setup();
+    const email = screen.getByLabelText('Email');
+    await user.type(email, 'jane@gmail');
+    expect(screen.queryByText('Enter a valid email address.')).not.toBeInTheDocument(); // not while typing
+    await user.tab();
+    expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument();
+    await user.type(email, '.com');
+    await waitFor(() => expect(screen.queryByText('Enter a valid email address.')).not.toBeInTheDocument());
+
+    await user.click(screen.getByLabelText('First name'));
+    await user.tab();
+    expect(await screen.findByText('First name is required.')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Mobile'), '02 9876 5432');
+    await user.tab();
+    expect(await screen.findByText('Enter a valid mobile number for the selected country.')).toBeInTheDocument();
+    expect(apiState.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('re-validates an entered mobile when the country changes', async () => {
+    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Mobile'), '0412 345 678');
+    await user.click(screen.getByRole('button', { name: /Country code/ }));
+    await user.type(screen.getByLabelText('Search countries'), 'United States');
+    await user.click(screen.getByRole('option', { name: /United States/ }));
+    expect(await screen.findByText('Enter a valid mobile number for the selected country.')).toBeInTheDocument();
+  });
+
+  it('pressing Continue with invalid fields focuses the first one', async () => {
+    renderWithBooking(<DetailsStep />, {
+      ...base, draftId: 'draft-9', details: { firstName: 'Jane', lastName: '', email: 'jane@gmail', mobile: '+61412345678' },
+    });
+    const user = userEvent.setup();
+    const button = screen.getByRole('button', { name: 'Continue' });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    expect(await screen.findByText('Last name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Last name')).toHaveFocus();
+    expect(apiState.calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
   it('updates an existing draft instead of creating one', async () => {
     renderWithBooking(<DetailsStep />, {
       ...base, draftId: 'draft-9', details: { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678' },

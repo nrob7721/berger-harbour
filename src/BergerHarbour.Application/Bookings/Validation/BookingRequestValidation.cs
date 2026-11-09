@@ -2,6 +2,7 @@ using BergerHarbour.Application.Common;
 using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
+using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 
@@ -9,7 +10,7 @@ namespace BergerHarbour.Application.Bookings.Validation;
 
 public sealed record AddonQuantity(string AddonId, int Quantity);
 
-public sealed record ContactInput(string? FirstName, string? LastName, string? Email, string? Mobile, string? SecondaryMobile = null);
+public sealed record ContactInput(string? FirstName, string? LastName, string? Email, string? Mobile, string? SecondaryMobile = null, string? Address = null);
 
 public enum ValidationScope
 {
@@ -196,13 +197,15 @@ public sealed class InternalBookingValidationStrategy(IBookingRepository booking
 
         var guests = errors.Capture(() => new GuestNumbers(r.NumberOfAdults, r.NumberOfChildren));
 
-        // A valid customer: email, first name and last name are required; mobiles are optional but must be mobiles.
+        // A valid customer: email, first name and last name are required; mobiles are optional but must be mobiles;
+        // the address is optional, at most 500 characters. Applies on create and on every update.
         var c = r.Contact ?? new ContactInput(null, null, null, null);
         errors.Capture(() => EmailAddress.Require(c.Email));
         errors.Capture(() => Text.Required(c.FirstName, "firstName", "First name", 100));
         errors.Capture(() => Text.Required(c.LastName, "lastName", "Last name", 100));
         errors.Capture(() => MobileNumber.Optional(c.Mobile, "mobile"));
         errors.Capture(() => MobileNumber.Optional(c.SecondaryMobile, "secondaryMobile"));
+        errors.Capture(() => Customer.NormaliseAddress(c.Address));
 
         foreach (var a in r.Addons)
         {

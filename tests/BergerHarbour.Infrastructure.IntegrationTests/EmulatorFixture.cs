@@ -72,7 +72,7 @@ public sealed class EmulatorFixture
     public async Task<CreateStaffBookingRequest> StaffRequestAsync(string start, string end, string slug = "pacific-blue", string email = "john@example.com",
         IReadOnlyList<StaffAddonLineInput>? lines = null) =>
         new((await BoatAsync(slug)).Id.Value, PeriodType.Custom, D(start), D(end), 2, 0, "11:00", "08:00", false, null, null, 4000, email, "John",
-            "Smith", null, null, lines ?? []);
+            "Smith", null, null, null, lines ?? []);
 }
 
 [CollectionDefinition(Name)]

@@ -27,7 +27,7 @@ function writeView(view: TimelineView) {
   }
 }
 
-type DialogState = { bookingId: string | null; initial?: { boatId?: string; startDate?: IsoDate } } | null;
+type DialogState = { bookingId: string | null; initial?: { boatId?: string; day?: IsoDate } } | null;
 
 export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDate }) {
   const [range, setRange] = useState(() => rangeFor(readView(), todayIso));
@@ -98,7 +98,7 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
               </ul>
             )}
           </div>
-          <Button variant="primary" onClick={() => setDialog({ bookingId: null })}>+ New</Button>
+          <Button variant="primary" onClick={() => setDialog({ bookingId: null, initial: { day: todayIso } })}>+ New</Button>
         </div>
       </div>
       <TimelineLegend />
@@ -108,7 +108,7 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
         data={timeline.data}
         todayIso={todayIso}
         onOpenBooking={(id) => setDialog({ bookingId: id })}
-        onNewBooking={(boatId, startDate) => setDialog({ bookingId: null, initial: { boatId, startDate } })}
+        onNewBooking={(boatId, day) => setDialog({ bookingId: null, initial: { boatId, day } })}
       />
       {dialog && <BookingDialog bookingId={dialog.bookingId} initial={dialog.initial} onClose={() => setDialog(null)} />}
     </div>

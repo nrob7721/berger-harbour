@@ -1,11 +1,11 @@
 import { useId, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { useWatch, type FieldErrors } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { useToast } from '@shared/components/Toast/Toast';
-import { applyServerErrors } from '@shared/lib/forms';
+import { applyServerErrors, rules, useAppForm } from '@shared/lib/forms';
 import { ApiError, errorMessage } from '@shared/lib/http';
 import { formatMoney } from '@shared/utils/money';
 import { useAddons, useBusinessSettings, useSeasons } from '@/hooks/useReferenceData';
@@ -43,6 +43,28 @@ interface BoatForm {
 
 const numberOrNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v));
 const FIELDS = ['name', 'slug', 'berth', 'adultBeds', 'kidsBeds', 'beddingDescription', 'securityBond', 'depositAmount', 'imageUrl', 'isActive', 'rates'] as const;
+const DETAILS_FIELDS = FIELDS.filter((f) => f !== 'rates' && f !== 'isActive');
+
+const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const IMAGE_HOSTS = ['bergerhouseboats.com.au', 'www.bergerhouseboats.com.au'];
+
+/** The server's image URL rule: empty, or an absolute https:// URL on the WordPress site. */
+function isValidImageUrl(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  try {
+    const url = new URL(v);
+    return url.protocol === 'https:' && IMAGE_HOSTS.includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Berth ≥ adult beds + kids beds; the error belongs to Berth. */
+const berthCoversBeds = (berth: number | null, form: BoatForm) => {
+  const beds = (Number(form.adultBeds) || 0) + (Number(form.kidsBeds) || 0);
+  return berth === null || Number.isNaN(berth) || berth < 1 || berth >= beds || `Berth can't be less than adult beds + kids beds (${beds}).`;
+};
 
 function defaults(boat: Boat | null): BoatForm {
   const rates: BoatForm['rates'] = {};
@@ -65,7 +87,8 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
   const base = useId();
   const id = (f: string) => `${base}-${f}`;
   const [formError, setFormError] = useState<string | null>(null);
-  const { register, handleSubmit, setError, control, formState: { errors } } = useForm<BoatForm>({ defaultValues: defaults(boat) });
+  // Each field is validated when it loses focus (§6.1).
+  const { register, handleSubmit, setError, setFocus, control, formState: { errors } } = useAppForm<BoatForm>({ defaultValues: defaults(boat) });
   const imageUrl = useWatch({ control, name: 'imageUrl' });
 
   const save = useMutation({
@@ -95,7 +118,26 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
     },
   });
   const saving = save.isPending;
-  const submit = handleSubmit((v) => { setFormError(null); save.mutate(v); });
+  /** The first invalid field may be on a hidden tab: show that tab, then focus the field. */
+  const showFirstInvalid = (errs: FieldErrors<BoatForm>) => {
+    const detailsField = DETAILS_FIELDS.find((f) => errs[f]);
+    if (detailsField) {
+      setTab('details');
+      setTimeout(() => setFocus(detailsField));
+      return;
+    }
+    const rate = Object.entries(errs.rates ?? {}).flatMap(([seasonId, byType]) =>
+      Object.keys((byType ?? {}) as object).map((type) => `rates.${seasonId}.${type}` as const))[0];
+    if (rate) {
+      setTab('rates');
+      setTimeout(() => setFocus(rate as `rates.${string}`));
+    }
+  };
+  const submit = handleSubmit((v) => { setFormError(null); save.mutate(v); }, showFirstInvalid);
+  // A server error on `rates` as a whole, or the first rate field's own error.
+  const rateErrors = Object.values(errors.rates ?? {}).flatMap((byType) => Object.values((byType ?? {}) as Record<string, { message?: unknown }>));
+  const rateError = [(errors.rates as { message?: unknown } | undefined)?.message, ...rateErrors.map((e) => e?.message)]
+    .find((m): m is string => typeof m === 'string' && m.length > 0);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'details', label: 'Details' }, { id: 'rates', label: 'Rates' }, { id: 'addons', label: 'Add-ons' },
@@ -122,32 +164,53 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
         <fieldset className={styles.fieldset} disabled={saving}>
           <div role="tabpanel" id={id('panel-details')} aria-labelledby={id('tab-details')} hidden={tab !== 'details'} className={styles.grid}>
             <Field label="Name" htmlFor={id('name')} error={errors.name?.message}>
-              <input id={id('name')} className={inputClass} {...register('name')} />
+              <input id={id('name')} className={inputClass} {...register('name', { validate: { required: rules.required('Name is required.'), max: rules.maxLength(80, 'Name') } })} />
             </Field>
             <Field label="Slug" htmlFor={id('slug')} error={errors.slug?.message} hint="Must match the WordPress page, e.g. pacific-blue">
-              <input id={id('slug')} className={inputClass} {...register('slug')} />
+              <input id={id('slug')} className={inputClass} {...register('slug', {
+                validate: {
+                  required: rules.required('Slug is required.'),
+                  format: (v) => !v.trim() || (v.trim().length <= 80 && SLUG.test(v.trim())) || 'Use lower-case letters, numbers and hyphens, e.g. pacific-blue.',
+                },
+              })} />
             </Field>
             <Field label="Berth" htmlFor={id('berth')} error={errors.berth?.message} hint="How many people the boat sleeps">
-              <input id={id('berth')} type="number" min={1} className={inputClass} {...register('berth', { setValueAs: numberOrNull })} />
+              <input id={id('berth')} type="number" min={1} className={inputClass} {...register('berth', {
+                setValueAs: numberOrNull,
+                validate: {
+                  min: (v) => (v !== null && !Number.isNaN(v) && Number.isInteger(v) && v >= 1) || 'Berth must be at least 1.',
+                  beds: berthCoversBeds,
+                },
+              })} />
             </Field>
             <Field label="Number of adult beds" htmlFor={id('adultBeds')} error={errors.adultBeds?.message} hint="A double or queen counts as one bed">
-              <input id={id('adultBeds')} type="number" min={0} className={inputClass} {...register('adultBeds', { setValueAs: numberOrNull })} />
+              <input id={id('adultBeds')} type="number" min={0} className={inputClass} {...register('adultBeds', {
+                setValueAs: numberOrNull, deps: 'berth', validate: rules.number({ min: 0, integer: true, message: "Adult beds can't be negative." }),
+              })} />
             </Field>
             <Field label="Number of kids beds" htmlFor={id('kidsBeds')} error={errors.kidsBeds?.message}>
-              <input id={id('kidsBeds')} type="number" min={0} className={inputClass} {...register('kidsBeds', { setValueAs: numberOrNull })} />
+              <input id={id('kidsBeds')} type="number" min={0} className={inputClass} {...register('kidsBeds', {
+                setValueAs: numberOrNull, deps: 'berth', validate: rules.number({ min: 0, integer: true, message: "Kids beds can't be negative." }),
+              })} />
             </Field>
             <Field label="Security bond" htmlFor={id('securityBond')} error={errors.securityBond?.message}>
-              <input id={id('securityBond')} type="number" min={0} step="0.01" className={inputClass} {...register('securityBond', { setValueAs: numberOrNull })} />
+              <input id={id('securityBond')} type="number" min={0} step="0.01" className={inputClass} {...register('securityBond', {
+                setValueAs: numberOrNull, validate: rules.number({ min: 0, message: "Security bond can't be negative." }),
+              })} />
             </Field>
             <Field label="Deposit" htmlFor={id('depositAmount')} error={errors.depositAmount?.message}
               hint={`Leave empty to use the default deposit of ${formatMoney(settings.data?.depositAmount ?? 1000)} from Settings`}>
-              <input id={id('depositAmount')} type="number" min={0} step="0.01" className={inputClass} {...register('depositAmount', { setValueAs: numberOrNull })} />
+              <input id={id('depositAmount')} type="number" min={0} step="0.01" className={inputClass} {...register('depositAmount', {
+                setValueAs: numberOrNull,
+                validate: rules.number({ min: 0, minExclusive: true, message: 'Deposit must be more than $0, or left empty to use the default.' }),
+              })} />
             </Field>
             <Field className={styles.wide} label="Bedding description" htmlFor={id('bedding')} error={errors.beddingDescription?.message}>
-              <textarea id={id('bedding')} className={inputClass} rows={2} {...register('beddingDescription')} />
+              <textarea id={id('bedding')} className={inputClass} rows={2} {...register('beddingDescription', { validate: rules.maxLength(500, 'Bedding description') })} />
             </Field>
             <Field className={styles.wide} label="Image URL" htmlFor={id('imageUrl')} error={errors.imageUrl?.message} hint="Link to an image on bergerhouseboats.com.au">
-              <input id={id('imageUrl')} type="url" className={inputClass} {...register('imageUrl')} />
+              <input id={id('imageUrl')} type="url" className={inputClass}
+                {...register('imageUrl', { validate: (v) => isValidImageUrl(v) || 'Use an https:// link to an image on bergerhouseboats.com.au.' })} />
             </Field>
             {imageUrl && <BoatThumb src={imageUrl} alt="Image preview" className={styles.preview} />}
             <div className={`${styles.checks} ${styles.wide}`}>
@@ -168,13 +231,15 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
                     {RATE_PERIODS.map((p) => (
                       <td key={p.type}>
                         <input type="number" min={0} step="0.01" aria-label={`${s.name} ${p.label} rate`} className={inputClass}
-                          {...register(`rates.${s.id}.${p.type}`, { setValueAs: numberOrNull })} />
+                          aria-invalid={!!errors.rates?.[s.id]?.[p.type] || undefined}
+                          {...register(`rates.${s.id}.${p.type}`, { setValueAs: numberOrNull, validate: rules.number({ min: 0, message: "Rates can't be negative." }) })} />
                       </td>
                     ))}
                   </tr>
                 ))}
               </tbody>
             </table>
+            {rateError && <div role="alert" className={styles.error}>{rateError}</div>}
           </div>
 
           <div role="tabpanel" id={id('panel-addons')} aria-labelledby={id('tab-addons')} hidden={tab !== 'addons'}>

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Spinner } from '@shared/components/Spinner/Spinner';
 import { useToast } from '@shared/components/Toast/Toast';
+import { applyServerErrors, rules, useAppForm } from '@shared/lib/forms';
 import { errorMessage } from '@shared/lib/http';
 import { formatDate, formatTimestamp } from '@shared/utils/dates';
 import { formatMobile } from '@shared/utils/phone';
@@ -15,7 +16,7 @@ import styles from './CustomersPage.module.css';
 const PERIOD: Record<string, string> = { Midweek: 'Mid-week', Weekend: 'Weekend', Week: 'Week', LongWeekend: 'Long weekend', Custom: 'Custom' };
 const PAYMENT: Record<string, string> = { Outstanding: 'Outstanding', DepositPaid: 'Deposit paid', PartPaid: 'Part paid', FullyPaid: 'Fully paid' };
 
-/** Customers. Only customer comments are edited here; contact details are edited from the booking dialog. */
+/** Customers. Only customer comments are edited here; contact details and the address are edited from the booking dialog. */
 export function CustomersPage({ onOpenBooking }: { onOpenBooking: (bookingId: string) => void }) {
   const customers = useQuery({ queryKey: keys.customers, queryFn: api.customers, staleTime: 15_000 });
   const [filter, setFilter] = useState('');
@@ -73,25 +74,37 @@ function CustomerDetail({ customer, onOpenBooking }: { customer: Customer; onOpe
   const id = useId();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [comments, setComments] = useState(customer.comments ?? '');
   const bookings = useQuery({ queryKey: keys.customerBookings(customer.id), queryFn: () => api.customerBookings(customer.id), staleTime: 0 });
+  // Validated when it loses focus (§6.1).
+  const { register, handleSubmit, setError, formState: { errors } } = useAppForm<{ comments: string }>({ defaultValues: { comments: customer.comments ?? '' } });
   const save = useMutation({
-    mutationFn: () => api.updateCustomerComments(customer.id, comments || null, customer.version),
+    mutationFn: (comments: string) => api.updateCustomerComments(customer.id, comments.trim() || null, customer.version),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.customers });
       toast.show('Customer comments saved.');
     },
+    onError: (e) => applyServerErrors(e, setError, ['comments']),
   });
+  const submit = handleSubmit((v) => save.mutate(v.comments));
+  const commentsError = errors.comments?.message;
   return (
     <div className={styles.detail}>
-      <div className={styles.comments}>
-        <label htmlFor={id} className={styles.label}>Customer comments</label>
-        <textarea id={id} rows={3} value={comments} onChange={(e) => setComments(e.target.value)} disabled={save.isPending} />
-        <div className={styles.commentActions}>
-          {save.isError && <span role="alert" className={styles.error}>{errorMessage(save.error)}</span>}
-          <Button variant="primary" size="sm" onClick={() => save.mutate()} busy={save.isPending} busyLabel="Saving…">Save</Button>
-        </div>
+      <div>
+        <h3 className={styles.label}>Address</h3>
+        {customer.address
+          ? <p className={styles.address} data-testid="customer-address">{customer.address}</p>
+          : <p className={table.muted} data-testid="customer-address">No address</p>}
       </div>
+      <form className={styles.comments} onSubmit={submit} noValidate>
+        <label htmlFor={id} className={styles.label}>Customer comments</label>
+        <textarea id={id} rows={3} disabled={save.isPending} aria-invalid={!!commentsError || undefined}
+          {...register('comments', { validate: rules.maxLength(4000, 'Customer comments') })} />
+        {commentsError && <span role="alert" className={styles.error}>{commentsError}</span>}
+        <div className={styles.commentActions}>
+          {save.isError && !commentsError && <span role="alert" className={styles.error}>{errorMessage(save.error)}</span>}
+          <Button variant="primary" size="sm" type="submit" busy={save.isPending} busyLabel="Saving…">Save</Button>
+        </div>
+      </form>
       <h3 className={styles.label}>Bookings</h3>
       {bookings.isLoading && <p><Spinner /> Loading bookings…</p>}
       {bookings.data?.length === 0 && <p className={table.muted}>No bookings.</p>}

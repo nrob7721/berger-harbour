@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from 'react';
+import { useWatch } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { useToast } from '@shared/components/Toast/Toast';
-import { ApiError, errorMessage } from '@shared/lib/http';
+import { applyServerErrors, rules, useAppForm } from '@shared/lib/forms';
+import { errorMessage } from '@shared/lib/http';
 import { Section } from '@/components/Section';
 import { api, keys } from '@/lib/api';
 import type { EmailTemplateKey } from '@/lib/types';
@@ -23,31 +25,32 @@ const LABELS: Record<EmailTemplateKey, string> = {
 export function EmailTemplatesSection() {
   const templates = useQuery({ queryKey: keys.templates, queryFn: api.templates, staleTime: 60_000 });
   const [key, setKey] = useState<EmailTemplateKey>('BookingConfirmed');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  // Each field is validated when it loses focus (§6.1). Unknown placeholders are reported on save.
+  const { register, handleSubmit, reset, setError, control, formState: { errors } } = useAppForm<{ subject: string; htmlBody: string }>({
+    defaultValues: { subject: '', htmlBody: '' },
+  });
+  const [subject, body] = useWatch({ control, name: ['subject', 'htmlBody'] });
   const base = useId();
   const queryClient = useQueryClient();
   const toast = useToast();
   const current = templates.data?.templates.find((t) => t.key === key);
 
   useEffect(() => {
-    if (current) {
-      setSubject(current.subject);
-      setBody(current.htmlBody);
-    }
-  }, [current]);
+    if (current) reset({ subject: current.subject, htmlBody: current.htmlBody });
+  }, [current, reset]);
 
   const save = useMutation({
-    mutationFn: () => api.updateTemplate(key, subject, body, current?.version ?? 0),
+    mutationFn: (v: { subject: string; htmlBody: string }) => api.updateTemplate(key, v.subject, v.htmlBody, current?.version ?? 0),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: keys.templates }); toast.show('Template saved.'); },
+    onError: (e) => applyServerErrors(e, setError, ['subject', 'htmlBody']),
   });
+  const submit = handleSubmit((v) => save.mutate(v));
   const test = useMutation({
     mutationFn: () => api.sendTestTemplate(key),
     onSuccess: () => toast.show('Test email sent to the staff alert address.'),
     onError: (e) => toast.show(errorMessage(e), 'error'),
   });
   const dirty = !!current && (subject !== current.subject || body !== current.htmlBody);
-  const fieldError = (f: string) => (save.error instanceof ApiError ? save.error.fieldError(f) : undefined);
 
   return (
     <Section id="email-templates" title="Email templates" help="Cancellations and add-on changes are not emailed by the system; staff contact the customer.">
@@ -59,17 +62,19 @@ export function EmailTemplatesSection() {
       {dirty && <p className={styles.help}>Save or undo your changes before choosing another template.</p>}
       <div className={styles.templateGrid}>
         <fieldset className={styles.fieldset} disabled={save.isPending || !current}>
-          <Field label="Subject" htmlFor={`${base}-subject`} error={fieldError('subject')}>
-            <input id={`${base}-subject`} className={inputClass} value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <Field label="Subject" htmlFor={`${base}-subject`} error={errors.subject?.message}>
+            <input id={`${base}-subject`} className={inputClass}
+              {...register('subject', { validate: { required: rules.required('Subject is required.'), max: rules.maxLength(200, 'Subject') } })} />
           </Field>
-          <Field label="HTML body" htmlFor={`${base}-body`} error={fieldError('htmlBody')}>
-            <textarea id={`${base}-body`} className={`${inputClass} ${styles.code}`} rows={16} value={body} onChange={(e) => setBody(e.target.value)} />
+          <Field label="HTML body" htmlFor={`${base}-body`} error={errors.htmlBody?.message}>
+            <textarea id={`${base}-body`} className={`${inputClass} ${styles.code}`} rows={16}
+              {...register('htmlBody', { validate: { required: rules.required('Body is required.'), max: rules.maxLength(50_000, 'Body') } })} />
           </Field>
           <div className={styles.formActions}>
-            {save.isError && !fieldError('subject') && !fieldError('htmlBody') && <span role="alert" className={styles.error}>{errorMessage(save.error)}</span>}
-            <Button onClick={() => { setSubject(current!.subject); setBody(current!.htmlBody); }} disabled={!dirty}>Undo</Button>
+            {save.isError && !errors.subject && !errors.htmlBody && <span role="alert" className={styles.error}>{errorMessage(save.error)}</span>}
+            <Button onClick={() => reset({ subject: current!.subject, htmlBody: current!.htmlBody })} disabled={!dirty}>Undo</Button>
             <Button onClick={() => test.mutate()} busy={test.isPending} busyLabel="Sending…" disabled={dirty}>Send test</Button>
-            <Button variant="primary" onClick={() => save.mutate()} busy={save.isPending} busyLabel="Saving…" disabled={!dirty}>Save</Button>
+            <Button variant="primary" onClick={submit} busy={save.isPending} busyLabel="Saving…" disabled={!dirty}>Save</Button>
           </div>
         </fieldset>
         <aside className={styles.placeholders} aria-label="Placeholders">

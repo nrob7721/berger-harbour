@@ -74,10 +74,12 @@ public class RepositoryRoundTripTests(EmulatorFixture f)
         var customers = f.Get<ICustomerRepository>();
         var c = Customer.Create("Ann", "Lee", "ann.rt@example.com", "0412345678", DateTimeOffset.UtcNow);
         c.UpdateComments("notes");
+        c.UpdateContactDetails("Ann", "Lee", "0412345678", null, "1 River Rd\nMannum SA 5238");
         await customers.SaveAsync(c);
         var byEmail = (await customers.GetByEmailAsync("ann.rt@example.com"))!;
         Assert.Equal(c.Id, byEmail.Id);
         Assert.Equal("notes", byEmail.Comments);
+        Assert.Equal("1 River Rd\nMannum SA 5238", byEmail.Address);
 
         var drafts = f.Get<IBookingDraftRepository>();
         var d = BookingDraft.Create(new DraftDetails(new BoatId("b"), PeriodType.Midweek, new StayRange(D("2027-03-08"), D("2027-03-12")),

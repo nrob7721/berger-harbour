@@ -72,3 +72,9 @@
   color: var(--c-danger);
   font-size: 14px;
 }
+
+.address {
+  margin: 4px 0 0;
+  white-space: pre-line;
+  max-width: 720px;
+}

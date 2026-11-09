@@ -72,6 +72,57 @@ public class ContactTests
     public void Email_is_normalised() => Assert.Equal("jane@example.com", EmailAddress.Require("  Jane@Example.COM "));
 
     [Theory]
+    [InlineData("jane@gmail.com")]
+    [InlineData("jane@bigpond.net.au")]
+    [InlineData("jane@example.co.uk")]
+    [InlineData("  jane.smith+boats@my-domain.com.au  ")]
+    public void Valid_emails_are_accepted(string email) => Assert.True(EmailAddress.IsValid(email));
+
+    [Theory]
+    [InlineData("jane@gmail")] // no top-level domain
+    [InlineData("jane@b.c")] // one-letter top-level domain
+    [InlineData("jane@gmail..com")] // empty label
+    [InlineData("jane@-gmail.com")] // label starts with a hyphen
+    [InlineData("jane@gmail-.com")] // label ends with a hyphen
+    [InlineData("jane@gmail.c0m")] // numeric top-level domain
+    [InlineData("jane smith@gmail.com")] // space in the local part
+    [InlineData("@gmail.com")]
+    [InlineData("jane@@gmail.com")]
+    [InlineData("jane@x@gmail.com")]
+    [InlineData("jane@gm_ail.com")]
+    [InlineData("")]
+    public void Invalid_emails_are_rejected(string email)
+    {
+        Assert.False(EmailAddress.IsValid(email));
+        if (email.Length > 0)
+            Assert.Equal([EmailAddress.InvalidMessage], Assert.Throws<DomainValidationException>(() => EmailAddress.Require(email)).Errors["email"]);
+    }
+
+    [Fact]
+    public void Emails_over_254_characters_are_rejected()
+    {
+        var domain = "@example.com";
+        Assert.True(EmailAddress.IsValid(new string('a', 254 - domain.Length) + domain));
+        Assert.False(EmailAddress.IsValid(new string('a', 255 - domain.Length) + domain));
+    }
+
+    [Fact]
+    public void Address_is_trimmed_blank_is_stored_empty_and_over_500_characters_is_rejected()
+    {
+        var c = Customer.Create("Jane", "Smith", "jane@example.com", null, Now);
+        Assert.Null(c.Address);
+        c.UpdateContactDetails("Jane", "Smith", null, null, "  1 River Rd\nMannum SA 5238 \n");
+        Assert.Equal("1 River Rd\nMannum SA 5238", c.Address);
+        c.UpdateContactDetails("Jane", "Smith", null, null, "   ");
+        Assert.Null(c.Address);
+        c.UpdateContactDetails("Jane", "Smith", null, null, new string('a', 500));
+        Assert.Equal(500, c.Address!.Length);
+        var e = Assert.Throws<DomainValidationException>(() => c.UpdateContactDetails("Jane", "Smith", null, null, new string('a', 501)));
+        Assert.True(e.Errors.ContainsKey("address"));
+        Assert.Equal(500, c.Address!.Length); // unchanged
+    }
+
+    [Theory]
     [InlineData("0412 345 678", "+61412345678")]
     [InlineData("+61 412 345 678", "+61412345678")]
     [InlineData("+1 650 253 0000", "+16502530000")] // FIXED_LINE_OR_MOBILE (US)
@@ -100,12 +151,13 @@ public class ContactTests
     public void Online_update_changes_names_and_mobile_only()
     {
         var c = Customer.Create("Jane", "Smith", "jane@example.com", "0412345678", Now);
-        c.UpdateContactDetails("Jane", "Smith", "0412345678", "0498765432");
+        c.UpdateContactDetails("Jane", "Smith", "0412345678", "0498765432", "1 River Rd");
         c.UpdateComments("VIP");
         c.UpdateFromOnlineBooking("Janet", "Smyth", "0400000000");
         Assert.Equal("Janet Smyth", c.FullName);
         Assert.Equal("+61400000000", c.MobileNumber);
         Assert.Equal("+61498765432", c.SecondaryMobileNumber);
+        Assert.Equal("1 River Rd", c.Address);
         Assert.Equal("VIP", c.Comments);
     }
 }

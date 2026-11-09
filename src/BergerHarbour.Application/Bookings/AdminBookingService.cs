@@ -128,7 +128,7 @@ public sealed class AdminBookingService(
     };
 
     public static AdminCustomer ToAdminCustomer(Customer c) =>
-        new(c.Id, c.FirstName, c.LastName, c.Email, c.MobileNumber, c.SecondaryMobileNumber, c.Comments, c.CreatedDate, c.Version);
+        new(c.Id, c.FirstName, c.LastName, c.Email, c.MobileNumber, c.SecondaryMobileNumber, c.Address, c.Comments, c.CreatedDate, c.Version);
 
     // ----- Quote -----
 
@@ -180,7 +180,7 @@ public sealed class AdminBookingService(
         var reference = await referenceData.LoadAsync(ct);
         var boat = string.IsNullOrWhiteSpace(r.BoatId) ? null : await boats.GetAsync(new BoatId(r.BoatId), ct);
         var lineInputs = r.AddonLines ?? [];
-        var contact = new ContactInput(r.FirstName, r.LastName, r.Email, r.Mobile, r.SecondaryMobile);
+        var contact = new ContactInput(r.FirstName, r.LastName, r.Email, r.Mobile, r.SecondaryMobile, r.Address);
         var result = await validation.ValidateAsync(new BookingRequest
         {
             Boat = boat, PeriodType = r.PeriodType, StartDate = r.StartDate, EndDate = r.EndDate, NumberOfAdults = r.NumberOfAdults,
@@ -235,9 +235,9 @@ public sealed class AdminBookingService(
         var boat = string.IsNullOrWhiteSpace(r.BoatId) ? null : await boats.GetAsync(boatId, ct);
         var lineInputs = r.AddonLines ?? [];
         var hasCustomer = current.CustomerId is not null;
-        // Contact details and customer comments are ignored for a booking without a Customer.
+        // Contact details, the address and customer comments are ignored for a booking without a Customer.
         var contact = hasCustomer
-            ? new ContactInput(r.FirstName, r.LastName, r.Email, r.Mobile, r.SecondaryMobile)
+            ? new ContactInput(r.FirstName, r.LastName, r.Email, r.Mobile, r.SecondaryMobile, r.Address)
             : new ContactInput(current.CustomerDetails?.FirstName, current.CustomerDetails?.LastName, current.CustomerDetails?.Email, current.CustomerDetails?.MobileNumber);
         var result = await validation.ValidateAsync(new BookingRequest
         {

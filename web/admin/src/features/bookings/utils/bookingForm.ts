@@ -1,5 +1,6 @@
 import { addDays, dayOfWeek, formatDate, formatTime, type IsoDate } from '@shared/utils/dates';
 import { lineTotal, sum } from '@shared/utils/money';
+import { periodForClick } from '@shared/utils/periods';
 import type { Addon, Boat, PeriodType, TimelineBooking } from '@/lib/types';
 
 export interface LineForm {
@@ -22,10 +23,16 @@ export function defaultEndDate(periodType: PeriodType, start: IsoDate, currentEn
   }
 }
 
-/** A sensible period type for a clicked start day: Monday → Mid-week, Friday → Weekend, otherwise Custom. */
-export function periodTypeForStart(start: IsoDate): PeriodType {
-  const dow = dayOfWeek(start);
-  return dow === 1 ? 'Midweek' : dow === 5 ? 'Weekend' : 'Custom';
+/**
+ * A new booking's starting period for a clicked day (or today for "+ New"), with the booking app's click mapping (§11.2, §12.1):
+ * Mon–Thu → the Mid-week Mon→Fri of that week; Fri–Sun → the Weekend Fri→Mon containing the day. The start can be before the
+ * day. Week, LongWeekend and Custom are never chosen automatically.
+ */
+export function newBookingPeriod(day: IsoDate): { periodType: 'Midweek' | 'Weekend'; startDate: IsoDate; endDate: IsoDate } {
+  const dow = dayOfWeek(day);
+  const periodType = dow >= 1 && dow <= 4 ? 'Midweek' : 'Weekend';
+  const stay = periodForClick(periodType, day)!; // every Mon–Thu is a Mid-week day and every Fri–Sun a Weekend day
+  return { periodType, startDate: stay.start, endDate: stay.end };
 }
 
 /** A new line's unit price: the add-on's price for the period type; empty for price on request and LongWeekend/Custom. */

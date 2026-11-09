@@ -93,6 +93,19 @@
   background: var(--c-brand-tint);
 }
 
+/* Inactive boats' empty cells: no pointer, no hover. */
+.static {
+  cursor: default;
+}
+
+.static:hover {
+  background: transparent;
+}
+
+.static.weekend:hover {
+  background: var(--c-weekend);
+}
+
 .weekend {
   background: var(--c-weekend);
 }

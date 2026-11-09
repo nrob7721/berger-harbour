@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Controller, FormProvider, useForm, useWatch } from 'react-hook-form';
+import { Controller, FormProvider, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -9,21 +9,21 @@ import { Field, inputClass } from '@shared/components/Field/Field';
 import { MobileInput } from '@shared/components/MobileInput/MobileInput';
 import { Spinner } from '@shared/components/Spinner/Spinner';
 import { useToast } from '@shared/components/Toast/Toast';
-import { applyServerErrors } from '@shared/lib/forms';
+import { applyServerErrors, useAppForm } from '@shared/lib/forms';
 import { ApiError, errorMessage } from '@shared/lib/http';
-import { addDays, formatTimestamp, todayInSydney } from '@shared/utils/dates';
+import { addDays, formatTimestamp, todayInSydney, type IsoDate } from '@shared/utils/dates';
+import { EMAIL_ERROR, isValidEmail, normaliseEmail } from '@shared/utils/email';
 import { isValidMobile, MOBILE_ERROR } from '@shared/utils/phone';
 import { Badge } from '@/components/Badge/Badge';
 import { useAddons, useBoats } from '@/hooks/useReferenceData';
 import { api, keys } from '@/lib/api';
 import type { BookingDetail, CustomerLookup } from '@/lib/types';
-import { changeoverWarnings, defaultEndDate, guestWarnings, PERIOD_TYPES, periodTypeForStart, type LineForm } from '../utils/bookingForm';
+import { changeoverWarnings, defaultEndDate, guestWarnings, newBookingPeriod, PERIOD_TYPES, type LineForm } from '../utils/bookingForm';
 import { AddonLinesSection } from './AddonLinesSection';
 import { PaymentsSection } from './PaymentsSection';
 import { PriceBreakdown } from './PriceBreakdown';
 import styles from './BookingDialog.module.css';
 
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const optionalNumber = z.number().nullable();
 
 const schema = z.object({
@@ -40,11 +40,12 @@ const schema = z.object({
   customerComments: z.string(),
   hirePrice: optionalNumber.refine((v) => v !== null && v >= 0, 'Enter the hire price.'),
   status: z.enum(['PendingPayment', 'Active', 'Superseded', 'Cancelled', 'Expired']),
-  email: z.string().trim().min(1, 'Email is required.').regex(EMAIL, 'Enter a valid email address.'),
+  email: z.string().trim().min(1, 'Email is required.').refine(isValidEmail, EMAIL_ERROR),
   firstName: z.string().trim().min(1, 'First name is required.'),
   lastName: z.string().trim().min(1, 'Last name is required.'),
   mobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
   secondaryMobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
+  address: z.string().refine((v) => v.trim().length <= 500, 'Address must be 500 characters or fewer.'),
   addonLines: z.array(z.object({
     id: z.string().nullable(), addonId: z.string(), name: z.string(),
     quantity: z.number({ message: 'Enter a quantity.' }).int().min(1, 'At least 1.'), unitPrice: optionalNumber.refine((v) => v === null || v >= 0, "Can't be negative."),
@@ -54,12 +55,15 @@ const schema = z.object({
 export type BookingFormValues = z.infer<typeof schema> & { addonLines: LineForm[] };
 
 const FIELDS = ['boatId', 'periodType', 'startDate', 'endDate', 'numberOfAdults', 'numberOfChildren', 'checkInTime', 'checkOutTime', 'hirePrice',
-  'status', 'email', 'firstName', 'lastName', 'mobile', 'secondaryMobile', 'bookingComments', 'customerComments', 'addonLines'] as const;
+  'status', 'email', 'firstName', 'lastName', 'mobile', 'secondaryMobile', 'address', 'bookingComments', 'customerComments', 'addonLines'] as const;
 
 export interface BookingDialogProps {
-  /** Edit an existing booking, or create one (optionally pre-filled with a boat and start date). */
+  /**
+   * Edit an existing booking, or create one. A new booking's period is pre-filled from `day` (today when absent), and its boat
+   * from `boatId` (empty when absent).
+   */
   bookingId: string | null;
-  initial?: { boatId?: string; startDate?: string };
+  initial?: { boatId?: string; day?: IsoDate };
   onClose: () => void;
 }
 
@@ -86,15 +90,15 @@ function defaults(detail: BookingDetail | null, initial: BookingDialogProps['ini
       isStandby: detail.isStandby, bookingComments: detail.bookingComments ?? '', customerComments: c?.comments ?? '', hirePrice: detail.hirePrice,
       status: detail.status, email: c?.email ?? snapshot?.email ?? '', firstName: c?.firstName ?? snapshot?.firstName ?? '',
       lastName: c?.lastName ?? snapshot?.lastName ?? '', mobile: c?.mobile ?? snapshot?.mobileNumber ?? '', secondaryMobile: c?.secondaryMobile ?? '',
+      address: c?.address ?? '',
       addonLines: detail.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
     };
   }
-  const start = initial?.startDate ?? todayInSydney();
-  const periodType = periodTypeForStart(start);
+  const period = newBookingPeriod(initial?.day ?? todayInSydney());
   return {
-    boatId: initial?.boatId ?? '', periodType, startDate: start, endDate: defaultEndDate(periodType, start, addDays(start, 1)),
+    boatId: initial?.boatId ?? '', ...period,
     numberOfAdults: 2, numberOfChildren: 0, checkInTime: '11:00', checkOutTime: '08:00', isStandby: false, bookingComments: '', customerComments: '',
-    hirePrice: null, status: 'Active', email: '', firstName: '', lastName: '', mobile: '', secondaryMobile: '', addonLines: [],
+    hirePrice: null, status: 'Active', email: '', firstName: '', lastName: '', mobile: '', secondaryMobile: '', address: '', addonLines: [],
   };
 }
 
@@ -112,11 +116,17 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
   const [lookup, setLookup] = useState<CustomerLookup | null>(null);
   const lastLookup = useRef<string>((detail?.customer?.email ?? '').toLowerCase());
 
-  const form = useForm<BookingFormValues>({ resolver: zodResolver(schema) as never, defaultValues: defaults(detail, initial) });
+  // Each field is validated when it loses focus (§6.1).
+  const form = useAppForm<BookingFormValues>({ resolver: zodResolver(schema) as never, defaultValues: defaults(detail, initial) });
   const { register, control, setValue, getValues, handleSubmit, setError, formState: { errors, isDirty } } = form;
   const values = useWatch({ control }) as BookingFormValues;
   const boat = boats.data?.find((b) => b.id === values.boatId);
   const hasCustomer = isNew || !!detail?.customer;
+
+  // The boat <select> is registered before its options load; re-apply the pre-filled boat once they exist.
+  useEffect(() => {
+    if (boats.data) setValue('boatId', getValues('boatId'));
+  }, [boats.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New bookings: pre-fill the hire price from the rate table while it is still empty.
   const prefill = useQuery({
@@ -144,9 +154,10 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       : []),
   ];
 
+  /** On blur, after the email is validated: an invalid email shows its error and is never looked up. */
   const lookupEmail = async () => {
-    const email = getValues('email').trim().toLowerCase();
-    if (!EMAIL.test(email) || email === lastLookup.current || !hasCustomer) return;
+    const email = normaliseEmail(getValues('email'));
+    if (!isValidEmail(email) || email === lastLookup.current || !hasCustomer) return;
     lastLookup.current = email;
     try {
       const found = await api.customerByEmail(email);
@@ -155,6 +166,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       setValue('lastName', found.customer.lastName, { shouldDirty: true });
       setValue('mobile', found.customer.mobile ?? '', { shouldDirty: true });
       setValue('secondaryMobile', found.customer.secondaryMobile ?? '', { shouldDirty: true });
+      setValue('address', found.customer.address ?? '', { shouldDirty: true });
       setValue('customerComments', found.customer.comments ?? '', { shouldDirty: true });
     } catch (e) {
       setLookup(null);
@@ -170,6 +182,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
         numberOfChildren: v.numberOfChildren, checkInTime: v.checkInTime, checkOutTime: v.checkOutTime, isStandby: v.isStandby,
         bookingComments: v.bookingComments || null, customerComments: v.customerComments || null, hirePrice: v.hirePrice,
         email: v.email.trim(), firstName: v.firstName.trim(), lastName: v.lastName.trim(), mobile: v.mobile || null, secondaryMobile: v.secondaryMobile || null,
+        address: v.address.trim() || null,
         addonLines: v.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, quantity: l.quantity, unitPrice: l.unitPrice })),
       };
       return isNew ? api.createBooking(common) : api.updateBooking(detail!.id, { ...common, status: v.status, version: detail!.version });
@@ -232,7 +245,10 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
               </Field>
               <Field label="Start date" htmlFor={ids.startDate} error={errors.startDate?.message}>
                 <input id={ids.startDate} type="date" className={inputClass}
-                  {...register('startDate', { onChange: (e) => setValue('endDate', defaultEndDate(getValues('periodType'), e.target.value, getValues('endDate')), { shouldDirty: true }) })} />
+                  {...register('startDate', {
+                    deps: 'endDate', // start < end is checked when either date loses focus, and shown on the end date
+                    onChange: (e) => setValue('endDate', defaultEndDate(getValues('periodType'), e.target.value, getValues('endDate')), { shouldDirty: true }),
+                  })} />
               </Field>
               <Field label="End date" htmlFor={ids.endDate} error={errors.endDate?.message}>
                 <input id={ids.endDate} type="date" className={inputClass} {...register('endDate')} />
@@ -266,9 +282,12 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
               )}
             </h3>
             {!hasCustomer && (
-              <p className={styles.muted}>This booking has no customer record yet; contact details can be edited once it is confirmed.</p>
+              <p className={styles.muted}>
+                Available once the booking is confirmed. The details entered online are shown below.
+              </p>
             )}
-            <fieldset className={styles.fieldset} disabled={!hasCustomer || saving}>
+            {/* The whole customer section (and Customer comments below) is disabled for a booking without a Customer. */}
+            <fieldset className={styles.fieldset} disabled={!hasCustomer || saving} aria-label="Customer">
               <div className={styles.grid}>
                 <Field label="Email" htmlFor={ids.email} error={errors.email?.message}>
                   <input id={ids.email} type="email" className={inputClass} {...register('email', { onBlur: () => void lookupEmail() })} />
@@ -281,13 +300,16 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                 </Field>
                 <Field label="Mobile" htmlFor={ids.mobile} error={errors.mobile?.message}>
                   <Controller control={control} name="mobile" render={({ field }) => (
-                    <MobileInput id={ids.mobile} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={!hasCustomer || saving} />
+                    <MobileInput id={ids.mobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={!hasCustomer || saving} />
                   )} />
                 </Field>
                 <Field label="Secondary mobile" htmlFor={ids.secondaryMobile} error={errors.secondaryMobile?.message}>
                   <Controller control={control} name="secondaryMobile" render={({ field }) => (
-                    <MobileInput id={ids.secondaryMobile} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.secondaryMobile} disabled={!hasCustomer || saving} />
+                    <MobileInput id={ids.secondaryMobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.secondaryMobile} disabled={!hasCustomer || saving} />
                   )} />
+                </Field>
+                <Field className={styles.wide} label="Address" htmlFor={ids.address} error={errors.address?.message}>
+                  <textarea id={ids.address} className={inputClass} rows={3} {...register('address')} />
                 </Field>
               </div>
             </fieldset>
@@ -311,6 +333,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
               <Field label="Booking comments" htmlFor={ids.bookingComments}>
                 <textarea id={ids.bookingComments} className={inputClass} rows={3} {...register('bookingComments')} />
               </Field>
+              {/* Part of the customer section: disabled with it for a booking without a Customer. */}
               <Field label="Customer comments" htmlFor={ids.customerComments}
                 hint={hasCustomer ? 'Shared by all of this customer\'s bookings.' : 'Available once the booking is confirmed'}>
                 <textarea id={ids.customerComments} className={inputClass} rows={3} disabled={!hasCustomer || saving} {...register('customerComments')} />
