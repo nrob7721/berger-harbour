@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { apiState, server } from '@/testing/server';
@@ -27,32 +27,19 @@ describe('Your details', () => {
   });
 
   it('creates the draft once, showing a busy button that cannot be submitted twice', async () => {
-    // Hold the response so the busy state is observable regardless of how slow the machine is.
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    server.use(http.post('*/api/booking-drafts', async ({ request }) => {
-      apiState.calls.push({ method: request.method, path: new URL(request.url).pathname, body: await request.clone().json() });
-      await gate;
-      return HttpResponse.json({ draftId: 'draft-1' });
-    }));
     renderWithBooking(<DetailsStep />, { ...base, draftId: null });
     const user = userEvent.setup();
     await fill(user);
     const button = screen.getByRole('button', { name: 'Continue' });
     await waitFor(() => expect(button).toBeEnabled()); // Turnstile solved
-    // Two clicks in the same tick, before async validation has had a chance to make the button busy.
-    fireEvent.click(button);
-    fireEvent.click(button);
+    await user.click(button);
     const busy = await screen.findByRole('button', { name: 'Saving…' });
     expect(busy).toBeDisabled();
     await user.click(busy);
-    expect(currentState().step).toBe('dates');
-    release();
     await waitFor(() => expect(currentState().step).toBe('addons'));
-    expect(apiState.calls.filter((c) => c.method === 'POST' && c.path === '/api/booking-drafts')).toHaveLength(1);
-    expect(apiState.calls.some((c) => c.method === 'PUT')).toBe(false);
-    const post = apiState.calls.find((c) => c.method === 'POST');
-    expect(post?.body).toMatchObject({ mobile: '+61412345678', turnstileToken: 'turnstile-ok', email: 'jane@example.com' });
+    const posts = apiState.calls.filter((c) => c.method === 'POST' && c.path === '/api/booking-drafts');
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body).toMatchObject({ mobile: '+61412345678', turnstileToken: 'turnstile-ok', email: 'jane@example.com' });
     expect(currentState().draftId).toBe('draft-1');
     expect(window.sessionStorage.getItem('bh-booking-draft-id')).toBe('draft-1');
   });

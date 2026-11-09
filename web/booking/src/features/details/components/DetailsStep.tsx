@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type BaseSyntheticEvent } from 'react';
+import { useId, useState } from 'react';
 import { Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
@@ -34,8 +34,6 @@ export function DetailsStep() {
   const [token, setToken] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const needsTurnstile = !state.draftId;
-  // handleSubmit validates asynchronously, so the button is not busy for a moment after a click. This closes that gap.
-  const submitting = useRef(false);
   // Each field is validated when it loses focus (§6.1).
   const { register, handleSubmit, control, setError, formState: { errors } } = useAppForm<Form>({
     resolver: zodResolver(schema),
@@ -60,9 +58,6 @@ export function DetailsStep() {
       dispatch({ type: 'draft', draftId });
       dispatch({ type: 'goto', step: 'addons' });
     },
-    onSettled: () => {
-      submitting.current = false;
-    },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 404 && state.draftId) {
         dispatch({ type: 'draftLost' });
@@ -75,23 +70,10 @@ export function DetailsStep() {
     },
   });
 
-  const submit = async (event?: BaseSyntheticEvent) => {
-    if (submitting.current) {
-      event?.preventDefault();
-      return;
-    }
-    submitting.current = true;
-    let started = false;
-    try {
-      await handleSubmit((values) => {
-        started = true;
-        setFormError(null);
-        save.mutate({ firstName: values.firstName.trim(), lastName: values.lastName.trim(), email: values.email.trim(), mobile: values.mobile });
-      })(event);
-    } finally {
-      if (!started) submitting.current = false; // invalid: nothing was sent, so allow another attempt
-    }
-  };
+  const submit = handleSubmit((values) => {
+    setFormError(null);
+    save.mutate({ firstName: values.firstName.trim(), lastName: values.lastName.trim(), email: values.email.trim(), mobile: values.mobile });
+  });
 
   return (
     <StepLayout
