@@ -1,0 +1,39 @@
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bar,
+.block {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--c-disabled) 0%, var(--c-surface-muted) 50%, var(--c-disabled) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.bar {
+  height: 28px;
+  width: 60%;
+}
+
+.block {
+  height: 320px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .block {
+    animation: none;
+  }
+}

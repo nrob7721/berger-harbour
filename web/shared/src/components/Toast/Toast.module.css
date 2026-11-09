@@ -1,0 +1,40 @@
+.region {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  background: var(--c-surface);
+  border-left: 4px solid var(--c-brand);
+  font-weight: 500;
+}
+
+.success {
+  border-left-color: var(--c-success);
+}
+
+.error {
+  border-left-color: var(--c-danger);
+}
+
+.dismiss {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--c-text-muted);
+}

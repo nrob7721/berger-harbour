@@ -1,0 +1,184 @@
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.heading {
+  font-size: 22px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fieldset {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.label {
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.subheading {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .periods {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.period {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--c-surface);
+  min-height: 64px;
+}
+
+.periodChecked {
+  border-color: var(--c-brand);
+  background: var(--c-brand-tint);
+}
+
+.period input {
+  accent-color: var(--c-brand);
+  flex: none;
+}
+
+.muted {
+  color: var(--c-text-muted);
+}
+
+.times {
+  font-size: 15px;
+}
+
+.selectedLine {
+  font-weight: 600;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--c-brand);
+}
+
+.check:has(input:disabled) {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+
+.filters {
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.guestRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.select select {
+  min-height: 42px;
+  padding: 6px 10px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  font-weight: 400;
+}
+
+.featureRow {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.rate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--c-brand-tint);
+}
+
+.rateLabel {
+  font-weight: 700;
+}
+
+.rateSub {
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+.rateValue {
+  font-weight: 700;
+  font-size: 17px;
+  text-align: right;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}

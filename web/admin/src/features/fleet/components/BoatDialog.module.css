@@ -1,0 +1,147 @@
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.tabs button {
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tabs .activeTab {
+  color: var(--c-text);
+  border-bottom-color: var(--c-brand);
+}
+
+.fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+
+.grid[hidden] {
+  display: none;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.preview {
+  width: 200px;
+  height: 120px;
+  border-radius: var(--radius);
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.checks input {
+  width: 18px;
+  height: 18px;
+}
+
+.toggle {
+  color: var(--c-brand);
+}
+
+.muted {
+  color: var(--c-text-muted);
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.rates {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rates th,
+.rates td {
+  padding: 6px;
+  text-align: left;
+}
+
+.rates thead th {
+  font-size: 13px;
+  color: var(--c-text-muted);
+  background: var(--c-surface-muted);
+}
+
+.rates tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.addonList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  columns: 2 220px;
+}
+
+.addonList li {
+  padding: 4px 0;
+}
+
+.addonList label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.unavailabilities {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.unavailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scrollTable {
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+}
+
+.error {
+  margin-right: auto;
+  color: var(--c-danger);
+  font-size: 14px;
+}

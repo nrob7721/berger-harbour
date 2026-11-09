@@ -1,0 +1,136 @@
+<!--
+  Berger Houseboats "Book Now" button.
+  Paste this into a Custom HTML block on each boat's WordPress page.
+  The ONLY thing to change per page is data-boat: the boat's slug, as in https://bergerhouseboats.com.au/houseboats/<slug>/
+-->
+<button type="button" class="bh-book-now" data-boat="pacific-blue">Book Now</button>
+
+<style>
+  .bh-book-now {
+    display: inline-block;
+    padding: 12px 28px;
+    border: none;
+    border-radius: 6px;
+    background: #284863;
+    color: #fff;
+    font: 600 17px/1.2 inherit;
+    cursor: pointer;
+  }
+  .bh-book-now:hover { background: #1e3a52; }
+  .bh-book-now:focus-visible { outline: 3px solid #2f6fb0; outline-offset: 2px; }
+  .bh-modal { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16, 24, 40, 0.6); }
+  .bh-modal__panel { position: relative; width: min(1100px, 100%); height: min(860px, 100%); background: #f5f6f8; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(16, 24, 40, 0.3); }
+  .bh-modal__frame { width: 100%; height: 100%; border: 0; display: block; }
+  .bh-modal__close { position: absolute; top: 8px; right: 10px; z-index: 1; width: 40px; height: 40px; border: none; border-radius: 50%; background: #fff; color: #1b2230; font-size: 26px; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
+  .bh-modal__close:focus-visible { outline: 3px solid #2f6fb0; outline-offset: 2px; }
+</style>
+
+<script>
+  (function () {
+    // Initialise once per page, however many Book Now blocks it has.
+    if (window.__bhBookNow) return;
+    window.__bhBookNow = true;
+
+    var BOOKING_ORIGIN = 'https://bookings.bergerhouseboats.com.au';
+    var MOBILE = '(max-width: 768px), (pointer: coarse)';
+    var open = null;
+
+    function bookingUrl(slug) {
+      return BOOKING_ORIGIN + '/?boat=' + encodeURIComponent(slug);
+    }
+
+    function focusables(root) {
+      return Array.prototype.slice.call(
+        root.querySelectorAll('button, iframe, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      );
+    }
+
+    function close() {
+      if (!open) return;
+      document.removeEventListener('keydown', open.onKey, true);
+      document.body.style.overflow = open.overflow;
+      open.modal.parentNode.removeChild(open.modal);
+      var opener = open.opener;
+      open = null;
+      if (opener && opener.focus) opener.focus();
+    }
+
+    function openModal(slug, name, opener) {
+      if (open) close();
+      var modal = document.createElement('div');
+      modal.className = 'bh-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-label', 'Book ' + name);
+
+      var panel = document.createElement('div');
+      panel.className = 'bh-modal__panel';
+
+      var closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.className = 'bh-modal__close';
+      closeButton.setAttribute('aria-label', 'Close booking');
+      closeButton.innerHTML = '&times;';
+      closeButton.addEventListener('click', close);
+
+      var frame = document.createElement('iframe');
+      frame.className = 'bh-modal__frame';
+      frame.src = bookingUrl(slug);
+      frame.title = 'Book ' + name;
+      frame.setAttribute('allow', 'payment');
+
+      panel.appendChild(closeButton);
+      panel.appendChild(frame);
+      modal.appendChild(panel);
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) close();
+      });
+
+      var onKey = function (e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          close();
+          return;
+        }
+        if (e.key === 'Tab') {
+          // Keep focus inside the dialog (the iframe manages focus within itself).
+          var items = focusables(modal);
+          var first = items[0];
+          var last = items[items.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+
+      open = { modal: modal, opener: opener, onKey: onKey, overflow: document.body.style.overflow };
+      document.body.style.overflow = 'hidden';
+      document.body.appendChild(modal);
+      closeButton.focus();
+    }
+
+    // The booking app asks to close the modal when the customer is done. Only trust the booking site.
+    window.addEventListener('message', function (e) {
+      if (e.origin !== BOOKING_ORIGIN) return;
+      if (e.data && e.data.type === 'bh-booking:close') close();
+    });
+
+    document.addEventListener('click', function (e) {
+      var button = e.target && e.target.closest ? e.target.closest('.bh-book-now') : null;
+      if (!button) return;
+      e.preventDefault();
+      var slug = button.getAttribute('data-boat') || '';
+      var name = (document.querySelector('h1') || {}).textContent || 'a houseboat';
+      if (window.matchMedia && window.matchMedia(MOBILE).matches) {
+        window.open(bookingUrl(slug), '_blank', 'noopener');
+      } else {
+        openModal(slug, name.trim(), button);
+      }
+    });
+  })();
+</script>

@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Local": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5081",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Local",
+        "FIRESTORE_EMULATOR_HOST": "127.0.0.1:8080"
+      }
+    }
+  }
+}

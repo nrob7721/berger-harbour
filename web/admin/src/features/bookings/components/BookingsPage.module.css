@@ -1,0 +1,130 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 22px;
+  margin-left: 8px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented button {
+  min-height: 42px;
+  padding: 0 14px;
+  border: none;
+  background: var(--c-surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--c-border);
+}
+
+.segmented .on {
+  background: var(--c-brand);
+  color: #fff;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.check input {
+  width: 18px;
+  height: 18px;
+}
+
+.search {
+  position: relative;
+}
+
+.searchForm {
+  display: flex;
+  gap: 6px;
+}
+
+.searchForm input {
+  min-height: 42px;
+  width: 260px;
+  max-width: 50vw;
+  padding: 8px 12px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.results {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  width: min(460px, 90vw);
+  max-height: 360px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+}
+
+.results button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.results button:hover {
+  background: var(--c-brand-tint);
+}
+
+.results span {
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+.noResults {
+  padding: 8px 10px;
+  color: var(--c-text-muted);
+}
+
+.error {
+  color: var(--c-danger);
+}

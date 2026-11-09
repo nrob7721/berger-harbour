@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="libphonenumber-csharp" Version="9.0.41" />
+  </ItemGroup>
+</Project>

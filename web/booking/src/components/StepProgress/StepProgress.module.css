@@ -1,0 +1,40 @@
+.progress {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.item {
+  padding: 6px 4px 8px;
+  border-bottom: 4px solid var(--c-border);
+  text-align: center;
+  font-size: 14px;
+  color: var(--c-text-muted);
+}
+
+.current {
+  border-bottom-color: var(--c-brand);
+  color: var(--c-text);
+  font-weight: 700;
+}
+
+.done {
+  border-bottom-color: var(--c-brand-tint-strong);
+}
+
+@media (max-width: 600px) {
+  .label {
+    font-size: 12px;
+  }
+
+  .item:not(.current) .label {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
