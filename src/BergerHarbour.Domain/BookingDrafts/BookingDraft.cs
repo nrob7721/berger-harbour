@@ -1,121 +1,116 @@
-using System.Security.Cryptography;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.BookingDrafts;
 
-public enum DraftStep { Details, Addons, Summary, Payment }
-
-public sealed record AddonRequest(string AddonId, int Quantity);
-
-/// <summary>What the customer entered in the booking app before paying. Never a customer record.</summary>
-public sealed record DraftDetails(
-    BoatId BoatId,
-    PeriodType PeriodType,
-    StayRange Stay,
-    GuestNumbers Guests,
-    string FirstName,
-    string LastName,
-    string Email,
-    string MobileNumber,
-    IReadOnlyList<AddonRequest> AddonRequests,
-    DraftStep LastStepReached);
-
+/// <summary>
+/// The details a customer entered online before paying. Not a customer record: if it isn't converted into an Active
+/// booking, staff are alerted (email #10).
+/// </summary>
 public sealed class BookingDraft : AggregateRoot
 {
-    public string Id { get; private set; } = "";
-    public BoatId BoatId { get; private set; }
-    public PeriodType PeriodType { get; private set; }
-    public StayRange Stay { get; private set; }
-    public GuestNumbers Guests { get; private set; } = new(1, 0);
-    public string FirstName { get; private set; } = "";
-    public string LastName { get; private set; } = "";
-    public string Email { get; private set; } = "";
-    public string MobileNumber { get; private set; } = "";
-    public IReadOnlyList<AddonRequest> AddonRequests { get; private set; } = [];
-    public DraftStep LastStepReached { get; private set; }
+    private BookingDraft(BookingDraftId id, DraftContents contents, DateTimeOffset createdDate)
+    {
+        Id = id;
+        Contents = contents;
+        CreatedDate = createdDate;
+        LastActivityAt = createdDate;
+    }
+
+    public BookingDraftId Id { get; }
+
+    public DraftContents Contents { get; private set; }
+
     public DateTimeOffset LastActivityAt { get; private set; }
-    public string? ConvertedBookingId { get; private set; }
+
+    public BookingId? ConvertedBookingId { get; private set; }
+
     public DateTimeOffset? ConvertedAt { get; private set; }
+
     public DateTimeOffset? AbandonedNotifiedAt { get; private set; }
 
-    public bool IsConverted => ConvertedAt is not null;
+    public DateTimeOffset CreatedDate { get; }
 
-    private BookingDraft() { }
+    public bool IsConverted => ConvertedBookingId is not null;
 
-    /// <summary>An unguessable id (128 random bits).</summary>
-    public static string NewId() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-
-    public static BookingDraft Create(DraftDetails details, DateTimeOffset now)
+    public static BookingDraft Create(BookingDraftId id, DraftContents contents, DateTimeOffset now)
     {
-        var d = new BookingDraft { Id = NewId() };
-        d.Apply(details, now);
-        d.InitialiseAudit(now);
-        return d;
+        Validate(contents);
+        return new BookingDraft(id, contents, now);
     }
 
-    public static BookingDraft Rehydrate(string id, DraftDetails details, DateTimeOffset lastActivityAt, string? convertedBookingId,
-        DateTimeOffset? convertedAt, DateTimeOffset? abandonedNotifiedAt, int version, DateTimeOffset created, DateTimeOffset modified)
+    public static BookingDraft Rehydrate(
+        BookingDraftId id, DraftContents contents, DateTimeOffset lastActivityAt, BookingId? convertedBookingId, DateTimeOffset? convertedAt,
+        DateTimeOffset? abandonedNotifiedAt, DateTimeOffset createdDate, int version)
     {
-        var d = new BookingDraft
+        var draft = new BookingDraft(id, contents, createdDate)
         {
-            Id = id, BoatId = details.BoatId, PeriodType = details.PeriodType, Stay = details.Stay, Guests = details.Guests,
-            FirstName = details.FirstName, LastName = details.LastName, Email = details.Email, MobileNumber = details.MobileNumber,
-            AddonRequests = details.AddonRequests, LastStepReached = details.LastStepReached, LastActivityAt = lastActivityAt,
-            ConvertedBookingId = convertedBookingId, ConvertedAt = convertedAt, AbandonedNotifiedAt = abandonedNotifiedAt,
+            LastActivityAt = lastActivityAt,
+            ConvertedBookingId = convertedBookingId,
+            ConvertedAt = convertedAt,
+            AbandonedNotifiedAt = abandonedNotifiedAt,
         };
-        d.RestoreAudit(version, created, modified);
-        return d;
+        draft.SetPersistedVersion(version);
+        return draft;
     }
 
-    public void Update(DraftDetails details, DateTimeOffset now)
+    /// <summary>A converted draft can no longer be updated.</summary>
+    public void Update(DraftContents contents, DateTimeOffset now)
     {
-        if (IsConverted) throw new NotFoundException("This booking has already been completed.");
-        Apply(details, now);
-    }
+        if (IsConverted)
+        {
+            throw new NotFoundException("This booking has already been completed.");
+        }
 
-    private void Apply(DraftDetails d, DateTimeOffset now)
-    {
-        var errors = new ValidationErrors();
-        var first = errors.Capture(() => Text.Required(d.FirstName, "firstName", "First name", 100));
-        var last = errors.Capture(() => Text.Required(d.LastName, "lastName", "Last name", 100));
-        var email = errors.Capture(() => EmailAddress.Require(d.Email));
-        var mobile = errors.Capture(() => Shared.MobileNumber.Require(d.MobileNumber, "mobile"));
-        errors.ThrowIfAny();
-        BoatId = d.BoatId;
-        PeriodType = d.PeriodType;
-        Stay = d.Stay;
-        Guests = d.Guests;
-        FirstName = first!;
-        LastName = last!;
-        Email = email!;
-        MobileNumber = mobile!;
-        AddonRequests = d.AddonRequests.ToList();
-        // The furthest step reached never goes backwards.
-        if (LastActivityAt == default || d.LastStepReached > LastStepReached) LastStepReached = d.LastStepReached;
+        Validate(contents);
+        Contents = contents;
         LastActivityAt = now;
     }
 
-    public void MarkConverted(string bookingId, DateTimeOffset now)
+    public void MarkConverted(BookingId bookingId, DateTimeOffset now)
     {
-        if (IsConverted) return;
-        ConvertedBookingId = bookingId;
-        ConvertedAt = now;
+        if (ConvertedBookingId is null)
+        {
+            ConvertedBookingId = bookingId;
+            ConvertedAt = now;
+        }
     }
 
+    /// <summary>Not converted and inactive for longer than <paramref name="abandonedAfter"/>.</summary>
     public bool IsAbandoned(DateTimeOffset now, TimeSpan abandonedAfter) => !IsConverted && now > LastActivityAt + abandonedAfter;
 
-    public bool IsPastRetention(DateTimeOffset now, TimeSpan retention) => now >= CreatedDate + retention;
+    public bool IsPastRetention(DateTimeOffset now, TimeSpan retention) => now > CreatedDate + retention;
 
     public void MarkAbandonedNotified(DateTimeOffset now) => AbandonedNotifiedAt ??= now;
-}
 
-public interface IBookingDraftRepository
-{
-    Task<BookingDraft?> GetAsync(string id, CancellationToken ct = default);
-    Task<IReadOnlyList<BookingDraft>> ListAsync(CancellationToken ct = default);
-    /// <summary>The draft with the latest activity for that normalised email.</summary>
-    Task<BookingDraft?> GetLatestForEmailAsync(string normalisedEmail, CancellationToken ct = default);
-    Task SaveAsync(BookingDraft draft, CancellationToken ct = default);
-    Task DeleteAsync(BookingDraft draft, CancellationToken ct = default);
+    private static void Validate(DraftContents contents)
+    {
+        var errors = new ValidationErrors();
+        if (contents.NumberOfAdults < 1)
+        {
+            errors.Add("numberOfAdults", "At least 1 adult is required.");
+        }
+
+        if (contents.NumberOfChildren < 0)
+        {
+            errors.Add("numberOfChildren", "Children can't be negative.");
+        }
+
+        if (string.IsNullOrWhiteSpace(contents.FirstName))
+        {
+            errors.Add("firstName", "First name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(contents.LastName))
+        {
+            errors.Add("lastName", "Last name is required.");
+        }
+
+        if (contents.AddonRequests.Any(a => a.Quantity < 1))
+        {
+            errors.Add("addons", "Each add-on needs a quantity of at least 1.");
+        }
+
+        errors.ThrowIfAny();
+    }
 }

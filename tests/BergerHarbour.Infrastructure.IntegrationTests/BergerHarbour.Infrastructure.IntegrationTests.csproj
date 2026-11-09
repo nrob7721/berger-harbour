@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/BergerHarbour.Infrastructure/BergerHarbour.Infrastructure.csproj" />
     <ProjectReference Include="../../src/BergerHarbour.PublicApi/BergerHarbour.PublicApi.csproj" />
+    <ProjectReference Include="../../src/BergerHarbour.AdminApi/BergerHarbour.AdminApi.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

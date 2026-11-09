@@ -2,4 +2,7 @@
   <ItemGroup>
     <PackageReference Include="libphonenumber-csharp" Version="9.0.41" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="BergerHarbour.Domain.Tests" />
+  </ItemGroup>
 </Project>

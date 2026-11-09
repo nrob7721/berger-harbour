@@ -1,9 +1,8 @@
 using BergerHarbour.Application.Abstractions;
+using BergerHarbour.Application.Bookings.Dtos;
 using BergerHarbour.Application.Bookings.Validation;
-using BergerHarbour.Application.Catalogue;
-using BergerHarbour.Application.Common;
+using BergerHarbour.Application.Payments;
 using BergerHarbour.Domain.BookingDrafts;
-using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 using Microsoft.Extensions.Logging;
@@ -11,213 +10,157 @@ using Microsoft.Extensions.Options;
 
 namespace BergerHarbour.Application.Bookings;
 
-/// <summary>The customer booking flow: drafts, quotes, holds, release and status.</summary>
-public sealed class OnlineBookingService(
-    IBoatRepository boats,
-    IBookingRepository bookings,
-    IBookingDraftRepository drafts,
-    IBookingRequestValidationStrategy validation,
-    IBoatScheduleLock scheduleLock,
-    IPaymentGateway payments,
-    ITurnstileVerifier turnstile,
-    ReferenceDataLoader referenceData,
-    PaymentScheduleService schedule,
-    PaymentLinkTokens tokens,
-    IOptions<BookingOptions> bookingOptions,
-    IOptions<AppUrlOptions> urls,
-    IClock clock,
-    ILogger<OnlineBookingService> logger)
+/// <summary>Online checkout: the hold, Back from Payment, and the completion status (public <c>BookingsController</c>).</summary>
+public sealed class OnlineBookingService
 {
-    // ----- Drafts -----
+    public const string AlreadyPaid = "Your payment has already been completed.";
 
-    public async Task<CreateDraftResponse> CreateDraftAsync(CreateDraftRequest r, string? remoteIp, CancellationToken ct = default)
+    private readonly OnlineBookingPreparer preparer;
+    private readonly IBookingRepository bookings;
+    private readonly IBookingDraftRepository drafts;
+    private readonly IBoatScheduleLock scheduleLock;
+    private readonly BookingAvailabilityService availability;
+    private readonly IPaymentGateway payments;
+    private readonly PaymentLinkTokens links;
+    private readonly BookingOptions options;
+    private readonly IClock clock;
+    private readonly ILogger<OnlineBookingService> logger;
+
+    public OnlineBookingService(
+        OnlineBookingPreparer preparer, IBookingRepository bookings, IBookingDraftRepository drafts, IBoatScheduleLock scheduleLock,
+        BookingAvailabilityService availability, IPaymentGateway payments, PaymentLinkTokens links, IOptions<BookingOptions> options, IClock clock,
+        ILogger<OnlineBookingService> logger)
     {
-        if (!await turnstile.VerifyAsync(r.TurnstileToken, remoteIp, ct))
-            throw new DomainValidationException("turnstileToken", "Please complete the security check and try again.");
-        var details = await DraftDetailsAsync(r.Slug, r.PeriodType, r.StartDate, r.NumberOfAdults, r.NumberOfChildren,
-            r.FirstName, r.LastName, r.Email, r.Mobile, [], DraftStep.Details, ct);
-        var draft = BookingDraft.Create(details, clock.UtcNow);
-        await drafts.SaveAsync(draft, ct);
-        return new CreateDraftResponse(draft.Id);
+        this.preparer = preparer;
+        this.bookings = bookings;
+        this.drafts = drafts;
+        this.scheduleLock = scheduleLock;
+        this.availability = availability;
+        this.payments = payments;
+        this.links = links;
+        this.options = options.Value;
+        this.clock = clock;
+        this.logger = logger;
     }
 
-    public async Task UpdateDraftAsync(string draftId, UpdateDraftRequest r, CancellationToken ct = default)
+    /// <summary>
+    /// Validates, creates the PendingPayment hold atomically (no customer, no reference yet), updates the draft and
+    /// creates the deposit's Embedded Checkout session.
+    /// </summary>
+    public async Task<CreateBookingResponse> CreateAsync(CreateBookingRequest request, CancellationToken ct = default)
     {
-        var draft = await drafts.GetAsync(draftId, ct);
-        if (draft is null || draft.IsConverted) throw new NotFoundException("Your booking session has expired. Please start again.");
-        var details = await DraftDetailsAsync(r.Slug, r.PeriodType, r.StartDate, r.NumberOfAdults, r.NumberOfChildren,
-            r.FirstName, r.LastName, r.Email, r.Mobile, r.Addons ?? [], r.LastStepReached, ct);
-        draft.Update(details, clock.UtcNow);
-        await drafts.SaveAsync(draft, ct);
-    }
-
-    private async Task<DraftDetails> DraftDetailsAsync(string slug, PeriodType periodType, DateOnly startDate, int adults, int children,
-        string firstName, string lastName, string email, string mobile, IReadOnlyList<AddonRequestDto> addons, DraftStep step, CancellationToken ct)
-    {
-        var errors = new ValidationErrors();
-        var boat = await boats.GetBySlugAsync(slug ?? "", ct);
-        if (boat is null || !boat.IsBookableHouseBoat) errors.Add("slug", "This boat isn't available for online booking.");
-        var stay = errors.Capture(() => (StayRange?)StayPeriodFactory.ForOnlineStart(periodType, startDate));
-        var guests = errors.Capture(() => new GuestNumbers(adults, children));
-        var normalisedEmail = errors.Capture(() => EmailAddress.Require(email));
-        var e164 = errors.Capture(() => MobileNumber.Require(mobile, "mobile"));
-        errors.Capture(() => Text.Required(firstName, "firstName", "First name", 100));
-        errors.Capture(() => Text.Required(lastName, "lastName", "Last name", 100));
-        errors.ThrowIfAny();
-        return new DraftDetails(boat!.Id, periodType, stay!.Value, guests!, firstName, lastName, normalisedEmail!, e164!,
-            addons.Where(a => a.Quantity > 0).Select(a => new AddonRequest(a.AddonId, a.Quantity)).ToList(), step);
-    }
-
-    // ----- Quote -----
-
-    public async Task<QuoteResponse> QuoteAsync(string slug, QuoteRequest r, CancellationToken ct = default)
-    {
-        var boat = await boats.GetBySlugAsync(slug, ct);
-        if (boat is null || boat.Type != BoatType.House) throw new NotFoundException("We couldn't find that boat.");
-        var reference = await referenceData.LoadAsync(ct);
-        var result = await validation.ValidateAsync(new BookingRequest
-        {
-            Boat = boat, PeriodType = r.PeriodType, StartDate = r.StartDate, NumberOfAdults = r.NumberOfAdults,
-            NumberOfChildren = r.NumberOfChildren, Addons = ToAddons(r.Addons), Reference = reference, Now = clock.UtcNow,
-            Scope = ValidationScope.Quote,
-        }, ct);
-        result.ThrowIfInvalid();
-        var stay = result.Stay!.Value;
-        var guests = result.Guests!;
-        var hire = HirePriceOrThrow(boat, reference, r.PeriodType, stay);
-        var lines = PriceLines(reference, r.PeriodType, ToAddons(r.Addons));
-        var deposit = boat.EffectiveDeposit(reference.Settings.DepositAmount);
-        var total = hire + lines.Sum(l => l.LineTotal ?? 0);
-        var scheduleType = PaymentScheduleService.DetermineSchedule(stay, reference.BlockedPeriods);
-        var milestones = schedule.Milestones(scheduleType, stay.Start, total, deposit, clock.UtcNow);
-        return new QuoteResponse(
-            boat.Name, r.PeriodType, stay.Start, stay.End, guests.Adults, guests.Children,
-            PricingService.SeasonFor(stay.Start, reference.Seasons).Name, hire,
-            lines.Select(l => new QuoteAddonLine(l.AddonId, l.NameSnapshot, l.Quantity, l.UnitPrice, l.LineTotal)).ToList(),
-            total, lines.Any(l => l.UnitPrice is null), deposit, PaymentScheduleService.CheckoutAmount(deposit, hire),
-            ScheduleView.Build(milestones), boat.SecurityBond,
-            RoomingWarning.Applies(boat, guests.Total) ? RoomingWarning.Text(boat, guests.Total) : null);
-    }
-
-    private static decimal HirePriceOrThrow(Boat boat, ReferenceData reference, PeriodType periodType, StayRange stay) =>
-        PricingService.HirePrice(boat, reference.Seasons, periodType, stay.Start)
-        ?? throw new DomainValidationException("startDate", "This boat can't be booked online for these dates. Please call or email us.");
-
-    private static IReadOnlyList<AddonQuantity> ToAddons(IReadOnlyList<AddonRequestDto>? addons) =>
-        (addons ?? []).Select(a => new AddonQuantity(a.AddonId, a.Quantity)).ToList();
-
-    /// <summary>Online add-on lines, priced on the server; prices sent by the browser are ignored.</summary>
-    private static List<AddonLine> PriceLines(ReferenceData reference, PeriodType periodType, IReadOnlyList<AddonQuantity> addons) =>
-        addons.GroupBy(a => a.AddonId)
-            .Select(g => (Addon: reference.Addon(g.Key)!, Quantity: g.Sum(x => x.Quantity)))
-            .OrderBy(x => x.Addon.SortOrder)
-            .Select(x => AddonLine.Create(null, x.Addon.Id, x.Addon.Name, x.Quantity, PricingService.AddonUnitPrice(x.Addon, periodType)))
-            .ToList();
-
-    // ----- Hold + checkout -----
-
-    public async Task<CreateBookingResponse> CreateBookingAsync(CreateBookingRequest r, CancellationToken ct = default)
-    {
+        var boat = await preparer.HouseBoatAsync(request.Slug, ct);
+        var draft = string.IsNullOrWhiteSpace(request.DraftId) ? null : await drafts.GetAsync(new BookingDraftId(request.DraftId), ct);
+        var bookingRequest = OnlineRequestMapper.ToRequest(request);
+        var p = await preparer.PrepareAsync(boat, bookingRequest, BookingValidationScope.Submit, draft, ct);
         var now = clock.UtcNow;
-        var boat = await boats.GetBySlugAsync(r.Slug ?? "", ct);
-        var reference = await referenceData.LoadAsync(ct);
-        var draft = string.IsNullOrWhiteSpace(r.DraftId) ? null : await drafts.GetAsync(r.DraftId, ct);
-        var addons = ToAddons(r.Addons);
-        var result = await validation.ValidateAsync(new BookingRequest
-        {
-            Boat = boat, PeriodType = r.PeriodType, StartDate = r.StartDate, NumberOfAdults = r.NumberOfAdults,
-            NumberOfChildren = r.NumberOfChildren, Addons = addons, Reference = reference, Now = now, Scope = ValidationScope.Booking,
-            Contact = new ContactInput(r.FirstName, r.LastName, r.Email, r.Mobile), Draft = draft, TermsAccepted = r.TermsAccepted,
-            RoomingWarningAccepted = r.RoomingWarningAccepted, RoomingWarningText = r.RoomingWarningText,
-        }, ct);
-        result.ThrowIfInvalid();
-        var stay = result.Stay!.Value;
-        var guests = result.Guests!;
-        var hire = HirePriceOrThrow(boat!, reference, r.PeriodType, stay);
-        var lines = PriceLines(reference, r.PeriodType, addons);
-        var deposit = boat!.EffectiveDeposit(reference.Settings.DepositAmount);
-        var details = new CustomerDetails(r.FirstName.Trim(), r.LastName.Trim(), EmailAddress.Normalise(r.Email), MobileNumber.Require(r.Mobile, "mobile"));
-        var rooming = RoomingWarning.Applies(boat, guests.Total) ? new RoomingWarningAcceptance(now, RoomingWarning.Text(boat, guests.Total)) : null;
-        var bookingId = Ids.New();
-        var options = bookingOptions.Value;
+        var details = new CustomerDetails(request.FirstName.Trim(), request.LastName.Trim(), EmailAddress.Create(request.Email),
+            MobileNumber.Create(request.Mobile));
+        var id = BookingId.New();
+        var hold = new OnlineHold(boat.Id, draft!.Id, request.PeriodType, p.Stay, request.NumberOfAdults, request.NumberOfChildren, details,
+            p.AddonLines, p.HirePrice, p.DepositAmount, p.PaymentSchedule,
+            p.RoomingWarning is null ? null : new RoomingWarningAcceptance(now, p.RoomingWarning), now, now + options.HoldLifetime, links.HashFor(id));
 
         var booking = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
-            var existing = await session.GetPotentiallyOverlappingBookingsAsync(stay);
-            var unavailable = await session.GetUnavailabilitiesAsync(stay);
-            BookingAvailabilityService.EnsureAvailable(stay, existing, unavailable, now);
-            var hold = Booking.CreateOnlineHold(boat.Id, r.PeriodType, stay, guests, details, draft!.Id, hire, deposit,
-                PaymentScheduleService.DetermineSchedule(stay, reference.BlockedPeriods), lines, rooming, now,
-                now + options.HoldDuration, bookingId, tokens.HashFor(bookingId), now);
-            session.SaveBooking(hold);
-            return hold;
-        }, ct);
+            var overlapping = await session.ListOverlappingBookingsAsync(p.Stay);
+            var unavailable = await session.ListOverlappingUnavailabilitiesAsync(p.Stay);
+            availability.EnsureAvailable(p.Stay, overlapping, unavailable, now);
+            var created = Booking.CreateOnlineHold(id, hold, now);
+            session.SaveBooking(created);
+            return created;
+        });
 
-        draft!.Update(new DraftDetails(boat.Id, r.PeriodType, stay, guests, details.FirstName, details.LastName, details.Email,
-            details.MobileNumber, addons.Select(a => new AddonRequest(a.AddonId, a.Quantity)).ToList(), DraftStep.Payment), now);
+        draft.Update(draft.Contents with
+        {
+            BoatId = boat.Id,
+            PeriodType = request.PeriodType,
+            Stay = p.Stay,
+            NumberOfAdults = request.NumberOfAdults,
+            NumberOfChildren = request.NumberOfChildren,
+            FirstName = details.FirstName,
+            LastName = details.LastName,
+            Email = details.Email,
+            MobileNumber = details.MobileNumber,
+            AddonRequests = bookingRequest.Addons.Select(a => new AddonRequest(a.AddonId, a.Quantity)).ToList(),
+            LastStepReached = DraftStep.Payment,
+        }, now);
         await drafts.SaveAsync(draft, ct);
 
         CheckoutSession session;
         try
         {
-            session = await payments.CreateEmbeddedCheckoutAsync(new CheckoutRequest(
-                booking.Id, CheckoutPurpose.Deposit, PaymentScheduleService.CheckoutAmount(deposit, hire),
-                $"Deposit – {boat.Name}, {Dates.Format(stay.Start)} to {Dates.Format(stay.End)}",
-                details.Email, null,
-                $"{urls.Value.BaseUrl}/?boat={Uri.EscapeDataString(boat.Slug)}&booking={booking.Id}&session_id={{CHECKOUT_SESSION_ID}}",
+            session = await payments.CreateCheckoutSessionAsync(new CheckoutSessionRequest(booking.Id, CheckoutPurpose.Deposit, p.CheckoutAmount,
+                $"{boat.Name} deposit", $"Deposit for {boat.Name}, check-in {Notifications.DisplayFormat.Date(p.Stay.Start)}", details.Email.Value,
+                $"{links.BaseUrl}/?boat={Uri.EscapeDataString(boat.Slug)}&booking={booking.Id.Value}&session_id={{CHECKOUT_SESSION_ID}}",
                 now + options.CheckoutSessionLifetime), ct);
         }
-        catch (Exception e)
+        catch
         {
-            logger.LogError(e, "Creating the deposit checkout failed for booking {BookingId}; releasing the hold", booking.Id);
-            booking.Expire();
+            booking.Expire(clock.UtcNow);
             await bookings.SaveAsync(booking, ct);
-            throw new ExternalServiceException("We couldn't start the payment. Please try again in a moment.", e);
+            throw;
         }
 
         booking.AttachCheckoutSession(session.SessionId);
         await bookings.SaveAsync(booking, ct);
-        return new CreateBookingResponse(booking.Id, session.ClientSecret, session.SessionId);
+        return new CreateBookingResponse(booking.Id.Value, session.ClientSecret, session.SessionId);
     }
 
-    /// <summary>Back from the Payment step: expire the Checkout session and the hold. Idempotent.</summary>
-    public async Task ReleaseAsync(string bookingId, string draftId, CancellationToken ct = default)
+    /// <summary>
+    /// Back from the Payment step: expires the Checkout session and the hold. Idempotent; 409 when already paid; 404 when
+    /// the draft doesn't match.
+    /// </summary>
+    public async Task ReleaseAsync(string bookingId, ReleaseBookingRequest request, CancellationToken ct = default)
     {
-        var booking = await bookings.GetAsync(bookingId, ct);
-        if (booking is null || string.IsNullOrEmpty(draftId) || booking.BookingDraftId != draftId)
-            throw new NotFoundException("We couldn't find that booking.");
-        if (booking.Status == BookingStatus.Expired) return;
-        if (booking.Status != BookingStatus.PendingPayment) throw new ConflictException("Your payment has already been completed.");
-        if (booking.StripeCheckoutSessionId is { } sessionId)
+        for (var attempt = 1; ; attempt++)
         {
-            var result = await payments.ExpireCheckoutSessionAsync(sessionId, ct);
-            if (result == ExpireSessionResult.AlreadyCompleted) throw new ConflictException("Your payment has already been completed.");
-        }
-        try
-        {
-            booking.Expire();
-            await bookings.SaveAsync(booking, ct);
-        }
-        catch (ConcurrencyConflictException)
-        {
-            // The webhook changed it meanwhile.
-            var latest = await bookings.GetAsync(bookingId, ct);
-            if (latest?.Status == BookingStatus.Active) throw new ConflictException("Your payment has already been completed.");
-            if (latest?.Status == BookingStatus.PendingPayment)
+            var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
+            if (booking is null || booking.CreatedBy != BookingCreator.Customer || booking.BookingDraftId?.Value != request.DraftId)
             {
-                latest.Expire();
-                await bookings.SaveAsync(latest, ct);
+                throw new NotFoundException("We couldn't find that booking.");
+            }
+
+            switch (booking.Status)
+            {
+                case BookingStatus.Expired:
+                    return;
+                case BookingStatus.PendingPayment:
+                    break;
+                default:
+                    throw new ConflictException(AlreadyPaid);
+            }
+
+            if (booking.StripeCheckoutSessionId is { } sessionId && !await payments.TryExpireCheckoutSessionAsync(sessionId, ct))
+            {
+                throw new ConflictException(AlreadyPaid);
+            }
+
+            booking.Expire(clock.UtcNow);
+            try
+            {
+                await bookings.SaveAsync(booking, ct);
+                logger.LogInformation("Released hold {BookingId} from the Payment step.", booking.Id.Value);
+                return;
+            }
+            catch (ConcurrencyException) when (attempt < 3)
+            {
+                // The webhook changed it meanwhile: reload and decide again.
             }
         }
     }
 
+    /// <summary>The completion screen's status, only when <paramref name="sessionId"/> matches the booking.</summary>
     public async Task<BookingStatusResponse> GetStatusAsync(string bookingId, string? sessionId, CancellationToken ct = default)
     {
-        var booking = await bookings.GetAsync(bookingId, ct);
+        var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
         if (booking is null || string.IsNullOrEmpty(sessionId) || booking.StripeCheckoutSessionId != sessionId)
+        {
             throw new NotFoundException("We couldn't find that booking.");
-        var boat = await boats.GetAsync(booking.BoatId, ct);
-        return new BookingStatusResponse(booking.Status, booking.Status == BookingStatus.Active ? booking.Reference : null,
-            boat?.Name ?? "", booking.StartDate, booking.EndDate, booking.CustomerDetails?.Email ?? "");
+        }
+
+        var boat = await preparer.BoatByIdAsync(booking.BoatId, ct);
+        return new BookingStatusResponse(booking.Status, booking.Reference?.Value, boat?.Name ?? string.Empty, booking.StartDate, booking.EndDate,
+            booking.CustomerDetails?.Email.Value ?? string.Empty);
     }
 }

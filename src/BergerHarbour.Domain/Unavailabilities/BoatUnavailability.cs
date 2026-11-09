@@ -1,51 +1,55 @@
+using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Unavailabilities;
 
-/// <summary>A range of nights when a boat can't be hired (maintenance, etc.).</summary>
+/// <summary>Nights a specific boat can't be hired (maintenance etc.). Inclusive nights.</summary>
 public sealed class BoatUnavailability : AggregateRoot
 {
-    public string Id { get; private set; } = "";
-    public BoatId BoatId { get; private set; }
+    private BoatUnavailability(BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset createdDate)
+    {
+        Id = id;
+        BoatId = boatId;
+        Nights = nights;
+        Comments = comments;
+        CreatedDate = createdDate;
+        ModifiedDate = createdDate;
+    }
+
+    public BoatUnavailabilityId Id { get; }
+
+    public BoatId BoatId { get; }
+
     public NightRange Nights { get; private set; }
+
     public string? Comments { get; private set; }
 
-    private BoatUnavailability() { }
+    public DateTimeOffset CreatedDate { get; }
 
-    public static BoatUnavailability Create(BoatId boatId, DateOnly firstNight, DateOnly lastNight, string? comments, DateTimeOffset now)
+    public DateTimeOffset ModifiedDate { get; private set; }
+
+    public static BoatUnavailability Create(BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset now) =>
+        new(id, boatId, nights, Normalise(comments), now);
+
+    public static BoatUnavailability Rehydrate(
+        BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate,
+        int version)
     {
-        var u = new BoatUnavailability { Id = Ids.New(), BoatId = boatId };
-        u.Update(firstNight, lastNight, comments);
-        u.InitialiseAudit(now);
-        return u;
+        var unavailability = new BoatUnavailability(id, boatId, nights, comments, createdDate) { ModifiedDate = modifiedDate };
+        unavailability.SetPersistedVersion(version);
+        return unavailability;
     }
 
-    public static BoatUnavailability Rehydrate(string id, BoatId boatId, NightRange nights, string? comments, int version, DateTimeOffset created, DateTimeOffset modified)
+    public void Update(NightRange nights, string? comments, DateTimeOffset now)
     {
-        var u = new BoatUnavailability { Id = id, BoatId = boatId, Nights = nights, Comments = comments };
-        u.RestoreAudit(version, created, modified);
-        return u;
+        Nights = nights;
+        Comments = Normalise(comments);
+        ModifiedDate = now;
     }
 
-    public void Update(DateOnly firstNight, DateOnly lastNight, string? comments)
+    private static string? Normalise(string? comments)
     {
-        var errors = new ValidationErrors();
-        var nights = errors.Capture(() => (NightRange?)new NightRange(firstNight, lastNight));
-        var c = errors.Capture(() => Text.Optional(comments, "comments", "Comments", 1000));
-        errors.ThrowIfAny();
-        Nights = nights!.Value;
-        Comments = c;
+        var trimmed = string.IsNullOrWhiteSpace(comments) ? null : comments.Trim();
+        return trimmed?.Length > 1000 ? throw new DomainValidationException("comments", "Comments must be 1000 characters or fewer.") : trimmed;
     }
-
-    /// <summary>The same nights as a booking stay, for overlap checks: [FirstNight, LastNight + 1).</summary>
-    public StayRange AsStay => Nights.AsStay();
-}
-
-public interface IBoatUnavailabilityRepository
-{
-    Task<BoatUnavailability?> GetAsync(string id, CancellationToken ct = default);
-    Task<IReadOnlyList<BoatUnavailability>> ListForBoatAsync(BoatId boatId, CancellationToken ct = default);
-    /// <summary>Unavailabilities of any boat with a night in [from, to).</summary>
-    Task<IReadOnlyList<BoatUnavailability>> ListInRangeAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
-    Task DeleteAsync(BoatUnavailability unavailability, CancellationToken ct = default);
 }

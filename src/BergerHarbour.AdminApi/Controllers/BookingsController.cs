@@ -1,80 +1,50 @@
 using BergerHarbour.Application.Bookings;
-using BergerHarbour.Application.Catalogue;
-using BergerHarbour.Application.Notifications;
+using BergerHarbour.Application.Bookings.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.AdminApi.Controllers;
 
 [ApiController]
 [Route("api/bookings")]
-public sealed class BookingsController(AdminBookingService bookings) : ControllerBase
+public sealed class BookingsController : ControllerBase
 {
-    /// <summary>Timeline data: house boats (berth desc, then name), bookings, unavailabilities and blocked periods.</summary>
-    [HttpGet]
-    public Task<TimelineResponse> Timeline([FromQuery] DateOnly from, [FromQuery] DateOnly to, [FromQuery] bool includeInactive, CancellationToken ct) =>
-        bookings.GetTimelineAsync(from, to, includeInactive, ct);
+    private readonly StaffBookingService service;
 
-    /// <summary>By name, email or reference, including details customers entered online.</summary>
+    public BookingsController(StaffBookingService service)
+    {
+        this.service = service;
+    }
+
+    /// <summary>Timeline data.</summary>
+    [HttpGet]
+    public Task<TimelineResponse> Timeline([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool includeInactive, CancellationToken ct) =>
+        service.GetTimelineAsync(from, to, includeInactive, ct);
+
     [HttpGet("search")]
-    public Task<IReadOnlyList<BookingSearchResult>> Search([FromQuery] string? q, CancellationToken ct) => bookings.SearchAsync(q, ct);
+    public Task<IReadOnlyList<BookingSearchResult>> Search([FromQuery] string? q, CancellationToken ct) => service.SearchAsync(q, ct);
 
     [HttpGet("{id}")]
-    public Task<AdminBookingDetail> Get(string id, CancellationToken ct) => bookings.GetAsync(id, ct);
+    public Task<AdminBookingDetail> Get(string id, CancellationToken ct) => service.GetAsync(id, ct);
 
     [HttpPost]
-    public Task<BookingSaveResponse> Create(CreateStaffBookingRequest request, CancellationToken ct) => bookings.CreateAsync(request, ct);
+    public Task<BookingSaveResponse> Create(CreateStaffBookingRequest request, CancellationToken ct) => service.CreateAsync(request, ct);
 
     [HttpPut("{id}")]
-    public Task<BookingSaveResponse> Update(string id, UpdateStaffBookingRequest request, CancellationToken ct) => bookings.UpdateAsync(id, request, ct);
+    public Task<BookingSaveResponse> Update(string id, UpdateStaffBookingRequest request, CancellationToken ct) => service.UpdateAsync(id, request, ct);
 
-    /// <summary>Prices for pre-filling and "Recalculate from rates". Saves nothing.</summary>
+    /// <summary>Rate-table prices for pre-filling and Recalculate from rates. Saves nothing.</summary>
     [HttpPost("quote")]
-    public Task<AdminQuoteResponse> Quote(AdminQuoteRequest request, CancellationToken ct) => bookings.QuoteAsync(request, ct);
+    public Task<AdminQuoteResponse> Quote(AdminQuoteRequest request, CancellationToken ct) => service.QuoteAsync(request, ct);
 
     [HttpPost("{id}/payments")]
     public Task<AdminBookingDetail> AddPayment(string id, ManualPaymentRequest request, CancellationToken ct) =>
-        bookings.AddManualPaymentAsync(id, request, ct);
+        service.AddManualPaymentAsync(id, request, ct);
 
-    /// <summary>Sends the payment-due email now, for the amount due now.</summary>
     [HttpPost("{id}/send-payment-link")]
-    [ProducesResponseType(204)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> SendPaymentLink(string id, CancellationToken ct)
     {
-        await bookings.SendPaymentLinkAsync(id, ct);
+        await service.SendPaymentLinkAsync(id, ct);
         return NoContent();
-    }
-}
-
-[ApiController]
-[Route("api/addons")]
-public sealed class AddonsController(PublicCatalogueService catalogue) : ControllerBase
-{
-    /// <summary>Remaining capacity for the dates, optionally excluding the booking being edited.</summary>
-    [HttpGet("{addonId}/availability")]
-    public Task<AddonRemainingResponse> Availability(string addonId, [FromQuery] DateOnly startDate, [FromQuery] DateOnly endDate,
-        [FromQuery] string? excludeBookingId, CancellationToken ct) =>
-        catalogue.GetAddonRemainingAsync(addonId, startDate, endDate, excludeBookingId, ct);
-}
-
-[ApiController]
-[Route(JobsAuthentication.Path)]
-[ApiExplorerSettings(IgnoreApi = true)]
-public sealed class JobsController(NotificationJob job, JobsAuthentication auth, ILogger<JobsController> logger) : ControllerBase
-{
-    /// <summary>Called hourly by Cloud Scheduler (OIDC). Idempotent.</summary>
-    [HttpPost("process-notifications")]
-    public async Task<IActionResult> ProcessNotifications(CancellationToken ct)
-    {
-        if (!await auth.IsAuthorisedAsync(HttpContext)) return Unauthorized();
-        try
-        {
-            var result = await job.RunAsync(ct);
-            return result.Failures > 0 ? StatusCode(500, result) : Ok(result);
-        }
-        catch (Exception e)
-        {
-            logger.LogError(LogEvents.JobFailed, e, "JOB_FAILED: process-notifications failed");
-            throw;
-        }
     }
 }

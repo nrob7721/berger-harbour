@@ -1,49 +1,50 @@
+using System.Globalization;
 using BergerHarbour.Application.Abstractions;
-using BergerHarbour.Application.Bookings;
+using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
-using Microsoft.Extensions.Logging;
+using global::Stripe;
+using global::Stripe.Checkout;
 using Microsoft.Extensions.Options;
-using Stripe;
-using Stripe.Checkout;
 
 namespace BergerHarbour.Infrastructure.Stripe;
 
-public sealed class StripeOptions
+/// <summary>
+/// Stripe Embedded Checkout (<c>ui_mode: embedded_page</c>), card only so <c>checkout.session.completed</c> means paid
+/// (wallets come through the card method). Amounts are AUD including GST.
+/// </summary>
+public sealed class StripePaymentGateway : IPaymentGateway
 {
-    public string SecretKey { get; set; } = "";
-    public string WebhookSecret { get; set; } = "";
-}
+    private const string BookingIdKey = "bookingId";
+    private const string PurposeKey = "purpose";
 
-/// <summary>Stripe Embedded Checkout (the booking app runs inside an iframe, which hosted Checkout can't).</summary>
-public sealed class StripePaymentGateway(IOptions<StripeOptions> options, ILogger<StripePaymentGateway> logger) : IPaymentGateway
-{
-    private SessionService Sessions()
+    private readonly StripeOptions options;
+    private readonly StripeClient? client;
+
+    public StripePaymentGateway(IOptions<StripeOptions> options)
     {
-        if (string.IsNullOrWhiteSpace(options.Value.SecretKey))
-            throw new InvalidOperationException("Stripe is not configured (STRIPE_SECRET_KEY).");
-        return new SessionService(new StripeClient(options.Value.SecretKey));
+        this.options = options.Value;
+        client = this.options.IsConfigured ? new StripeClient(this.options.SecretKey) : null;
     }
 
-    public async Task<CheckoutSession> CreateEmbeddedCheckoutAsync(CheckoutRequest r, CancellationToken ct = default)
+    public async Task<CheckoutSession> CreateCheckoutSessionAsync(CheckoutSessionRequest request, CancellationToken ct = default)
     {
-        var metadata = new Dictionary<string, string> { ["bookingId"] = r.BookingId, ["purpose"] = r.Purpose.ToString() };
-        if (r.Reference is not null) metadata["reference"] = r.Reference;
+        var metadata = new Dictionary<string, string>
+        {
+            [BookingIdKey] = request.BookingId.Value,
+            [PurposeKey] = request.Purpose.ToString(),
+        };
         var create = new SessionCreateOptions
         {
             UiMode = "embedded_page",
             Mode = "payment",
             RedirectOnCompletion = "if_required",
-            ReturnUrl = r.ReturnUrl,
-            // Only synchronous methods (cards, and wallets through them), so checkout.session.completed means paid.
-            AllowedPaymentMethodTypes = ["card"],
+            ReturnUrl = request.ReturnUrl,
             Locale = "auto",
-            CustomerEmail = r.CustomerEmail,
+            AllowedPaymentMethodTypes = ["card"],
+            CustomerEmail = string.IsNullOrWhiteSpace(request.CustomerEmail) ? null : request.CustomerEmail,
+            ExpiresAt = request.ExpiresAt?.UtcDateTime,
             Metadata = metadata,
-            PaymentIntentData = new SessionPaymentIntentDataOptions
-            {
-                Description = r.Reference is null ? r.Description : $"{r.Reference} – {r.Description}",
-                Metadata = metadata,
-            },
+            PaymentIntentData = new SessionPaymentIntentDataOptions { Description = request.Description, Metadata = metadata },
             LineItems =
             [
                 new SessionLineItemOptions
@@ -52,55 +53,72 @@ public sealed class StripePaymentGateway(IOptions<StripeOptions> options, ILogge
                     PriceData = new SessionLineItemPriceDataOptions
                     {
                         Currency = "aud",
-                        UnitAmount = Money.ToCents(r.Amount),
-                        ProductData = new SessionLineItemPriceDataProductDataOptions { Name = r.Description },
+                        UnitAmount = (long)Math.Round(request.Amount * 100m, MidpointRounding.AwayFromZero),
+                        ProductData = new SessionLineItemPriceDataProductDataOptions { Name = request.ProductName, Description = request.Description },
                     },
                 },
             ],
-            ExpiresAt = r.ExpiresAt?.UtcDateTime,
         };
-        var session = await Sessions().CreateAsync(create, cancellationToken: ct);
+        var session = await new SessionService(Client).CreateAsync(create, cancellationToken: ct);
         return new CheckoutSession(session.Id, session.ClientSecret);
     }
 
-    public async Task<ExpireSessionResult> ExpireCheckoutSessionAsync(string sessionId, CancellationToken ct = default)
+    public async Task<bool> TryExpireCheckoutSessionAsync(string sessionId, CancellationToken ct = default)
     {
-        var service = Sessions();
+        var service = new SessionService(Client);
         var session = await service.GetAsync(sessionId, cancellationToken: ct);
         switch (session.Status)
         {
-            case "complete": return ExpireSessionResult.AlreadyCompleted;
-            case "expired": return ExpireSessionResult.AlreadyExpired;
+            case "complete":
+                return false;
+            case "expired":
+                return true;
         }
+
         try
         {
             await service.ExpireAsync(sessionId, cancellationToken: ct);
-            return ExpireSessionResult.Expired;
+            return true;
         }
-        catch (StripeException e)
+        catch (StripeException)
         {
-            logger.LogWarning(e, "Expiring Checkout session {SessionId} failed; checking its status", sessionId);
-            var latest = await service.GetAsync(sessionId, cancellationToken: ct);
-            return latest.Status == "complete" ? ExpireSessionResult.AlreadyCompleted : ExpireSessionResult.AlreadyExpired;
+            // Completed or expired in the meantime: decide from its current state.
+            return (await service.GetAsync(sessionId, cancellationToken: ct)).Status != "complete";
         }
     }
-}
 
-/// <summary>Verifies the Stripe signature and turns events into application messages.</summary>
-public sealed class StripeWebhookParser(IOptions<StripeOptions> options)
-{
-    /// <summary>Null for event types this system ignores. Throws <see cref="StripeException"/> for a bad signature.</summary>
-    public object? Parse(string json, string? signature)
+    public PaymentWebhookEvent? ParseWebhookEvent(string payload, string? signature)
     {
-        var e = EventUtility.ConstructEvent(json, signature, options.Value.WebhookSecret, throwOnApiVersionMismatch: false);
-        if (e.Data.Object is not Session s || !s.Metadata.TryGetValue("bookingId", out var bookingId)) return null;
-        var purpose = s.Metadata.TryGetValue("purpose", out var p) && Enum.TryParse<CheckoutPurpose>(p, out var parsed) ? parsed : CheckoutPurpose.Payment;
-        return e.Type switch
+        Event stripeEvent;
+        try
         {
-            EventTypes.CheckoutSessionCompleted when s.PaymentStatus == "paid" => new CheckoutCompleted(
-                s.Id, bookingId, purpose, s.PaymentIntentId ?? s.Id, Money.FromCents(s.AmountTotal ?? 0), new DateTimeOffset(e.Created, TimeSpan.Zero)),
-            EventTypes.CheckoutSessionExpired => new CheckoutExpired(s.Id, bookingId),
+            stripeEvent = EventUtility.ConstructEvent(payload, signature ?? string.Empty, options.WebhookSecret, throwOnApiVersionMismatch: false);
+        }
+        catch (Exception e) when (e is StripeException or ArgumentException or FormatException or Newtonsoft.Json.JsonException)
+        {
+            throw new InvalidWebhookException("The Stripe signature or payload is invalid.", e);
+        }
+
+        if (stripeEvent.Data.Object is not Session session
+            || !session.Metadata.TryGetValue(BookingIdKey, out var bookingId)
+            || !session.Metadata.TryGetValue(PurposeKey, out var purposeText)
+            || !Enum.TryParse<CheckoutPurpose>(purposeText, out var purpose))
+        {
+            return null;
+        }
+
+        return stripeEvent.Type switch
+        {
+            EventTypes.CheckoutSessionCompleted when session.PaymentStatus == "paid" =>
+                new CheckoutSessionCompleted(session.Id, new BookingId(bookingId), purpose, session.PaymentIntentId ?? session.Id,
+                    (session.AmountTotal ?? 0) / 100m, new DateTimeOffset(DateTime.SpecifyKind(stripeEvent.Created, DateTimeKind.Utc))),
+            EventTypes.CheckoutSessionExpired => new CheckoutSessionExpired(session.Id, new BookingId(bookingId)),
             _ => null,
         };
     }
+
+    private StripeClient Client =>
+        client ?? throw new BusinessRuleException("Online payments aren't configured (STRIPE_SECRET_KEY is empty).");
+
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"Stripe (configured: {options.IsConfigured})");
 }

@@ -1,22 +1,16 @@
-using System.Net;
+using System.Text.RegularExpressions;
 using BergerHarbour.Domain.Settings;
 
 namespace BergerHarbour.Application.Notifications;
 
-/// <summary>A placeholder value as plain text (subjects) and as HTML (bodies).</summary>
-public sealed record PlaceholderValue(string Text, string Html)
+/// <summary>Replaces <c>{{Placeholder}}</c>s. Placeholders that don't apply to a message render empty.</summary>
+public sealed partial class EmailRenderer
 {
-    public static PlaceholderValue Plain(string? text) => new(text ?? "", WebUtility.HtmlEncode(text ?? ""));
-    public static readonly PlaceholderValue Empty = new("", "");
-}
+    public RenderedEmail Render(EmailTemplate template, IReadOnlyDictionary<string, EmailValue> values) =>
+        new(
+            Placeholder().Replace(template.Subject, m => values.TryGetValue(m.Groups[1].Value, out var v) ? v.Plain : string.Empty).Trim(),
+            Placeholder().Replace(template.HtmlBody, m => values.TryGetValue(m.Groups[1].Value, out var v) ? v.Html : string.Empty));
 
-public static class EmailRenderer
-{
-    /// <summary>Replaces every known placeholder. Placeholders without a value render empty.</summary>
-    public static string Render(string template, IReadOnlyDictionary<string, PlaceholderValue> values, bool html) =>
-        EmailPlaceholders.Pattern().Replace(template, m =>
-        {
-            var name = m.Groups[1].Value;
-            return values.TryGetValue(name, out var v) ? (html ? v.Html : v.Text) : "";
-        });
+    [GeneratedRegex(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")]
+    private static partial Regex Placeholder();
 }

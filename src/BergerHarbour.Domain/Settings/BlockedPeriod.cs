@@ -2,47 +2,52 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Settings;
 
-/// <summary>A date range customers can't book online (Christmas/New Year, Easter, long weekends …).</summary>
+/// <summary>Dates customers can't book online (Christmas/New Year, Easter, long weekends). Inclusive nights.</summary>
 public sealed class BlockedPeriod : AggregateRoot
 {
-    public string Id { get; private set; } = "";
-    public string Name { get; private set; } = "";
+    private BlockedPeriod(BlockedPeriodId id, string name, NightRange nights, bool usesExtendedPaymentSchedule)
+    {
+        Id = id;
+        Name = name;
+        Nights = nights;
+        UsesExtendedPaymentSchedule = usesExtendedPaymentSchedule;
+    }
+
+    public BlockedPeriodId Id { get; }
+
+    public string Name { get; private set; }
+
     public NightRange Nights { get; private set; }
+
     public bool UsesExtendedPaymentSchedule { get; private set; }
 
-    private BlockedPeriod() { }
+    public static BlockedPeriod Create(BlockedPeriodId id, string? name, NightRange nights, bool usesExtendedPaymentSchedule) =>
+        new(id, ValidName(name), nights, usesExtendedPaymentSchedule);
 
-    public static BlockedPeriod Create(string name, DateOnly firstNight, DateOnly lastNight, bool usesExtendedSchedule, DateTimeOffset now)
+    public static BlockedPeriod Rehydrate(BlockedPeriodId id, string name, NightRange nights, bool extended, int version)
     {
-        var p = new BlockedPeriod { Id = Ids.New() };
-        p.Update(name, firstNight, lastNight, usesExtendedSchedule);
-        p.InitialiseAudit(now);
-        return p;
+        var period = new BlockedPeriod(id, name, nights, extended);
+        period.SetPersistedVersion(version);
+        return period;
     }
 
-    public static BlockedPeriod Rehydrate(string id, string name, NightRange nights, bool extended, int version, DateTimeOffset created, DateTimeOffset modified)
+    public void Update(string? name, NightRange nights, bool usesExtendedPaymentSchedule)
     {
-        var p = new BlockedPeriod { Id = id, Name = name, Nights = nights, UsesExtendedPaymentSchedule = extended };
-        p.RestoreAudit(version, created, modified);
-        return p;
+        Name = ValidName(name);
+        Nights = nights;
+        UsesExtendedPaymentSchedule = usesExtendedPaymentSchedule;
     }
 
-    public void Update(string name, DateOnly firstNight, DateOnly lastNight, bool usesExtendedSchedule)
-    {
-        var errors = new ValidationErrors();
-        var n = errors.Capture(() => Text.Required(name, "name", "Name", 100));
-        var nights = errors.Capture(() => (NightRange?)new NightRange(firstNight, lastNight));
-        errors.ThrowIfAny();
-        Name = n!;
-        Nights = nights!.Value;
-        UsesExtendedPaymentSchedule = usesExtendedSchedule;
-    }
-}
+    public bool Overlaps(StayRange stay) => stay.Overlaps(Nights);
 
-public interface IBlockedPeriodRepository
-{
-    Task<IReadOnlyList<BlockedPeriod>> ListAsync(CancellationToken ct = default);
-    Task<BlockedPeriod?> GetAsync(string id, CancellationToken ct = default);
-    Task SaveAsync(BlockedPeriod period, CancellationToken ct = default);
-    Task DeleteAsync(BlockedPeriod period, CancellationToken ct = default);
+    private static string ValidName(string? name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            throw new DomainValidationException("name", "Name is required.");
+        }
+
+        return trimmed.Length <= 100 ? trimmed : throw new DomainValidationException("name", "Name must be 100 characters or fewer.");
+    }
 }

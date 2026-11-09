@@ -27,10 +27,14 @@ For payments locally, export `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `V
 ```bash
 dotnet test tests/BergerHarbour.Domain.Tests
 dotnet test tests/BergerHarbour.Application.Tests
+dotnet test tests/BergerHarbour.ArchitectureTests
 firebase emulators:exec --only firestore --project demo-berger-harbour "dotnet test tests/BergerHarbour.Infrastructure.IntegrationTests"
 
 cd web && npm ci && npm run typecheck && npm run lint && npm test
 ```
+
+The build enforces the code organisation rules (prompt.md §7.9): StyleCop SA1402/SA1649 (one type per file, file named after
+the type) are errors, and `BergerHarbour.ArchitectureTests` checks layer references, aggregates/repositories and thin controllers.
 
 The API builds write their OpenAPI documents to `web/shared/openapi`; `npm run gen:api` turns them into `web/shared/src/api`. CI fails if either is out of date, so commit both after changing an API.
 

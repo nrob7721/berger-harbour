@@ -1,48 +1,30 @@
 namespace BergerHarbour.Domain.Shared;
 
+/// <summary>
+/// Base of every aggregate. <see cref="Version"/> drives optimistic concurrency: a new aggregate has version 0, and the
+/// repository sets the stored version after each successful write.
+/// </summary>
 public abstract class AggregateRoot
 {
-    /// <summary>Optimistic concurrency version. 0 = never saved.</summary>
     public int Version { get; private set; }
-    public DateTimeOffset CreatedDate { get; private set; }
-    public DateTimeOffset ModifiedDate { get; private set; }
 
-    public bool IsNew => Version == 0;
-
-    protected void InitialiseAudit(DateTimeOffset now)
+    /// <summary>Called by repositories when the aggregate is loaded or has been written.</summary>
+    public void SetPersistedVersion(int version)
     {
-        CreatedDate = now;
-        ModifiedDate = now;
-    }
+        if (version < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(version));
+        }
 
-    protected void RestoreAudit(int version, DateTimeOffset created, DateTimeOffset modified)
-    {
         Version = version;
-        CreatedDate = created;
-        ModifiedDate = modified;
     }
 
-    /// <summary>Throws when the caller edited an older version of this aggregate.</summary>
+    /// <summary>Throws <see cref="ConcurrencyException"/> unless the caller edited the version this aggregate is at.</summary>
     public void EnsureVersion(int expectedVersion)
     {
-        if (expectedVersion != Version) throw new ConcurrencyConflictException();
+        if (expectedVersion != Version)
+        {
+            throw new ConcurrencyException();
+        }
     }
-
-    /// <summary>Called by repositories once a save is committed.</summary>
-    public void MarkPersisted(DateTimeOffset now)
-    {
-        Version++;
-        ModifiedDate = now;
-    }
-}
-
-public static class Ids
-{
-    public static string New() => Guid.NewGuid().ToString("N");
-}
-
-public readonly record struct BoatId(string Value)
-{
-    public static BoatId New() => new(Ids.New());
-    public override string ToString() => Value;
 }

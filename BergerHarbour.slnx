@@ -10,5 +10,6 @@
     <Project Path="tests/BergerHarbour.Domain.Tests/BergerHarbour.Domain.Tests.csproj" />
     <Project Path="tests/BergerHarbour.Application.Tests/BergerHarbour.Application.Tests.csproj" />
     <Project Path="tests/BergerHarbour.Infrastructure.IntegrationTests/BergerHarbour.Infrastructure.IntegrationTests.csproj" />
+    <Project Path="tests/BergerHarbour.ArchitectureTests/BergerHarbour.ArchitectureTests.csproj" />
   </Folder>
 </Solution>

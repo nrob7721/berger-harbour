@@ -4,172 +4,309 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Boats;
 
-public enum BoatType { House, BBQ }
-
-public sealed record BoatRate(string SeasonId, PeriodType PeriodType, decimal Price);
-
-public sealed record BoatDetails(
-    string Name,
-    string Slug,
-    BoatType Type,
-    int Berth,
-    int? AdultBeds,
-    int? KidsBeds,
-    string? BeddingDescription,
-    decimal SecurityBond,
-    decimal? DepositAmount,
-    string? ImageUrl,
-    bool HasSpa,
-    bool IsPetFriendly);
-
+/// <summary>A boat in the fleet. Boats are never deleted; inactive boats can't be booked but keep their history.</summary>
 public sealed partial class Boat : AggregateRoot
 {
-    /// <summary>Period types that need a rate in every season before a boat can be activated.</summary>
-    public static readonly PeriodType[] RequiredRatePeriods = [PeriodType.Midweek, PeriodType.Weekend, PeriodType.Week];
-    /// <summary>Period types that can have a rate.</summary>
-    public static readonly PeriodType[] RatedPeriods = [PeriodType.Midweek, PeriodType.Weekend, PeriodType.Week, PeriodType.LongWeekend];
-
-    public BoatId Id { get; private set; }
-    public string Name { get; private set; } = "";
-    public string Slug { get; private set; } = "";
-    public BoatType Type { get; private set; }
-    public int Berth { get; private set; }
-    public int? AdultBeds { get; private set; }
-    public int? KidsBeds { get; private set; }
-    public string? BeddingDescription { get; private set; }
-    public decimal SecurityBond { get; private set; }
-    public decimal? DepositAmount { get; private set; }
-    public IReadOnlyList<BoatRate> Rates { get; private set; } = [];
-    public IReadOnlyList<string> AllowedAddonIds { get; private set; } = [];
-    public string? ImageUrl { get; private set; }
-    public bool HasSpa { get; private set; }
-    public bool IsPetFriendly { get; private set; }
-    public bool IsActive { get; private set; }
-
-    public int TotalBeds => (AdultBeds ?? 0) + (KidsBeds ?? 0);
-
-    private Boat() { }
-
-    public static Boat Create(BoatDetails details, DateTimeOffset now)
+    private Boat(BoatId id, DateTimeOffset createdDate)
     {
-        var b = new Boat { Id = BoatId.New() };
-        b.UpdateDetails(details);
-        b.InitialiseAudit(now);
-        return b;
+        Id = id;
+        Name = string.Empty;
+        Slug = string.Empty;
+        Rates = [];
+        AllowedAddonIds = [];
+        CreatedDate = createdDate;
+        ModifiedDate = createdDate;
     }
 
-    public static Boat Rehydrate(BoatId id, BoatDetails d, IEnumerable<BoatRate> rates, IEnumerable<string> allowedAddonIds, bool isActive,
-        int version, DateTimeOffset created, DateTimeOffset modified)
+    public BoatId Id { get; }
+
+    public string Name { get; private set; }
+
+    public string Slug { get; private set; }
+
+    public BoatType Type { get; private set; }
+
+    public int Berth { get; private set; }
+
+    public int? AdultBeds { get; private set; }
+
+    public int? KidsBeds { get; private set; }
+
+    public string? BeddingDescription { get; private set; }
+
+    public decimal SecurityBond { get; private set; }
+
+    public decimal? DepositAmount { get; private set; }
+
+    public string? ImageUrl { get; private set; }
+
+    public bool HasSpa { get; private set; }
+
+    public bool IsPetFriendly { get; private set; }
+
+    public bool IsActive { get; private set; }
+
+    public IReadOnlyList<BoatRate> Rates { get; private set; }
+
+    public IReadOnlyList<AddonId> AllowedAddonIds { get; private set; }
+
+    public DateTimeOffset CreatedDate { get; }
+
+    public DateTimeOffset ModifiedDate { get; private set; }
+
+    /// <summary>Adult beds + kids beds; drives the rooming warning.</summary>
+    public int TotalBeds => (AdultBeds ?? 0) + (KidsBeds ?? 0);
+
+    /// <summary>Sorting used everywhere boats are listed: berth descending, then name.</summary>
+    public static IOrderedEnumerable<Boat> InListOrder(IEnumerable<Boat> boats) =>
+        boats.OrderByDescending(b => b.Berth).ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A new boat, inactive until <see cref="Activate"/> succeeds.</summary>
+    public static Boat Create(BoatId id, BoatDetails details, DateTimeOffset now)
     {
-        var b = new Boat
+        var boat = new Boat(id, now) { Type = details.Type };
+        boat.Apply(details, now);
+        return boat;
+    }
+
+    public static Boat Rehydrate(
+        BoatId id, BoatDetails details, bool isActive, DateTimeOffset createdDate, DateTimeOffset modifiedDate, int version)
+    {
+        var boat = new Boat(id, createdDate)
         {
-            Id = id, Name = d.Name, Slug = d.Slug, Type = d.Type, Berth = d.Berth, AdultBeds = d.AdultBeds, KidsBeds = d.KidsBeds,
-            BeddingDescription = d.BeddingDescription, SecurityBond = d.SecurityBond, DepositAmount = d.DepositAmount, ImageUrl = d.ImageUrl,
-            HasSpa = d.HasSpa, IsPetFriendly = d.IsPetFriendly, Rates = rates.ToList(), AllowedAddonIds = allowedAddonIds.ToList(), IsActive = isActive,
+            Name = details.Name ?? string.Empty,
+            Slug = details.Slug ?? string.Empty,
+            Type = details.Type,
+            Berth = details.Berth,
+            AdultBeds = details.AdultBeds,
+            KidsBeds = details.KidsBeds,
+            BeddingDescription = details.BeddingDescription,
+            SecurityBond = details.SecurityBond,
+            DepositAmount = details.DepositAmount,
+            ImageUrl = details.ImageUrl,
+            HasSpa = details.HasSpa,
+            IsPetFriendly = details.IsPetFriendly,
+            Rates = details.Rates,
+            AllowedAddonIds = details.AllowedAddonIds,
+            IsActive = isActive,
+            ModifiedDate = modifiedDate,
         };
-        b.RestoreAudit(version, created, modified);
-        return b;
+        boat.SetPersistedVersion(version);
+        return boat;
+    }
+
+    /// <summary>
+    /// Empty, or an absolute https:// URL on bergerhouseboats.com.au or www.bergerhouseboats.com.au.
+    /// </summary>
+    public static bool IsValidImageUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return true;
+        }
+
+        return Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps
+            && uri.Host.ToLowerInvariant() is "bergerhouseboats.com.au" or "www.bergerhouseboats.com.au";
+    }
+
+    /// <summary>Edits every field; an active boat must still meet the activation rule.</summary>
+    public void Update(BoatDetails details, IReadOnlyList<Season> seasons, DateTimeOffset now)
+    {
+        Apply(details, now);
+        if (IsActive)
+        {
+            EnsureCanBeActive(seasons);
+        }
+    }
+
+    /// <summary>
+    /// Requires adult beds, kids beds (0 allowed), a bedding description and a rate for every season × {Midweek, Weekend, Week}.
+    /// </summary>
+    public void Activate(IReadOnlyList<Season> seasons, DateTimeOffset now)
+    {
+        EnsureCanBeActive(seasons);
+        if (!IsActive)
+        {
+            IsActive = true;
+            ModifiedDate = now;
+        }
+    }
+
+    public void Deactivate(DateTimeOffset now)
+    {
+        if (IsActive)
+        {
+            IsActive = false;
+            ModifiedDate = now;
+        }
+    }
+
+    /// <summary>What is missing before the boat can be activated (empty when it can be).</summary>
+    public IReadOnlyList<string> MissingForActivation(IReadOnlyList<Season> seasons)
+    {
+        var missing = new List<string>();
+        if (AdultBeds is null)
+        {
+            missing.Add("Number of adult beds");
+        }
+
+        if (KidsBeds is null)
+        {
+            missing.Add("Number of kids beds");
+        }
+
+        if (string.IsNullOrWhiteSpace(BeddingDescription))
+        {
+            missing.Add("Bedding description");
+        }
+
+        foreach (var season in seasons)
+        {
+            foreach (var type in PeriodTypes.Online)
+            {
+                if (RateFor(season.Id, type) is null)
+                {
+                    missing.Add($"{season.Name} {Label(type)} rate");
+                }
+            }
+        }
+
+        return missing;
+    }
+
+    public decimal? RateFor(SeasonId seasonId, PeriodType periodType) =>
+        Rates.FirstOrDefault(r => r.SeasonId == seasonId && r.PeriodType == periodType)?.Price;
+
+    /// <summary>The boat's own deposit, or the Settings default.</summary>
+    public decimal EffectiveDeposit(BusinessSettings settings) => DepositAmount ?? settings.DepositAmount;
+
+    public bool AllowsAddon(AddonId id) => AllowedAddonIds.Contains(id);
+
+    /// <summary>The rooming warning shown when guests exceed adult beds + kids beds, or null.</summary>
+    public string? RoomingWarningFor(int numberOfGuests) =>
+        numberOfGuests > TotalBeds
+            ? $"This boat has {AdultBeds ?? 0} adult beds and {KidsBeds ?? 0} children's beds ({BeddingDescription ?? string.Empty}). " +
+              $"With {numberOfGuests} guests, some guests will need to share beds. Please make sure your group's sleeping arrangements suit this layout."
+            : null;
+
+    private static string Label(PeriodType type) => type switch
+    {
+        PeriodType.Midweek => "Mid-week",
+        PeriodType.LongWeekend => "Long weekend",
+        _ => type.ToString(),
+    };
+
+    private void EnsureCanBeActive(IReadOnlyList<Season> seasons)
+    {
+        var missing = MissingForActivation(seasons);
+        if (missing.Count > 0)
+        {
+            throw new DomainValidationException("isActive", $"Can't activate this boat. Missing: {string.Join(", ", missing)}.");
+        }
+    }
+
+    private void Apply(BoatDetails details, DateTimeOffset now)
+    {
+        var errors = new ValidationErrors();
+        var name = (details.Name ?? string.Empty).Trim();
+        if (name.Length == 0)
+        {
+            errors.Add("name", "Name is required.");
+        }
+        else if (name.Length > 80)
+        {
+            errors.Add("name", "Name must be 80 characters or fewer.");
+        }
+
+        var slug = (details.Slug ?? string.Empty).Trim();
+        if (slug.Length == 0)
+        {
+            errors.Add("slug", "Slug is required.");
+        }
+        else if (slug.Length > 80 || !SlugPattern().IsMatch(slug))
+        {
+            errors.Add("slug", "Use lower-case letters, numbers and hyphens, e.g. pacific-blue.");
+        }
+
+        if (details.Berth < 1)
+        {
+            errors.Add("berth", "Berth must be at least 1.");
+        }
+
+        if (details.AdultBeds < 0)
+        {
+            errors.Add("adultBeds", "Adult beds can't be negative.");
+        }
+
+        if (details.KidsBeds < 0)
+        {
+            errors.Add("kidsBeds", "Kids beds can't be negative.");
+        }
+
+        var beds = (details.AdultBeds ?? 0) + (details.KidsBeds ?? 0);
+        if (details.Berth >= 1 && details.Berth < beds)
+        {
+            errors.Add("berth", $"Berth can't be less than adult beds + kids beds ({beds}).");
+        }
+
+        var bedding = string.IsNullOrWhiteSpace(details.BeddingDescription) ? null : details.BeddingDescription.Trim();
+        if (bedding?.Length > 500)
+        {
+            errors.Add("beddingDescription", "Bedding description must be 500 characters or fewer.");
+        }
+
+        if (details.SecurityBond < 0)
+        {
+            errors.Add("securityBond", "Security bond can't be negative.");
+        }
+
+        if (details.DepositAmount <= 0)
+        {
+            errors.Add("depositAmount", "Deposit must be more than $0, or left empty to use the default.");
+        }
+
+        var image = string.IsNullOrWhiteSpace(details.ImageUrl) ? null : details.ImageUrl.Trim();
+        if (!IsValidImageUrl(image))
+        {
+            errors.Add("imageUrl", "Use an https:// link to an image on bergerhouseboats.com.au.");
+        }
+
+        foreach (var rate in details.Rates)
+        {
+            if (rate.Price < 0)
+            {
+                errors.Add("rates", "Rates can't be negative.");
+            }
+
+            if (!PeriodTypes.Rated.Contains(rate.PeriodType))
+            {
+                errors.Add("rates", "Rates are only for Mid-week, Weekend, Week and Long weekend.");
+            }
+        }
+
+        if (details.Rates.GroupBy(r => (r.SeasonId, r.PeriodType)).Any(g => g.Count() > 1))
+        {
+            errors.Add("rates", "Each season and period type can only have one rate.");
+        }
+
+        errors.ThrowIfAny();
+        Name = name;
+        Slug = slug;
+        Berth = details.Berth;
+        AdultBeds = details.AdultBeds;
+        KidsBeds = details.KidsBeds;
+        BeddingDescription = bedding;
+        SecurityBond = details.SecurityBond;
+        DepositAmount = details.DepositAmount;
+        ImageUrl = image;
+        HasSpa = details.HasSpa;
+        IsPetFriendly = details.IsPetFriendly;
+        Rates = details.Rates.ToList();
+        AllowedAddonIds = details.AllowedAddonIds.Distinct().ToList();
+        ModifiedDate = now;
     }
 
     [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$")]
     private static partial Regex SlugPattern();
-
-    public static bool IsValidImageUrl(string? url) =>
-        string.IsNullOrWhiteSpace(url)
-        || (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
-            && uri.Scheme == Uri.UriSchemeHttps
-            && uri.Host is "bergerhouseboats.com.au" or "www.bergerhouseboats.com.au");
-
-    public void UpdateDetails(BoatDetails d)
-    {
-        var errors = new ValidationErrors();
-        var name = errors.Capture(() => Text.Required(d.Name, "name", "Name", 80));
-        var slug = (d.Slug ?? "").Trim();
-        if (slug.Length == 0) errors.Add("slug", "Slug is required.");
-        else if (slug.Length > 80 || !SlugPattern().IsMatch(slug)) errors.Add("slug", "Use lower-case letters, numbers and hyphens, e.g. pacific-blue.");
-        errors.AddIf(d.Berth < 1, "berth", "Berth must be at least 1.");
-        errors.AddIf(d.AdultBeds is < 0, "adultBeds", "Adult beds can't be negative.");
-        errors.AddIf(d.KidsBeds is < 0, "kidsBeds", "Kids beds can't be negative.");
-        var beds = (d.AdultBeds ?? 0) + (d.KidsBeds ?? 0);
-        if (d.Berth >= 1 && d.Berth < beds) errors.Add("berth", $"Berth can't be less than adult beds + kids beds ({beds}).");
-        var bedding = errors.Capture(() => Text.Optional(d.BeddingDescription, "beddingDescription", "Bedding description", 500));
-        errors.AddIf(d.SecurityBond < 0, "securityBond", "Security bond can't be negative.");
-        errors.AddIf(d.DepositAmount is <= 0, "depositAmount", "Deposit must be more than $0, or left empty to use the default.");
-        if (!IsValidImageUrl(d.ImageUrl))
-            errors.Add("imageUrl", "Use an https:// link to an image on bergerhouseboats.com.au.");
-        errors.ThrowIfAny();
-
-        Name = name!;
-        Slug = slug;
-        Type = d.Type;
-        Berth = d.Berth;
-        AdultBeds = d.AdultBeds;
-        KidsBeds = d.KidsBeds;
-        BeddingDescription = bedding;
-        SecurityBond = Money.Round(d.SecurityBond);
-        DepositAmount = d.DepositAmount is { } dep ? Money.Round(dep) : null;
-        ImageUrl = string.IsNullOrWhiteSpace(d.ImageUrl) ? null : d.ImageUrl.Trim();
-        HasSpa = d.HasSpa;
-        IsPetFriendly = d.IsPetFriendly;
-    }
-
-    public void SetRates(IEnumerable<BoatRate> rates)
-    {
-        var list = new List<BoatRate>();
-        var errors = new ValidationErrors();
-        foreach (var r in rates)
-        {
-            if (!RatedPeriods.Contains(r.PeriodType)) { errors.Add("rates", $"{r.PeriodType} bookings have no rate; staff type the price."); continue; }
-            if (r.Price < 0) { errors.Add("rates", "Rates can't be negative."); continue; }
-            list.RemoveAll(x => x.SeasonId == r.SeasonId && x.PeriodType == r.PeriodType);
-            list.Add(r with { Price = Money.Round(r.Price) });
-        }
-        errors.ThrowIfAny();
-        Rates = list;
-    }
-
-    public void SetAllowedAddons(IEnumerable<string> addonIds) => AllowedAddonIds = addonIds.Distinct().ToList();
-
-    public decimal? RateFor(string seasonId, PeriodType periodType) =>
-        Rates.FirstOrDefault(r => r.SeasonId == seasonId && r.PeriodType == periodType)?.Price;
-
-    /// <summary>The boat's own deposit, or the Settings default.</summary>
-    public decimal EffectiveDeposit(decimal settingsDeposit) => DepositAmount ?? settingsDeposit;
-
-    /// <summary>What still stops this boat from being activated; empty when it can be.</summary>
-    public IReadOnlyList<string> MissingForActivation(IEnumerable<Season> seasons)
-    {
-        var missing = new List<string>();
-        if (AdultBeds is null) missing.Add("Number of adult beds");
-        if (KidsBeds is null) missing.Add("Number of kids beds (0 is allowed)");
-        if (string.IsNullOrWhiteSpace(BeddingDescription)) missing.Add("Bedding description");
-        foreach (var s in seasons)
-            foreach (var p in RequiredRatePeriods)
-                if (RateFor(s.Id, p) is null) missing.Add($"Rate: {s.Name} – {p}");
-        return missing;
-    }
-
-    public void Activate(IEnumerable<Season> seasons)
-    {
-        var missing = MissingForActivation(seasons);
-        if (missing.Count > 0)
-            throw new DomainValidationException("isActive", "Can't activate until these are filled in: " + string.Join(", ", missing) + ".");
-        IsActive = true;
-    }
-
-    public void Deactivate() => IsActive = false;
-
-    public bool IsBookableHouseBoat => IsActive && Type == BoatType.House;
-
-    /// <summary>Boats are listed by berth (largest first), then name.</summary>
-    public static IOrderedEnumerable<T> InDisplayOrder<T>(IEnumerable<T> boats, Func<T, int> berth, Func<T, string> name) =>
-        boats.OrderByDescending(berth).ThenBy(name, StringComparer.OrdinalIgnoreCase);
-}
-
-public interface IBoatRepository
-{
-    Task<IReadOnlyList<Boat>> ListAsync(CancellationToken ct = default);
-    Task<Boat?> GetAsync(BoatId id, CancellationToken ct = default);
-    Task<Boat?> GetBySlugAsync(string slug, CancellationToken ct = default);
-    Task SaveAsync(Boat boat, CancellationToken ct = default);
 }

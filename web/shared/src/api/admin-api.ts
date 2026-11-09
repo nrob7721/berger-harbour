@@ -4,6 +4,618 @@
  */
 
 export interface paths {
+    "/api/addons/{addonId}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    startDate?: string;
+                    endDate?: string;
+                    excludeBookingId?: string;
+                };
+                header?: never;
+                path: {
+                    addonId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonRemainingResponse"];
+                        "application/json": components["schemas"]["AddonRemainingResponse"];
+                        "text/json": components["schemas"]["AddonRemainingResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"][];
+                        "application/json": components["schemas"]["AddonDto"][];
+                        "text/json": components["schemas"]["AddonDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveAddonRequest"];
+                    "text/json": components["schemas"]["SaveAddonRequest"];
+                    "application/*+json": components["schemas"]["SaveAddonRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"];
+                        "application/json": components["schemas"]["AddonDto"];
+                        "text/json": components["schemas"]["AddonDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/addons/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AddonOrderRequest"];
+                    "text/json": components["schemas"]["AddonOrderRequest"];
+                    "application/*+json": components["schemas"]["AddonOrderRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"][];
+                        "application/json": components["schemas"]["AddonDto"][];
+                        "text/json": components["schemas"]["AddonDto"][];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/addons/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveAddonRequest"];
+                    "text/json": components["schemas"]["SaveAddonRequest"];
+                    "application/*+json": components["schemas"]["SaveAddonRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"];
+                        "application/json": components["schemas"]["AddonDto"];
+                        "text/json": components["schemas"]["AddonDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AddonDto"];
+                        "application/json": components["schemas"]["AddonDto"];
+                        "text/json": components["schemas"]["AddonDto"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/blocked-periods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BlockedPeriodDto"][];
+                        "application/json": components["schemas"]["BlockedPeriodDto"][];
+                        "text/json": components["schemas"]["BlockedPeriodDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveBlockedPeriodRequest"];
+                    "text/json": components["schemas"]["SaveBlockedPeriodRequest"];
+                    "application/*+json": components["schemas"]["SaveBlockedPeriodRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BlockedPeriodDto"];
+                        "application/json": components["schemas"]["BlockedPeriodDto"];
+                        "text/json": components["schemas"]["BlockedPeriodDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/blocked-periods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveBlockedPeriodRequest"];
+                    "text/json": components["schemas"]["SaveBlockedPeriodRequest"];
+                    "application/*+json": components["schemas"]["SaveBlockedPeriodRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BlockedPeriodDto"];
+                        "application/json": components["schemas"]["BlockedPeriodDto"];
+                        "text/json": components["schemas"]["BlockedPeriodDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdminBoat"][];
+                        "application/json": components["schemas"]["AdminBoat"][];
+                        "text/json": components["schemas"]["AdminBoat"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveBoatRequest"];
+                    "text/json": components["schemas"]["SaveBoatRequest"];
+                    "application/*+json": components["schemas"]["SaveBoatRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdminBoat"];
+                        "application/json": components["schemas"]["AdminBoat"];
+                        "text/json": components["schemas"]["AdminBoat"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boats/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdminBoat"];
+                        "application/json": components["schemas"]["AdminBoat"];
+                        "text/json": components["schemas"]["AdminBoat"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveBoatRequest"];
+                    "text/json": components["schemas"]["SaveBoatRequest"];
+                    "application/*+json": components["schemas"]["SaveBoatRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AdminBoat"];
+                        "application/json": components["schemas"]["AdminBoat"];
+                        "text/json": components["schemas"]["AdminBoat"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boats/{id}/unavailabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UnavailabilityDto"][];
+                        "application/json": components["schemas"]["UnavailabilityDto"][];
+                        "text/json": components["schemas"]["UnavailabilityDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveUnavailabilityRequest"];
+                    "text/json": components["schemas"]["SaveUnavailabilityRequest"];
+                    "application/*+json": components["schemas"]["SaveUnavailabilityRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UnavailabilityDto"];
+                        "application/json": components["schemas"]["UnavailabilityDto"];
+                        "text/json": components["schemas"]["UnavailabilityDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boats/{id}/unavailabilities/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveUnavailabilityRequest"];
+                    "text/json": components["schemas"]["SaveUnavailabilityRequest"];
+                    "application/*+json": components["schemas"]["SaveUnavailabilityRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UnavailabilityDto"];
+                        "application/json": components["schemas"]["UnavailabilityDto"];
+                        "text/json": components["schemas"]["UnavailabilityDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/bookings": {
         parameters: {
             query?: never;
@@ -302,50 +914,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/addons/{addonId}/availability": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: {
-                    startDate?: string;
-                    endDate?: string;
-                    excludeBookingId?: string;
-                };
-                header?: never;
-                path: {
-                    addonId: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonRemainingResponse"];
-                        "application/json": components["schemas"]["AddonRemainingResponse"];
-                        "text/json": components["schemas"]["AddonRemainingResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/boats": {
+    "/api/settings/business": {
         parameters: {
             query?: never;
             header?: never;
@@ -367,15 +936,14 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/plain": components["schemas"]["AdminBoat"][];
-                        "application/json": components["schemas"]["AdminBoat"][];
-                        "text/json": components["schemas"]["AdminBoat"][];
+                        "text/plain": components["schemas"]["BusinessSettingsDto"];
+                        "application/json": components["schemas"]["BusinessSettingsDto"];
+                        "text/json": components["schemas"]["BusinessSettingsDto"];
                     };
                 };
             };
         };
-        put?: never;
-        post: {
+        put: {
             parameters: {
                 query?: never;
                 header?: never;
@@ -384,9 +952,9 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["SaveBoatRequest"];
-                    "text/json": components["schemas"]["SaveBoatRequest"];
-                    "application/*+json": components["schemas"]["SaveBoatRequest"];
+                    "application/json": components["schemas"]["BusinessSettingsDto"];
+                    "text/json": components["schemas"]["BusinessSettingsDto"];
+                    "application/*+json": components["schemas"]["BusinessSettingsDto"];
                 };
             };
             responses: {
@@ -396,216 +964,15 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/plain": components["schemas"]["AdminBoat"];
-                        "application/json": components["schemas"]["AdminBoat"];
-                        "text/json": components["schemas"]["AdminBoat"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/boats/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AdminBoat"];
-                        "application/json": components["schemas"]["AdminBoat"];
-                        "text/json": components["schemas"]["AdminBoat"];
-                    };
-                };
-            };
-        };
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveBoatRequest"];
-                    "text/json": components["schemas"]["SaveBoatRequest"];
-                    "application/*+json": components["schemas"]["SaveBoatRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AdminBoat"];
-                        "application/json": components["schemas"]["AdminBoat"];
-                        "text/json": components["schemas"]["AdminBoat"];
+                        "text/plain": components["schemas"]["BusinessSettingsDto"];
+                        "application/json": components["schemas"]["BusinessSettingsDto"];
+                        "text/json": components["schemas"]["BusinessSettingsDto"];
                     };
                 };
             };
         };
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/boats/{id}/unavailabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["UnavailabilityDto"][];
-                        "application/json": components["schemas"]["UnavailabilityDto"][];
-                        "text/json": components["schemas"]["UnavailabilityDto"][];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveUnavailabilityRequest"];
-                    "text/json": components["schemas"]["SaveUnavailabilityRequest"];
-                    "application/*+json": components["schemas"]["SaveUnavailabilityRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["UnavailabilityDto"];
-                        "application/json": components["schemas"]["UnavailabilityDto"];
-                        "text/json": components["schemas"]["UnavailabilityDto"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/boats/{id}/unavailabilities/{uid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    uid: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveUnavailabilityRequest"];
-                    "text/json": components["schemas"]["SaveUnavailabilityRequest"];
-                    "application/*+json": components["schemas"]["SaveUnavailabilityRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["UnavailabilityDto"];
-                        "application/json": components["schemas"]["UnavailabilityDto"];
-                        "text/json": components["schemas"]["UnavailabilityDto"];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                    uid: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No Content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
         options?: never;
         head?: never;
         patch?: never;
@@ -773,7 +1140,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/settings/business": {
+    "/api/settings/email-templates": {
         parameters: {
             query?: never;
             header?: never;
@@ -795,25 +1162,43 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/plain": components["schemas"]["BusinessSettingsDto"];
-                        "application/json": components["schemas"]["BusinessSettingsDto"];
-                        "text/json": components["schemas"]["BusinessSettingsDto"];
+                        "text/plain": components["schemas"]["EmailTemplatesResponse"];
+                        "application/json": components["schemas"]["EmailTemplatesResponse"];
+                        "text/json": components["schemas"]["EmailTemplatesResponse"];
                     };
                 };
             };
         };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email-templates/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    key: components["schemas"]["EmailTemplateKey"];
+                };
                 cookie?: never;
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["BusinessSettingsDto"];
-                    "text/json": components["schemas"]["BusinessSettingsDto"];
-                    "application/*+json": components["schemas"]["BusinessSettingsDto"];
+                    "application/json": components["schemas"]["SaveEmailTemplateRequest"];
+                    "text/json": components["schemas"]["SaveEmailTemplateRequest"];
+                    "application/*+json": components["schemas"]["SaveEmailTemplateRequest"];
                 };
             };
             responses: {
@@ -823,14 +1208,49 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "text/plain": components["schemas"]["BusinessSettingsDto"];
-                        "application/json": components["schemas"]["BusinessSettingsDto"];
-                        "text/json": components["schemas"]["BusinessSettingsDto"];
+                        "text/plain": components["schemas"]["EmailTemplateDto"];
+                        "application/json": components["schemas"]["EmailTemplateDto"];
+                        "text/json": components["schemas"]["EmailTemplateDto"];
                     };
                 };
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/email-templates/{key}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    key: components["schemas"]["EmailTemplateKey"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -960,426 +1380,6 @@ export interface paths {
                 };
             };
         };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/blocked-periods": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["BlockedPeriodDto"][];
-                        "application/json": components["schemas"]["BlockedPeriodDto"][];
-                        "text/json": components["schemas"]["BlockedPeriodDto"][];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveBlockedPeriodRequest"];
-                    "text/json": components["schemas"]["SaveBlockedPeriodRequest"];
-                    "application/*+json": components["schemas"]["SaveBlockedPeriodRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["BlockedPeriodDto"];
-                        "application/json": components["schemas"]["BlockedPeriodDto"];
-                        "text/json": components["schemas"]["BlockedPeriodDto"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/blocked-periods/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveBlockedPeriodRequest"];
-                    "text/json": components["schemas"]["SaveBlockedPeriodRequest"];
-                    "application/*+json": components["schemas"]["SaveBlockedPeriodRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["BlockedPeriodDto"];
-                        "application/json": components["schemas"]["BlockedPeriodDto"];
-                        "text/json": components["schemas"]["BlockedPeriodDto"];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No Content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/addons": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonDto"][];
-                        "application/json": components["schemas"]["AddonDto"][];
-                        "text/json": components["schemas"]["AddonDto"][];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveAddonRequest"];
-                    "text/json": components["schemas"]["SaveAddonRequest"];
-                    "application/*+json": components["schemas"]["SaveAddonRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonDto"];
-                        "application/json": components["schemas"]["AddonDto"];
-                        "text/json": components["schemas"]["AddonDto"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/addons/order": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AddonOrderRequest"];
-                    "text/json": components["schemas"]["AddonOrderRequest"];
-                    "application/*+json": components["schemas"]["AddonOrderRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonDto"][];
-                        "application/json": components["schemas"]["AddonDto"][];
-                        "text/json": components["schemas"]["AddonDto"][];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/addons/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveAddonRequest"];
-                    "text/json": components["schemas"]["SaveAddonRequest"];
-                    "application/*+json": components["schemas"]["SaveAddonRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonDto"];
-                        "application/json": components["schemas"]["AddonDto"];
-                        "text/json": components["schemas"]["AddonDto"];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AddonDto"];
-                        "application/json": components["schemas"]["AddonDto"];
-                        "text/json": components["schemas"]["AddonDto"];
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/email-templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["EmailTemplatesResponse"];
-                        "application/json": components["schemas"]["EmailTemplatesResponse"];
-                        "text/json": components["schemas"]["EmailTemplatesResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/email-templates/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    key: components["schemas"]["EmailTemplateKey"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["SaveEmailTemplateRequest"];
-                    "text/json": components["schemas"]["SaveEmailTemplateRequest"];
-                    "application/*+json": components["schemas"]["SaveEmailTemplateRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["EmailTemplateDto"];
-                        "application/json": components["schemas"]["EmailTemplateDto"];
-                        "text/json": components["schemas"]["EmailTemplateDto"];
-                    };
-                };
-            };
-        };
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/email-templates/{key}/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    key: components["schemas"]["EmailTemplateKey"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description No Content */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;

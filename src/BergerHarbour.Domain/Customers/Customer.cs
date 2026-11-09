@@ -2,98 +2,136 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Customers;
 
+/// <summary>A customer, unique by normalised email. Created only by staff bookings or when an online deposit is paid.</summary>
 public sealed class Customer : AggregateRoot
 {
-    public string Id { get; private set; } = "";
-    public string FirstName { get; private set; } = "";
-    public string LastName { get; private set; } = "";
-    /// <summary>Normalised (lower-case, trimmed) and unique.</summary>
-    public string Email { get; private set; } = "";
-    public string? MobileNumber { get; private set; }
-    public string? SecondaryMobileNumber { get; private set; }
-    /// <summary>Free text, possibly several lines, staff-entered only. Not available to email templates.</summary>
+    public const int MaxAddressLength = 500;
+    public const int MaxCommentsLength = 5000;
+
+    private Customer(CustomerId id, string firstName, string lastName, EmailAddress email, DateTimeOffset createdDate)
+    {
+        Id = id;
+        FirstName = firstName;
+        LastName = lastName;
+        Email = email;
+        CreatedDate = createdDate;
+        ModifiedDate = createdDate;
+    }
+
+    public CustomerId Id { get; }
+
+    public string FirstName { get; private set; }
+
+    public string LastName { get; private set; }
+
+    public EmailAddress Email { get; private set; }
+
+    public MobileNumber? MobileNumber { get; private set; }
+
+    public MobileNumber? SecondaryMobileNumber { get; private set; }
+
     public string? Address { get; private set; }
-    /// <summary>Staff-only notes shared by all of the customer's bookings.</summary>
+
     public string? Comments { get; private set; }
+
+    public DateTimeOffset CreatedDate { get; }
+
+    public DateTimeOffset ModifiedDate { get; private set; }
 
     public string FullName => $"{FirstName} {LastName}";
 
-    private Customer() { }
-
-    public static Customer Create(string firstName, string lastName, string email, string? mobile, DateTimeOffset now)
+    /// <summary>A new customer. The secondary mobile and address start empty.</summary>
+    public static Customer Create(CustomerId id, string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, DateTimeOffset now)
     {
-        var errors = new ValidationErrors();
-        var c = new Customer { Id = Ids.New() };
-        var e = errors.Capture(() => EmailAddress.Require(email));
-        var first = errors.Capture(() => Text.Required(firstName, "firstName", "First name", 100));
-        var last = errors.Capture(() => Text.Required(lastName, "lastName", "Last name", 100));
-        var m = errors.Capture(() => Shared.MobileNumber.Optional(mobile, "mobile"));
-        errors.ThrowIfAny();
-        c.Email = e!;
-        c.FirstName = first!;
-        c.LastName = last!;
-        c.MobileNumber = m;
-        c.InitialiseAudit(now);
-        return c;
-    }
-
-    public static Customer Rehydrate(string id, string firstName, string lastName, string email, string? mobile, string? secondaryMobile,
-        string? address, string? comments, int version, DateTimeOffset created, DateTimeOffset modified)
-    {
-        var c = new Customer
+        var customer = new Customer(id, RequiredName(firstName, "firstName", "First name is required."),
+            RequiredName(lastName, "lastName", "Last name is required."), email, now)
         {
-            Id = id, FirstName = firstName, LastName = lastName, Email = email, MobileNumber = mobile,
-            SecondaryMobileNumber = secondaryMobile, Address = address, Comments = comments,
+            MobileNumber = mobile,
         };
-        c.RestoreAudit(version, created, modified);
-        return c;
+        return customer;
     }
 
-    /// <summary>An existing customer booked again online: names and mobile take the latest values. Secondary mobile, address and comments are never touched.</summary>
-    public void UpdateFromOnlineBooking(string firstName, string lastName, string mobile)
+    public static Customer Rehydrate(
+        CustomerId id, string firstName, string lastName, EmailAddress email, MobileNumber? mobile, MobileNumber? secondaryMobile,
+        string? address, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate, int version)
+    {
+        var customer = new Customer(id, firstName, lastName, email, createdDate)
+        {
+            MobileNumber = mobile,
+            SecondaryMobileNumber = secondaryMobile,
+            Address = address,
+            Comments = comments,
+            ModifiedDate = modifiedDate,
+        };
+        customer.SetPersistedVersion(version);
+        return customer;
+    }
+
+    /// <summary>Trimmed, empty when blank, at most 500 characters.</summary>
+    public static string? NormaliseAddress(string? address)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+        return trimmed?.Length > MaxAddressLength
+            ? throw new DomainValidationException("address", "Address must be 500 characters or fewer.")
+            : trimmed;
+    }
+
+    /// <summary>The same email booked again: the name and mobile take the latest values.</summary>
+    public void UpdateFromBooking(string? firstName, string? lastName, MobileNumber? mobile, DateTimeOffset now)
+    {
+        FirstName = RequiredName(firstName, "firstName", "First name is required.");
+        LastName = RequiredName(lastName, "lastName", "Last name is required.");
+        if (mobile is not null)
+        {
+            MobileNumber = mobile;
+        }
+
+        ModifiedDate = now;
+    }
+
+    /// <summary>Staff edit every contact detail from the booking dialog.</summary>
+    public void UpdateByStaff(
+        string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, MobileNumber? secondaryMobile, string? address,
+        string? comments, DateTimeOffset now)
     {
         var errors = new ValidationErrors();
-        var first = errors.Capture(() => Text.Required(firstName, "firstName", "First name", 100));
-        var last = errors.Capture(() => Text.Required(lastName, "lastName", "Last name", 100));
-        var m = errors.Capture(() => Shared.MobileNumber.Require(mobile, "mobile"));
+        var first = errors.Capture(() => RequiredName(firstName, "firstName", "First name is required."));
+        var last = errors.Capture(() => RequiredName(lastName, "lastName", "Last name is required."));
+        var normalisedAddress = errors.Capture(() => NormaliseAddress(address));
+        var normalisedComments = errors.Capture(() => NormaliseComments(comments, "customerComments"));
         errors.ThrowIfAny();
         FirstName = first!;
         LastName = last!;
-        MobileNumber = m;
+        Email = email;
+        MobileNumber = mobile;
+        SecondaryMobileNumber = secondaryMobile;
+        Address = normalisedAddress;
+        Comments = normalisedComments;
+        ModifiedDate = now;
     }
 
-    public const int AddressMaxLength = 500;
-
-    /// <summary>Staff edit contact details and the address from the booking dialog.</summary>
-    public void UpdateContactDetails(string firstName, string lastName, string? mobile, string? secondaryMobile, string? address)
+    public void UpdateComments(string? comments, DateTimeOffset now)
     {
-        var errors = new ValidationErrors();
-        var first = errors.Capture(() => Text.Required(firstName, "firstName", "First name", 100));
-        var last = errors.Capture(() => Text.Required(lastName, "lastName", "Last name", 100));
-        var m = errors.Capture(() => Shared.MobileNumber.Optional(mobile, "mobile"));
-        var s = errors.Capture(() => Shared.MobileNumber.Optional(secondaryMobile, "secondaryMobile"));
-        var a = errors.Capture(() => NormaliseAddress(address));
-        errors.ThrowIfAny();
-        FirstName = first!;
-        LastName = last!;
-        MobileNumber = m;
-        SecondaryMobileNumber = s;
-        Address = a;
+        Comments = NormaliseComments(comments, "comments");
+        ModifiedDate = now;
     }
 
-    /// <summary>Trimmed; empty when blank; at most 500 characters, or a field error.</summary>
-    public static string? NormaliseAddress(string? address) => Text.Optional(address, "address", "Address", AddressMaxLength);
+    private static string? NormaliseComments(string? comments, string field)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(comments) ? null : comments.Trim();
+        return trimmed?.Length > MaxCommentsLength
+            ? throw new DomainValidationException(field, "Comments must be 5000 characters or fewer.")
+            : trimmed;
+    }
 
-    public void UpdateComments(string? comments) =>
-        Comments = Text.Optional(comments, "customerComments", "Customer comments", 4000);
-}
+    private static string RequiredName(string? name, string field, string message)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            throw new DomainValidationException(field, message);
+        }
 
-public interface ICustomerRepository
-{
-    Task<IReadOnlyList<Customer>> ListAsync(CancellationToken ct = default);
-    Task<Customer?> GetAsync(string id, CancellationToken ct = default);
-    Task<IReadOnlyList<Customer>> GetManyAsync(IReadOnlyCollection<string> ids, CancellationToken ct = default);
-    Task<Customer?> GetByEmailAsync(string normalisedEmail, CancellationToken ct = default);
-    /// <summary>Saves the customer and its unique email index together. Throws <see cref="ConflictException"/> when another customer owns the email.</summary>
-    Task SaveAsync(Customer customer, CancellationToken ct = default);
+        return trimmed.Length <= 100 ? trimmed : throw new DomainValidationException(field, "Names must be 100 characters or fewer.");
+    }
 }
