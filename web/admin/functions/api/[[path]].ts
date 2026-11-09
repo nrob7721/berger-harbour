@@ -1,17 +1,16 @@
-// Cloudflare Pages Function: proxies same-origin /api/* to the admin-api Cloud Run service.
-// Adds the shared X-Edge-Proxy-Secret, forwards the visitor's IP and the Cloudflare Access JWT.
+// Proxies same-origin /api/* to the admin-api Cloud Run service. Adds the shared edge secret and forwards the Cloudflare
+// Access JWT, which admin-api validates. Pages project environment variables: API_ORIGIN and EDGE_PROXY_SECRET (encrypted).
 
 interface Env {
-  API_ORIGIN: string; // e.g. https://admin-api-xxxxx-ts.a.run.app
+  API_ORIGIN: string;
   EDGE_PROXY_SECRET: string;
 }
 
-const FORWARDED_HEADERS = ['content-type', 'accept', 'cf-access-jwt-assertion'];
+const FORWARDED_HEADERS = ['content-type', 'accept', 'accept-language', 'user-agent', 'cf-access-jwt-assertion'];
 
 export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
-  const incoming = new URL(request.url);
-  const target = new URL(incoming.pathname + incoming.search, env.API_ORIGIN);
-
+  const url = new URL(request.url);
+  const target = new URL(url.pathname + url.search, env.API_ORIGIN);
   const headers = new Headers();
   for (const name of FORWARDED_HEADERS) {
     const value = request.headers.get(name);
@@ -27,7 +26,6 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
     redirect: 'manual',
   });
-
   const out = new Response(response.body, response);
   out.headers.set('Cache-Control', 'no-store');
   return out;

@@ -1,17 +1,23 @@
 using BergerHarbour.Application.Payments;
+using BergerHarbour.Application.Payments.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.PublicApi.Controllers;
 
 [ApiController]
-[Route("api/payments")]
-public sealed class PaymentsController(PaymentLinkService payments) : ControllerBase
+[Route("api/payments/{token}")]
+public sealed class PaymentsController : ControllerBase
 {
-    /// <summary>The pay page reached from emailed payment links.</summary>
-    [HttpGet("{token}")]
-    public Task<PayPageDto> Get(string token, CancellationToken ct) => payments.GetAsync(token, ct);
+    private readonly PaymentLinkService service;
 
-    /// <summary>Creates an Embedded Checkout session for the amount due now. 400 when nothing is owing.</summary>
-    [HttpPost("{token}/checkout")]
-    public Task<PayCheckoutResult> Checkout(string token, CancellationToken ct) => payments.CreateCheckoutAsync(token, ct);
+    public PaymentsController(PaymentLinkService service)
+    {
+        this.service = service;
+    }
+
+    [HttpGet]
+    public Task<PaymentLinkDetails> Get(string token, CancellationToken ct) => service.GetAsync(token, ct);
+
+    [HttpPost("checkout")]
+    public Task<CheckoutResponse> Checkout(string token, CancellationToken ct) => service.CheckoutAsync(token, ct);
 }

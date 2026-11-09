@@ -1,0 +1,12 @@
+.image {
+  object-fit: cover;
+  background: var(--c-surface-muted);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-surface-muted);
+  color: var(--c-text-faint);
+}

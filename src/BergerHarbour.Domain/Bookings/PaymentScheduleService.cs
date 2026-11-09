@@ -3,107 +3,75 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Bookings;
 
-/// <summary>Offsets relative to check-in, from configuration so they can be shortened for testing.</summary>
-public sealed record PaymentScheduleOffsets(
-    TimeSpan BalanceDueBeforeHire,
-    TimeSpan ExtendedFirstInstalmentBeforeHire,
-    TimeSpan ExtendedFinalInstalmentBeforeHire,
-    TimeSpan PaymentReminderBeforeDue)
+/// <summary>Standard and extended payment schedules (§7.6).</summary>
+public sealed class PaymentScheduleService
 {
-    public static readonly PaymentScheduleOffsets Default = new(
-        TimeSpan.FromDays(30), TimeSpan.FromDays(120), TimeSpan.FromDays(90), TimeSpan.FromDays(7));
-}
+    private readonly PaymentScheduleOptions options;
 
-public enum MilestoneKind
-{
-    Deposit,
-    Balance,
-    FirstInstalment,
-    Final,
-}
+    public PaymentScheduleService(PaymentScheduleOptions options)
+    {
+        this.options = options;
+    }
 
-/// <summary>By <see cref="DueAt"/> the customer must have paid <see cref="RequiredCumulative"/> in total.</summary>
-public sealed record PaymentMilestone(MilestoneKind Kind, decimal RequiredCumulative, DateTimeOffset DueAt)
-{
-    public DateOnly DueDate => SydneyTime.Today(DueAt);
-}
+    public PaymentScheduleOptions Options => options;
 
-public sealed class PaymentScheduleService(PaymentScheduleOffsets offsets)
-{
-    public PaymentScheduleOffsets Offsets { get; } = offsets;
+    /// <summary>The online checkout always charges only min(deposit, hire price), even when the balance is already due.</summary>
+    public static decimal CheckoutAmount(decimal depositAmount, decimal hirePrice) => Math.Min(depositAmount, hirePrice);
 
-    /// <summary>Extended when the stay overlaps a blocked period flagged for the extended schedule.</summary>
-    public static PaymentSchedule DetermineSchedule(Stay stay, IEnumerable<BlockedPeriod> blockedPeriods) =>
-        blockedPeriods.Any(p => p.UsesExtendedPaymentSchedule && stay.Overlaps(p.Nights))
-            ? PaymentSchedule.Extended
-            : PaymentSchedule.Standard;
+    /// <summary>Check-in: StartDate 11:00 Australia/Sydney.</summary>
+    public static DateTimeOffset CheckInInstant(DateOnly startDate) => Sydney.InstantOf(startDate, Sydney.StandardCheckIn);
+
+    /// <summary>Extended when the stay overlaps a blocked period flagged for the extended schedule (Christmas/New Year).</summary>
+    public PaymentScheduleType ScheduleFor(StayRange stay, IEnumerable<BlockedPeriod> blockedPeriods) =>
+        blockedPeriods.Any(p => p.UsesExtendedPaymentSchedule && p.Overlaps(stay)) ? PaymentScheduleType.Extended : PaymentScheduleType.Standard;
 
     public IReadOnlyList<PaymentMilestone> Milestones(Booking booking) =>
-        Milestones(booking.PaymentSchedule, booking.StartDate, booking.TotalPrice, booking.DepositAmount, booking.CreatedDate);
+        Milestones(booking.PaymentSchedule, booking.StartDate, booking.DepositAmount, booking.TotalPrice, booking.CreatedDate);
 
-    /// <summary>
-    /// The deposit (due at creation) followed by the Balance milestone (standard) or the First instalment (50%)
-    /// and Final (100%) milestones (extended).
-    /// </summary>
-    public IReadOnlyList<PaymentMilestone> Milestones(PaymentSchedule schedule, DateOnly startDate, decimal totalPrice,
-        decimal depositAmount, DateTimeOffset createdAt)
+    public IReadOnlyList<PaymentMilestone> Milestones(
+        PaymentScheduleType schedule, DateOnly startDate, decimal depositAmount, decimal totalPrice, DateTimeOffset createdAt)
     {
-        var checkIn = SydneyTime.CheckInInstant(startDate);
+        var checkIn = CheckInInstant(startDate);
         var milestones = new List<PaymentMilestone>
         {
-            new(MilestoneKind.Deposit, Math.Min(depositAmount, totalPrice), createdAt),
+            Milestone(MilestoneKind.Deposit, "Deposit", Math.Min(depositAmount, totalPrice), createdAt, createdAt),
         };
-        if (schedule == PaymentSchedule.Extended)
+        if (schedule == PaymentScheduleType.Extended)
         {
-            milestones.Add(new PaymentMilestone(MilestoneKind.FirstInstalment,
-                Math.Round(totalPrice * 0.5m, 2, MidpointRounding.AwayFromZero),
-                checkIn - Offsets.ExtendedFirstInstalmentBeforeHire));
-            milestones.Add(new PaymentMilestone(MilestoneKind.Final, totalPrice, checkIn - Offsets.ExtendedFinalInstalmentBeforeHire));
+            milestones.Add(Milestone(MilestoneKind.First, "First instalment (50%)", Math.Round(totalPrice / 2m, 2, MidpointRounding.AwayFromZero),
+                checkIn - options.ExtendedFirstInstalmentBeforeHire, createdAt));
+            milestones.Add(Milestone(MilestoneKind.Final, "Final payment", totalPrice, checkIn - options.ExtendedFinalInstalmentBeforeHire, createdAt));
         }
         else
         {
-            milestones.Add(new PaymentMilestone(MilestoneKind.Balance, totalPrice, checkIn - Offsets.BalanceDueBeforeHire));
+            milestones.Add(Milestone(MilestoneKind.Balance, "Balance", totalPrice, checkIn - options.BalanceDueBeforeHire, createdAt));
         }
 
         return milestones;
     }
 
-    /// <summary>When the reminder for a milestone is sent; also when it starts counting toward "amount due now".</summary>
-    public DateTimeOffset ReminderAt(PaymentMilestone milestone) => milestone.DueAt - Offsets.PaymentReminderBeforeDue;
+    /// <summary>When the payment reminder for a milestone is sent.</summary>
+    public DateTimeOffset ReminderAt(PaymentMilestone milestone) => milestone.DueAt - options.PaymentReminderBeforeDue;
+
+    /// <summary>When the pre-hire instructions are sent.</summary>
+    public DateTimeOffset PreHireInstructionsAt(DateOnly startDate) => CheckInInstant(startDate) - options.PreHireInstructionsBeforeHire;
 
     /// <summary>
-    /// A milestone whose due instant is at or before the booking's creation was already due when it was made (e.g.
-    /// a booking made 10 days before check-in). Payment emails whose trigger had passed at creation are never sent.
+    /// The largest shortfall among milestones whose reminder window has opened; when there is none, the amount owing.
     /// </summary>
-    public static bool WasDueAtCreation(PaymentMilestone milestone, Booking booking) =>
-        milestone.Kind != MilestoneKind.Deposit && milestone.DueAt <= booking.CreatedDate;
+    public decimal AmountDueNow(Booking booking, DateTimeOffset now) =>
+        AmountDueNow(Milestones(booking), booking.AmountPaid, booking.AmountOwing, now);
 
-    /// <summary>True when a scheduled email's trigger instant had already passed when the booking was created.</summary>
-    public static bool TriggerPassedAtCreation(DateTimeOffset trigger, Booking booking) => trigger <= booking.CreatedDate;
-
-    /// <summary>The non-deposit milestones already due at creation that are not yet paid.</summary>
-    public IReadOnlyList<PaymentMilestone> UnpaidMilestonesDueAtCreation(Booking booking) =>
-        Milestones(booking).Where(m => WasDueAtCreation(m, booking) && booking.AmountPaid < m.RequiredCumulative).ToList();
-
-    /// <summary>
-    /// The largest shortfall among milestones whose reminder window has opened; when there is none, the whole
-    /// amount owing (which covers ad-hoc links, e.g. after a price-on-request add-on is priced).
-    /// </summary>
-    public decimal AmountDueNow(Booking booking, DateTimeOffset now)
+    public decimal AmountDueNow(IReadOnlyList<PaymentMilestone> milestones, decimal amountPaid, decimal amountOwing, DateTimeOffset now)
     {
-        var paid = booking.AmountPaid;
-        var owing = booking.AmountOwing;
-        var largestShortfall = Milestones(booking)
-            .Where(m => now >= ReminderAt(m))
-            .Select(m => m.RequiredCumulative - paid)
-            .DefaultIfEmpty(0m)
-            .Max();
-        return largestShortfall > 0 ? Math.Min(largestShortfall, owing) : owing;
+        var shortfalls = milestones
+            .Where(m => now >= ReminderAt(m) || m.Kind == MilestoneKind.Deposit)
+            .Select(m => m.ShortfallFor(amountPaid))
+            .Where(s => s > 0m)
+            .ToList();
+        return shortfalls.Count == 0 ? amountOwing : Math.Min(shortfalls.Max(), amountOwing);
     }
 
-    /// <summary>
-    /// What an online booking pays at checkout: always min(deposit, hire price), even when the balance is already
-    /// due. The rest is requested through the payment link in the confirmation email.
-    /// </summary>
-    public static decimal OnlineCheckoutAmount(decimal hirePrice, decimal depositAmount) => Math.Min(depositAmount, hirePrice);
+    private static PaymentMilestone Milestone(MilestoneKind kind, string label, decimal required, DateTimeOffset due, DateTimeOffset createdAt) =>
+        new(kind, label, required, due, Sydney.DateOf(due), due <= createdAt);
 }

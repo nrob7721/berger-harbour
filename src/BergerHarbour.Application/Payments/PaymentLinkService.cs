@@ -1,78 +1,76 @@
 using BergerHarbour.Application.Abstractions;
-using BergerHarbour.Application.Common;
+using BergerHarbour.Application.Payments.Dtos;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Shared;
-using Microsoft.Extensions.Options;
 
 namespace BergerHarbour.Application.Payments;
 
-public sealed record PayPageDto(
-    string Reference,
-    string BoatName,
-    DateOnly StartDate,
-    DateOnly EndDate,
-    decimal TotalPrice,
-    decimal AmountPaid,
-    decimal AmountOwing,
-    decimal AmountDueNow,
-    bool CanPay);
-
-public sealed record PayCheckoutResult(string ClientSecret, string SessionId, decimal Amount);
-
-/// <summary>The pay page reached from payment links in emails.</summary>
-public sealed class PaymentLinkService(
-    IBookingRepository bookings,
-    IBoatRepository boats,
-    ICustomerRepository customers,
-    IPaymentGateway paymentGateway,
-    PaymentScheduleService paymentSchedule,
-    IOptions<BookingOptions> bookingOptions,
-    IClock clock)
+/// <summary>The pay page reached from emailed payment links (<c>PaymentsController</c>).</summary>
+public sealed class PaymentLinkService
 {
-    public async Task<PayPageDto> GetAsync(string token, CancellationToken ct = default)
+    public const string InvalidLink = "This payment link isn't valid. Please contact us.";
+    public const string NothingOwing = "Nothing is owing on this booking.";
+
+    private readonly IBookingRepository bookings;
+    private readonly IBoatRepository boats;
+    private readonly ICustomerRepository customers;
+    private readonly PaymentScheduleService schedule;
+    private readonly IPaymentGateway payments;
+    private readonly PaymentLinkTokens links;
+    private readonly IClock clock;
+
+    public PaymentLinkService(
+        IBookingRepository bookings, IBoatRepository boats, ICustomerRepository customers, PaymentScheduleService schedule, IPaymentGateway payments,
+        PaymentLinkTokens links, IClock clock)
+    {
+        this.bookings = bookings;
+        this.boats = boats;
+        this.customers = customers;
+        this.schedule = schedule;
+        this.payments = payments;
+        this.links = links;
+        this.clock = clock;
+    }
+
+    public async Task<PaymentLinkDetails> GetAsync(string token, CancellationToken ct = default)
     {
         var booking = await FindAsync(token, ct);
         var boat = await boats.GetAsync(booking.BoatId, ct);
-        var due = AmountDueNow(booking);
-        return new PayPageDto(booking.Reference.Value, boat?.Name ?? string.Empty, booking.StartDate, booking.EndDate,
-            booking.TotalPrice, booking.AmountPaid, booking.AmountOwing, due, due > 0);
+        var customer = booking.CustomerId is { } id ? await customers.GetAsync(id, ct) : null;
+        var dueNow = booking.IsNotifiable ? schedule.AmountDueNow(booking, clock.UtcNow) : 0m;
+        return new PaymentLinkDetails(booking.Reference!.Value, customer?.FirstName ?? booking.CustomerDetails?.FirstName ?? string.Empty,
+            boat?.Name ?? string.Empty, booking.StartDate, booking.EndDate, booking.TotalPrice, booking.AmountPaid, booking.AmountOwing, dueNow);
     }
 
-    public async Task<PayCheckoutResult> CreateCheckoutAsync(string token, CancellationToken ct = default)
+    /// <summary>An Embedded Checkout session for the amount due now. 400 if nothing is owing.</summary>
+    public async Task<CheckoutResponse> CheckoutAsync(string token, CancellationToken ct = default)
     {
         var booking = await FindAsync(token, ct);
-        var amount = AmountDueNow(booking);
-        if (amount <= 0)
+        if (!booking.IsNotifiable)
         {
-            throw RequestValidationException.For("token", "There is nothing to pay on this booking.");
+            throw new BusinessRuleException("This booking can't be paid online. Please contact us.");
+        }
+
+        var amount = schedule.AmountDueNow(booking, clock.UtcNow);
+        if (amount <= 0m)
+        {
+            throw new BusinessRuleException(NothingOwing);
         }
 
         var boat = await boats.GetAsync(booking.BoatId, ct);
-        var email = (booking.CustomerId is { } customerId ? (await customers.GetAsync(customerId, ct))?.Email.Value : null)
-                    ?? booking.CustomerDetails?.Email
-                    ?? throw new NotFoundException("Booking not found.");
-        var session = await paymentGateway.CreateEmbeddedCheckoutSessionAsync(new CheckoutSessionRequest(
-            booking.Id, booking.Reference.Value, CheckoutPurpose.Payment, amount,
-            $"Payment for {boat?.Name} {Format.Date(booking.StartDate)} ({booking.Reference.Value})",
-            email,
-            clock.UtcNow + bookingOptions.Value.CheckoutSessionLifetime + TimeSpan.FromMinutes(1)), ct);
-        return new PayCheckoutResult(session.ClientSecret, session.SessionId, amount);
+        var customer = booking.CustomerId is { } id ? await customers.GetAsync(id, ct) : null;
+        var email = customer?.Email.Value ?? booking.CustomerDetails?.Email.Value ?? string.Empty;
+        var session = await payments.CreateCheckoutSessionAsync(new CheckoutSessionRequest(booking.Id, CheckoutPurpose.Payment, amount,
+            $"Booking {booking.Reference!.Value}", $"{boat?.Name} {Notifications.DisplayFormat.Date(booking.StartDate)}", email,
+            $"{links.BaseUrl}/pay/?token={Uri.EscapeDataString(token)}&session_id={{CHECKOUT_SESSION_ID}}", null), ct);
+        return new CheckoutResponse(session.ClientSecret, session.SessionId);
     }
-
-    /// <summary>Only Active bookings can be paid through a link.</summary>
-    private decimal AmountDueNow(Booking booking) =>
-        booking.Status == BookingStatus.Active ? paymentSchedule.AmountDueNow(booking, clock.UtcNow) : 0m;
 
     private async Task<Booking> FindAsync(string token, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length > 100)
-        {
-            throw new NotFoundException("This payment link is not valid.");
-        }
-
-        return await bookings.GetByPaymentLinkTokenHashAsync(PaymentLinkTokens.Hash(token.Trim()), ct)
-               ?? throw new NotFoundException("This payment link is not valid.");
+        var booking = string.IsNullOrWhiteSpace(token) ? null : await bookings.GetByPaymentLinkTokenHashAsync(PaymentLinkTokens.Hash(token), ct);
+        return booking is { Reference: not null } ? booking : throw new NotFoundException(InvalidLink);
     }
 }

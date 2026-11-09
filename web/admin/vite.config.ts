@@ -1,19 +1,22 @@
-import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 
-// Local development proxies /api to admin-api (dotnet run, which bypasses Cloudflare Access only in Development).
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
 export default defineConfig({
-  resolve: { alias: { '@shared': resolve(__dirname, '../shared/src') } },
+  plugins: [react()],
+  resolve: { alias: { '@': r('./src'), '@shared': r('../shared/src') } },
   server: {
     port: 5174,
     strictPort: true,
-    proxy: {
-      '/api': {
-        target: process.env.ADMIN_API_URL ?? 'http://localhost:5081',
-        changeOrigin: true,
-        headers: { 'X-Edge-Proxy-Secret': process.env.EDGE_PROXY_SECRET ?? 'dev-edge-secret' },
-      },
-    },
+    proxy: { '/api': 'http://localhost:5081' },
   },
-  build: { target: 'es2022' },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/testing/setup.tsx'],
+    css: { modules: { classNameStrategy: 'non-scoped' } },
+    env: { TZ: 'UTC' },
+  },
 });

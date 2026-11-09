@@ -1,22 +1,24 @@
-using BergerHarbour.Application.Bookings;
+using BergerHarbour.Application.Boats;
+using BergerHarbour.Application.Boats.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.PublicApi.Controllers;
 
 [ApiController]
 [Route("api/boats")]
-public sealed class BoatsController(OnlineBookingService bookings) : ControllerBase
+public sealed class BoatsController : ControllerBase
 {
-    /// <summary>Every active house boat and the booking settings. Also wakes the service on page load.</summary>
+    private readonly BoatCatalogueService service;
+
+    public BoatsController(BoatCatalogueService service)
+    {
+        this.service = service;
+    }
+
+    /// <summary>Every active house boat and the booking settings. Also the warm-up call.</summary>
     [HttpGet]
-    public Task<PublicFleetDto> List(CancellationToken ct) => bookings.GetFleetAsync(ct);
+    public Task<PublicBoatsResponse> List(CancellationToken ct) => service.ListAsync(ct);
 
-    /// <summary>Customer-safe data for one house boat, active or not. 404 for an unknown slug or a non-house boat.</summary>
     [HttpGet("{slug}")]
-    public Task<PublicBoatDto> Get(string slug, CancellationToken ct) => bookings.GetBoatAsync(slug, ct);
-
-    /// <summary>Prices a stay and runs the online rules (except the draft, terms and acceptance).</summary>
-    [HttpPost("{slug}/quote")]
-    public Task<QuoteDto> Quote(string slug, QuoteRequest request, CancellationToken ct) =>
-        bookings.QuoteAsync(slug, request, ct);
+    public Task<PublicBoatDetails> Get(string slug, CancellationToken ct) => service.GetAsync(slug, ct);
 }

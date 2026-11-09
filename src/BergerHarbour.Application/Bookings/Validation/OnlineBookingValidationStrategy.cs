@@ -1,57 +1,52 @@
-using BergerHarbour.Application.Common;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
-using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Validation;
 
-/// <summary>
-/// The rules for customer bookings: period shape, lead time, open-until, blocked periods, adult/child limits,
-/// rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
-/// Turnstile was verified when the draft was created.
-/// </summary>
+/// <summary>The online booking rules (§7.7). Registered in the public API.</summary>
 public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationStrategy
 {
+    public const string RoomingNotAccepted = "Please accept the rooming warning to continue.";
+    public const string RoomingChanged = "The rooming warning has changed. Please review it and accept it again.";
+    public const string TermsNotAccepted = "Please accept the Hire Terms and Procedures.";
+    public const string DraftInvalid = "Your booking session has expired. Please start again.";
+
+    private readonly OnlineStayPolicy stayPolicy = new();
+
     public ValidationErrors Validate(BookingRequest request, BookingValidationContext context)
     {
         var errors = new ValidationErrors();
-        var settings = context.Settings;
-        var contact = $"{settings.ContactPhone} / {settings.ContactEmail}";
+        var boat = context.Boat;
 
         // 1. The boat exists, is active and is a house boat.
-        var boat = context.Boat;
-        if (boat is null)
+        if (boat is null || !boat.IsActive || boat.Type != BoatType.House)
         {
-            return errors.Add("slug", "That boat was not found.");
-        }
-
-        if (!boat.IsActive || boat.Type != BoatType.House)
-        {
-            return errors.Add("slug",
-                $"This boat is currently unavailable for online booking. Please contact us on {contact}.");
+            return errors.Add("slug", "This boat isn't available for online booking.");
         }
 
         // 2–5. Period shape, lead time, open-until and blocked periods.
-        ValidateStay(request.PeriodType, request.StartDate, request.EndDate, settings, context.BlockedPeriods, context.Today,
-            errors);
+        var stay = stayPolicy.Check(request.PeriodType, request.StartDate, context.Settings, context.BlockedPeriods, context.Today);
+        errors.AddRange(stay.Errors);
 
-        // 6. Adults and children: at least one adult, and no more guests in total than the boat takes.
+        // 6. Guests.
+        var guests = request.NumberOfAdults + request.NumberOfChildren;
         if (request.NumberOfAdults < 1)
         {
-            errors.Add("numberOfAdults", "At least one adult must be on board.");
+            errors.Add("numberOfAdults", "At least 1 adult is required.");
         }
 
         if (request.NumberOfChildren < 0)
         {
-            errors.Add("numberOfChildren", "Number of children cannot be negative.");
-        }
-        else if (request.NumberOfAdults >= 1 && request.NumberOfGuests > boat.MaxNoOfGuests)
-        {
-            errors.Add("numberOfChildren", $"{boat.Name} takes at most {boat.MaxNoOfGuests} guests (adults and children).");
+            errors.Add("numberOfChildren", "Children can't be negative.");
         }
 
-        // 9. Add-ons: active, allowed for this boat, sensible quantities, within capacity.
+        if (guests > boat.Berth)
+        {
+            errors.Add("numberOfChildren", $"{boat.Name} sleeps up to {boat.Berth} guests.");
+        }
+
+        // 9. Add-ons.
         ValidateAddons(request, context, boat, errors);
 
         if (context.Scope == BookingValidationScope.Quote)
@@ -59,131 +54,80 @@ public sealed class OnlineBookingValidationStrategy : IBookingRequestValidationS
             return errors;
         }
 
-        // 7. Rooming warning acceptance must match the text the server would show.
-        if (boat.RequiresRoomingWarning(request.NumberOfGuests) && !errors.Has("numberOfAdults") && !errors.Has("numberOfChildren"))
+        // 7. Rooming warning acceptance, with the exact text the server would generate.
+        var warning = boat.RoomingWarningFor(guests);
+        if (warning is not null)
         {
-            var expected = boat.RoomingWarningText(request.NumberOfGuests);
-            if (!request.RoomingWarningAccepted || !string.Equals(request.RoomingWarningText?.Trim(), expected, StringComparison.Ordinal))
+            if (!request.RoomingWarningAccepted)
             {
-                errors.Add("roomingWarningAccepted", "Please read and accept the rooming arrangements for this boat.");
+                errors.Add("roomingWarningAccepted", RoomingNotAccepted);
+            }
+            else if (!string.Equals(request.RoomingWarningText?.Trim(), warning, StringComparison.Ordinal))
+            {
+                errors.Add("roomingWarningText", RoomingChanged);
             }
         }
 
-        // 8. Terms accepted.
+        // 8. Terms.
         if (!request.TermsAccepted)
         {
-            errors.Add("termsAccepted", "Please accept the Hire Terms and Procedures.");
+            errors.Add("termsAccepted", TermsNotAccepted);
         }
 
         // 10. Contact details.
-        ContactValidation.Validate(errors, request.FullName, request.Email, request.Mobile);
-
-        // 11. A valid, unconverted booking draft for this boat.
-        var draft = context.Draft;
-        if (string.IsNullOrWhiteSpace(request.DraftId) || draft is null || draft.Id.Value != request.DraftId ||
-            draft.BoatId != boat.Id)
+        if (string.IsNullOrWhiteSpace(request.FirstName))
         {
-            errors.Add("draftId", "Your booking session has expired. Please start again.");
+            errors.Add("firstName", "First name is required.");
         }
-        else if (draft.IsConverted)
+
+        if (string.IsNullOrWhiteSpace(request.LastName))
         {
-            errors.Add("draftId", "This booking has already been completed.");
+            errors.Add("lastName", "Last name is required.");
+        }
+
+        errors.Capture(() => EmailAddress.Create(request.Email));
+        errors.Capture(() => MobileNumber.Create(request.Mobile));
+
+        // 11. A valid, unconverted draft for this boat.
+        var draft = context.Draft;
+        if (request.DraftId is null || draft is null || draft.Id != request.DraftId || draft.IsConverted || draft.Contents.BoatId != boat.Id)
+        {
+            errors.Add("draftId", DraftInvalid);
         }
 
         return errors;
     }
 
-    /// <summary>
-    /// Rules 2–5 for an online stay: a Midweek, Weekend or Week period of the right shape, the minimum lead time, every
-    /// night inside the open window, and no blocked period. Returns the stay when its shape is valid (it may still have
-    /// broken rules 3–5; check <paramref name="errors"/>).
-    /// </summary>
-    public static Stay? ValidateStay(PeriodType periodType, DateOnly startDate, DateOnly? endDate, BusinessSettings settings,
-        IReadOnlyList<BlockedPeriod> blockedPeriods, DateOnly today, ValidationErrors errors)
+    private static void ValidateAddons(BookingRequest request, BookingValidationContext context, Boat boat, ValidationErrors errors)
     {
-        var contact = $"{settings.ContactPhone} / {settings.ContactEmail}";
-        // 2. Exactly one Midweek, Weekend or Week period of the right shape.
-        Stay? stay = null;
-        if (!PeriodTypes.Online.Contains(periodType))
+        foreach (var group in request.Addons.GroupBy(a => a.AddonId))
         {
-            errors.Add("periodType", $"Please call or email us to book this kind of stay: {contact}.");
-        }
-        else
-        {
-            stay = StayPeriodFactory.OnlineStayStartingOn(periodType, startDate);
-            if (stay is null || (endDate is { } end && end != stay.EndDate))
+            if (group.Count() > 1)
             {
-                errors.Add("startDate", periodType switch
-                {
-                    PeriodType.Midweek => "A mid-week stay runs Monday to Friday.",
-                    PeriodType.Weekend => "A weekend stay runs Friday to Monday.",
-                    _ => "A week runs Monday to Monday or Friday to Friday.",
-                });
-                stay = null;
-            }
-        }
-
-        if (stay is not null)
-        {
-            // 3. Minimum lead time.
-            if (!settings.SatisfiesLeadTime(stay, today))
-            {
-                errors.Add("startDate",
-                    $"Online bookings must start at least {settings.MinimumLeadTimeDays} days from today. " +
-                    $"For sooner dates please contact us on {contact}.");
-            }
-
-            // 4. Every night inside the open window.
-            if (!settings.IsOpenForOnlineBooking(stay))
-            {
-                errors.Add("startDate",
-                    $"Online bookings are open until {settings.BookingsOpenUntil:dd/MM/yyyy}. " +
-                    $"For later dates please contact us on {contact}.");
-            }
-
-            // 5. No blocked period.
-            foreach (var blocked in BookingAvailabilityService.OverlappingBlockedPeriods(stay, blockedPeriods))
-            {
-                errors.Add("startDate", $"Bookings over {blocked.Name} must be made by phone or email: {contact}.");
-            }
-        }
-
-        return stay;
-    }
-
-    private static void ValidateAddons(BookingRequest request, BookingValidationContext context, Boat boat,
-        ValidationErrors errors)
-    {
-        var seen = new HashSet<string>();
-        foreach (var requested in request.Addons)
-        {
-            var definition = context.AddonDefinitions.FirstOrDefault(a => a.Id.Value == requested.AddonId);
-            if (definition is null || !definition.IsActive || !boat.AllowsAddon(definition.Id))
-            {
-                errors.Add("addons", "One of the selected add-ons is not available for this boat.");
+                errors.Add("addons", "Each add-on can only be requested once.");
                 continue;
             }
 
-            if (!seen.Add(requested.AddonId))
+            var requested = group.Single();
+            var addon = context.Addons.FirstOrDefault(a => a.Id == requested.AddonId);
+            if (addon is null || !addon.IsActive || !boat.AllowsAddon(addon.Id))
             {
-                errors.Add("addons", $"{definition.Name} was selected more than once.");
+                errors.Add("addons", $"An add-on you chose isn't offered on {boat.Name}.");
+                continue;
             }
 
-            if (requested.Quantity < 1 || requested.Quantity > 99)
+            if (requested.Quantity < 1)
             {
-                errors.Add("addons", $"Choose a quantity between 1 and 99 for {definition.Name}.");
+                errors.Add("addons", $"Choose a quantity of at least 1 for {addon.Name}.");
             }
-            else if (!definition.QuantityApplies && requested.Quantity != 1)
+            else if (!addon.QuantityApplies && requested.Quantity != 1)
             {
-                errors.Add("addons", $"{definition.Name} can only be requested once.");
+                errors.Add("addons", $"{addon.Name} can only be requested once.");
             }
-            else if (definition.HasCapacity && context.AddonRemaining?.GetValueOrDefault(definition.Id) is { } remaining &&
-                     requested.Quantity > remaining)
+            else if (addon.HasCapacity && context.RemainingCapacity.TryGetValue(addon.Id, out var remaining) && requested.Quantity > remaining)
             {
-                // A hard limit online, checked without a lock: a truly simultaneous race may oversell.
-                errors.Add("addons", remaining == 0
-                    ? $"{definition.Name} is fully booked for your dates."
-                    : $"Only {remaining} {definition.CapacityUnitLabel ?? "of " + definition.Name} remain for your dates.");
+                var unit = string.IsNullOrWhiteSpace(addon.CapacityUnitLabel) ? addon.Name : addon.CapacityUnitLabel;
+                errors.Add("addons", $"Only {remaining} {unit} remain for your dates.");
             }
         }
     }

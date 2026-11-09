@@ -2,75 +2,56 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Bookings;
 
-/// <summary>
-/// Maps a period type and a date to a stay. In the customer calendar a click selects the period of the selected
-/// type that contains the clicked day; in Week mode only Mondays and Fridays are clickable and start the stay.
-/// </summary>
-public static class StayPeriodFactory
+/// <summary>Period type + date → stay (§4 decision 7, §7.7 rule 2, §12.1).</summary>
+public sealed class StayPeriodFactory
 {
-    public const int MidweekNights = 4;
-    public const int WeekendNights = 3;
-    public const int WeekNights = 7;
-    public const int LongWeekendNights = 4;
+    public const string InvalidShape = "Those dates don't match the selected period.";
 
-    /// <summary>The stay a calendar click maps to, or null when the day is not clickable in that mode.</summary>
-    public static Stay? FromClickedDay(PeriodType periodType, DateOnly clicked)
+    /// <summary>
+    /// The period of that type containing the clicked day: Mid-week Mon–Fri (clicking Fri gives the Mon→Fri ending that
+    /// day), Weekend Fri→Mon (clicking Mon gives the weekend ending that day), Week starting on the clicked Mon or Fri.
+    /// Null when the day isn't clickable in that mode.
+    /// </summary>
+    public StayRange? ForClickedDay(PeriodType periodType, DateOnly day) => periodType switch
     {
-        var day = clicked.DayOfWeek;
-        return periodType switch
-        {
-            PeriodType.Midweek when day is >= DayOfWeek.Monday and <= DayOfWeek.Friday =>
-                StartingOn(clicked.AddDays(-(day - DayOfWeek.Monday)), MidweekNights),
-            PeriodType.Weekend when day is DayOfWeek.Friday => StartingOn(clicked, WeekendNights),
-            PeriodType.Weekend when day is DayOfWeek.Saturday => StartingOn(clicked.AddDays(-1), WeekendNights),
-            PeriodType.Weekend when day is DayOfWeek.Sunday => StartingOn(clicked.AddDays(-2), WeekendNights),
-            PeriodType.Weekend when day is DayOfWeek.Monday => StartingOn(clicked.AddDays(-3), WeekendNights),
-            PeriodType.Week when day is DayOfWeek.Monday or DayOfWeek.Friday => StartingOn(clicked, WeekNights),
-            _ => null,
-        };
-    }
-
-    /// <summary>True when the stay has exactly the shape of an online period of that type.</summary>
-    public static bool IsValidOnlineShape(PeriodType periodType, Stay stay)
-    {
-        var start = stay.StartDate.DayOfWeek;
-        return periodType switch
-        {
-            PeriodType.Midweek => start == DayOfWeek.Monday && stay.Nights == MidweekNights,
-            PeriodType.Weekend => start == DayOfWeek.Friday && stay.Nights == WeekendNights,
-            PeriodType.Week => start is DayOfWeek.Monday or DayOfWeek.Friday && stay.Nights == WeekNights,
-            _ => false,
-        };
-    }
-
-    /// <summary>The online stay that starts on the given date, or null when no period of that type starts then.</summary>
-    public static Stay? OnlineStayStartingOn(PeriodType periodType, DateOnly startDate)
-    {
-        var nights = periodType switch
-        {
-            PeriodType.Midweek => MidweekNights,
-            PeriodType.Weekend => WeekendNights,
-            PeriodType.Week => WeekNights,
-            _ => 0,
-        };
-        if (nights == 0)
-        {
-            return null;
-        }
-
-        var stay = StartingOn(startDate, nights);
-        return IsValidOnlineShape(periodType, stay) ? stay : null;
-    }
-
-    /// <summary>The end date the staff booking dialog pre-fills for a period type, or null for Custom.</summary>
-    public static DateOnly? DefaultEndDate(PeriodType periodType, DateOnly startDate) => periodType switch
-    {
-        PeriodType.Midweek => startDate.AddDays(MidweekNights),
-        PeriodType.Weekend => startDate.AddDays(WeekendNights),
-        PeriodType.Week => startDate.AddDays(WeekNights),
-        PeriodType.LongWeekend => startDate.AddDays(LongWeekendNights),
+        PeriodType.Midweek when day.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday =>
+            Range(day.AddDays(-((int)day.DayOfWeek - 1)), 4),
+        PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Friday => Range(day, 3),
+        PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Saturday => Range(day.AddDays(-1), 3),
+        PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Sunday => Range(day.AddDays(-2), 3),
+        PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Monday => Range(day.AddDays(-3), 3),
+        PeriodType.Week when day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Friday => Range(day, 7),
         _ => null,
     };
 
-    private static Stay StartingOn(DateOnly start, int nights) => new(start, start.AddDays(nights));
+    /// <summary>The admin pre-fill for a day: Mon–Thu → Mid-week of that week, Fri–Sun → the weekend containing it.</summary>
+    public (PeriodType PeriodType, StayRange Stay) DefaultForDay(DateOnly day) =>
+        day.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Thursday
+            ? (PeriodType.Midweek, ForClickedDay(PeriodType.Midweek, day)!.Value)
+            : (PeriodType.Weekend, ForClickedDay(PeriodType.Weekend, day)!.Value);
+
+    /// <summary>
+    /// An online stay from its start: Midweek Mon +4, Weekend Fri +3, Week Mon or Fri +7. Throws a field error on
+    /// <c>startDate</c> when the start doesn't fit, or on <c>periodType</c> for staff-only types.
+    /// </summary>
+    public StayRange ForOnlineStart(PeriodType periodType, DateOnly startDate)
+    {
+        if (!periodType.IsOnline())
+        {
+            throw new DomainValidationException("periodType", "Choose Mid-week, Weekend or Week.");
+        }
+
+        var stay = TryOnlineStart(periodType, startDate);
+        return stay ?? throw new DomainValidationException("startDate", InvalidShape);
+    }
+
+    public StayRange? TryOnlineStart(PeriodType periodType, DateOnly startDate) => periodType switch
+    {
+        PeriodType.Midweek when startDate.DayOfWeek == DayOfWeek.Monday => Range(startDate, 4),
+        PeriodType.Weekend when startDate.DayOfWeek == DayOfWeek.Friday => Range(startDate, 3),
+        PeriodType.Week when startDate.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Friday => Range(startDate, 7),
+        _ => null,
+    };
+
+    private static StayRange Range(DateOnly start, int nights) => StayRange.Create(start, start.AddDays(nights));
 }

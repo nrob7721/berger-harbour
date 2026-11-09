@@ -21,8 +21,8 @@
       "collectionGroup": "bookings",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "boatId", "order": "ASCENDING" },
-        { "fieldPath": "startDate", "order": "ASCENDING" }
+        { "fieldPath": "addonIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
       ]
     },
     {
@@ -35,11 +35,12 @@
       ]
     },
     {
-      "collectionGroup": "bookingDrafts",
+      "collectionGroup": "bookings",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "email", "order": "ASCENDING" },
-        { "fieldPath": "lastActivityAt", "order": "DESCENDING" }
+        { "fieldPath": "customerId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "startDate", "order": "ASCENDING" }
       ]
     },
     {
@@ -48,6 +49,14 @@
       "fields": [
         { "fieldPath": "boatId", "order": "ASCENDING" },
         { "fieldPath": "firstNight", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bookingDrafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "lastActivityAt", "order": "DESCENDING" }
       ]
     }
   ],

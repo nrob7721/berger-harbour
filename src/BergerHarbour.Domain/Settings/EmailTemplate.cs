@@ -3,158 +3,78 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Settings;
 
-/// <summary>
-/// The emails the system sends. Numbers 3 (add-on confirmed/declined) and 9 (cancellation) are deliberately not
-/// implemented: staff contact the customer by hand.
-/// </summary>
-public enum EmailTemplateKey
+/// <summary>An editable email: subject and HTML body with <c>{{Placeholder}}</c>s. Unknown placeholders are rejected.</summary>
+public sealed partial class EmailTemplate : AggregateRoot
 {
-    /// <summary>#1, to the customer.</summary>
-    BookingConfirmed,
-
-    /// <summary>#2, to the staff alert address.</summary>
-    StaffNewOnlineBooking,
-
-    /// <summary>#4, to the customer, with a payment link.</summary>
-    PaymentDue,
-
-    /// <summary>#5, to the customer.</summary>
-    PaymentReceived,
-
-    /// <summary>#6, to the customer.</summary>
-    PreHireInstructions,
-
-    /// <summary>#7, to the staff alert address.</summary>
-    StaffBalanceOverdue,
-
-    /// <summary>#8, to the staff alert address.</summary>
-    StaffStandbySuperseded,
-
-    /// <summary>#10, to the staff alert address, about an abandoned online booking.</summary>
-    StaffAbandonedBooking,
-}
-
-/// <summary>
-/// Template placeholders ({{Name}}) and conditional sections ({{#Name}}…{{/Name}}, kept only when the condition
-/// holds). Placeholders that do not apply to a message render empty.
-/// </summary>
-public static partial class EmailPlaceholders
-{
-    public static readonly IReadOnlyList<string> All =
-    [
-        "CustomerName", "CustomerEmail", "CustomerPhone", "BookingReference", "BoatName", "CheckInDate", "CheckOutDate",
-        "CheckInTime", "CheckOutTime", "NumberOfGuests", "NumberOfAdults", "NumberOfChildren", "HirePrice", "TotalPrice",
-        "AmountPaid", "AmountOwing", "AmountDue", "DueDate", "PaymentLink", "SecurityBond", "RequestedAddons",
-        "PaymentSchedule", "HireTermsUrl", "ContactPhone", "ContactEmail", "LastStepReached",
-    ];
-
-    /// <summary>
-    /// Conditional sections. PaymentDueNow: a payment was already due when the booking was made (#1 then includes
-    /// the amount due and the payment link).
-    /// </summary>
-    public static readonly IReadOnlyList<string> Sections = ["PaymentDueNow"];
-
-    private static readonly HashSet<string> Known = new(All, StringComparer.Ordinal);
-
-    private static readonly HashSet<string> KnownSections = new(Sections, StringComparer.Ordinal);
-
-    public static IReadOnlyList<string> FindUnknown(string text) =>
-        Pattern().Matches(text).Select(m => m.Groups[1].Value).Where(n => !Known.Contains(n)).Distinct().ToList();
-
-    /// <summary>Problems with the conditional sections: unknown names, or an opening tag without its closing tag.</summary>
-    public static IReadOnlyList<string> FindSectionErrors(string text)
+    private EmailTemplate(EmailTemplateKey key, string subject, string htmlBody)
     {
-        var errors = new List<string>();
-        var tags = SectionTagPattern().Matches(text).Select(m => (Close: m.Groups[1].Value == "/", Name: m.Groups[2].Value)).ToList();
-        foreach (var name in tags.Select(t => t.Name).Distinct().Where(n => !KnownSections.Contains(n)))
-        {
-            errors.Add($"unknown section {{{{#{name}}}}}");
-        }
-
-        foreach (var name in tags.Select(t => t.Name).Distinct().Where(KnownSections.Contains))
-        {
-            if (tags.Count(t => t.Name == name && !t.Close) != tags.Count(t => t.Name == name && t.Close) ||
-                SectionPattern(name).Matches(text).Count != tags.Count(t => t.Name == name && !t.Close))
-            {
-                errors.Add($"{{{{#{name}}}}} must be closed with {{{{/{name}}}}}");
-            }
-        }
-
-        return errors;
-    }
-
-    /// <summary>Keeps the content of sections whose condition holds and removes the others.</summary>
-    public static string ApplySections(string text, Func<string, bool> condition) =>
-        Sections.Aggregate(text, (current, name) =>
-            SectionPattern(name).Replace(current, m => condition(name) ? m.Groups[1].Value : string.Empty));
-
-    public static string Replace(string text, Func<string, string> valueFor) =>
-        Pattern().Replace(text, m => valueFor(m.Groups[1].Value));
-
-    [GeneratedRegex(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")]
-    private static partial Regex Pattern();
-
-    [GeneratedRegex(@"\{\{\s*([#/])\s*([A-Za-z0-9_]+)\s*\}\}")]
-    private static partial Regex SectionTagPattern();
-
-    private static Regex SectionPattern(string name) =>
-        new(@"\{\{\s*#\s*" + name + @"\s*\}\}(.*?)\{\{\s*/\s*" + name + @"\s*\}\}", RegexOptions.Singleline);
-}
-
-public sealed class EmailTemplate : AggregateRoot<EmailTemplateKey>
-{
-    private EmailTemplate(EmailTemplateKey key, int version, string subject, string htmlBody)
-        : base(key, version)
-    {
+        Key = key;
         Subject = subject;
         HtmlBody = htmlBody;
     }
 
-    public EmailTemplateKey Key => Id;
+    public EmailTemplateKey Key { get; }
 
     public string Subject { get; private set; }
 
     public string HtmlBody { get; private set; }
 
-    public static EmailTemplate Create(EmailTemplateKey key, string subject, string htmlBody)
+    public static EmailTemplate Create(EmailTemplateKey key, string? subject, string? htmlBody, IReadOnlySet<string> knownPlaceholders)
     {
-        var template = new EmailTemplate(key, 0, string.Empty, string.Empty);
-        template.Update(subject, htmlBody);
+        var template = new EmailTemplate(key, string.Empty, string.Empty);
+        template.Update(subject, htmlBody, knownPlaceholders);
         return template;
     }
 
-    /// <summary>Saving a template with an unknown placeholder is rejected.</summary>
-    public void Update(string subject, string htmlBody)
+    public static EmailTemplate Rehydrate(EmailTemplateKey key, string subject, string htmlBody, int version)
     {
-        var s = Guard.Required(subject, "subject", "Subject", 200);
-        var body = Guard.Required(htmlBody, "htmlBody", "Body", 100_000);
-        var unknownInSubject = EmailPlaceholders.FindUnknown(s);
-        if (unknownInSubject.Count > 0)
+        var template = new EmailTemplate(key, subject, htmlBody);
+        template.SetPersistedVersion(version);
+        return template;
+    }
+
+    public static IEnumerable<string> PlaceholdersIn(string text) =>
+        Placeholder().Matches(text).Select(m => m.Groups[1].Value);
+
+    public void Update(string? subject, string? htmlBody, IReadOnlySet<string> knownPlaceholders)
+    {
+        var errors = new ValidationErrors();
+        var s = (subject ?? string.Empty).Trim();
+        var body = htmlBody ?? string.Empty;
+        if (s.Length == 0)
         {
-            throw new DomainValidationException("subject", $"Unknown placeholder(s): {Format(unknownInSubject)}.");
+            errors.Add("subject", "Subject is required.");
+        }
+        else if (s.Length > 200)
+        {
+            errors.Add("subject", "Subject must be 200 characters or fewer.");
         }
 
-        var unknownInBody = EmailPlaceholders.FindUnknown(body);
-        if (unknownInBody.Count > 0)
+        if (body.Trim().Length == 0)
         {
-            throw new DomainValidationException("htmlBody", $"Unknown placeholder(s): {Format(unknownInBody)}.");
+            errors.Add("htmlBody", "Body is required.");
+        }
+        else if (body.Length > 50_000)
+        {
+            errors.Add("htmlBody", "Body must be 50000 characters or fewer.");
         }
 
-        var sectionErrors = EmailPlaceholders.FindSectionErrors(s).Concat(EmailPlaceholders.FindSectionErrors(body)).ToList();
-        if (sectionErrors.Count > 0)
-        {
-            throw new DomainValidationException("htmlBody", $"Invalid section(s): {string.Join("; ", sectionErrors)}.");
-        }
-
+        CheckPlaceholders(errors, "subject", s, knownPlaceholders);
+        CheckPlaceholders(errors, "htmlBody", body, knownPlaceholders);
+        errors.ThrowIfAny();
         Subject = s;
         HtmlBody = body;
     }
 
-    public EmailTemplateSnapshot ToSnapshot() => new(Key, Version, Subject, HtmlBody);
+    private static void CheckPlaceholders(ValidationErrors errors, string field, string text, IReadOnlySet<string> known)
+    {
+        var unknown = PlaceholdersIn(text).Where(p => !known.Contains(p)).Distinct().ToList();
+        if (unknown.Count > 0)
+        {
+            errors.Add(field, $"Unknown placeholder{(unknown.Count > 1 ? "s" : string.Empty)}: {string.Join(", ", unknown.Select(p => "{{" + p + "}}"))}.");
+        }
+    }
 
-    public static EmailTemplate FromSnapshot(EmailTemplateSnapshot s) => new(s.Key, s.Version, s.Subject, s.HtmlBody);
-
-    private static string Format(IEnumerable<string> names) => string.Join(", ", names.Select(n => "{{" + n + "}}"));
+    [GeneratedRegex(@"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")]
+    private static partial Regex Placeholder();
 }
-
-public sealed record EmailTemplateSnapshot(EmailTemplateKey Key, int Version, string Subject, string HtmlBody);

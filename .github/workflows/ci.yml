@@ -24,7 +24,7 @@ jobs:
           node-version: '22'
       - name: Install Firebase CLI (Firestore emulator)
         run: npm install -g firebase-tools
-      - name: Build
+      - name: Build (StyleCop SA1402/SA1649 and all warnings as errors)
         run: dotnet build BergerHarbour.slnx -c Release
       - name: OpenAPI documents are up to date
         run: git diff --exit-code -- web/shared/openapi
@@ -32,6 +32,8 @@ jobs:
         run: |
           dotnet test tests/BergerHarbour.Domain.Tests -c Release --no-build
           dotnet test tests/BergerHarbour.Application.Tests -c Release --no-build
+      - name: Architecture tests
+        run: dotnet test tests/BergerHarbour.ArchitectureTests -c Release --no-build
       - name: Integration tests (Firestore emulator)
         run: firebase emulators:exec --only firestore --project demo-berger-harbour "dotnet test tests/BergerHarbour.Infrastructure.IntegrationTests -c Release --no-build"
         env:

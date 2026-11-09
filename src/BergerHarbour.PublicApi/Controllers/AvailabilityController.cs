@@ -1,4 +1,5 @@
 using BergerHarbour.Application.Bookings;
+using BergerHarbour.Application.Bookings.Dtos;
 using BergerHarbour.Domain.Shared;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,18 +7,20 @@ namespace BergerHarbour.PublicApi.Controllers;
 
 [ApiController]
 [Route("api/availability")]
-public sealed class AvailabilityController(OnlineBookingService bookings) : ControllerBase
+public sealed class AvailabilityController : ControllerBase
 {
-    /// <summary>
-    /// Unavailable ranges of every active house boat and the enquire-only (blocked) periods. Never booking or customer
-    /// data.
-    /// </summary>
-    [HttpGet]
-    public Task<FleetAvailabilityDto> Fleet([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct) =>
-        bookings.GetFleetAvailabilityAsync(from, to, ct);
+    private readonly AvailabilityService service;
 
-    /// <summary>Each active house boat's availability and hire price for one stay. 400 when the stay is not bookable online.</summary>
+    public AvailabilityController(AvailabilityService service)
+    {
+        this.service = service;
+    }
+
+    [HttpGet]
+    public Task<FleetAvailabilityResponse> Fleet([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        service.GetFleetAsync(from, to, ct);
+
     [HttpGet("period")]
-    public Task<PeriodAvailabilityDto> Period([FromQuery] PeriodType periodType, [FromQuery] DateOnly startDate,
-        CancellationToken ct) => bookings.GetPeriodAvailabilityAsync(periodType, startDate, ct);
+    public Task<PeriodAvailabilityResponse> Period([FromQuery] PeriodType? periodType, [FromQuery] DateOnly? startDate, CancellationToken ct) =>
+        service.GetPeriodAsync(periodType, startDate, ct);
 }

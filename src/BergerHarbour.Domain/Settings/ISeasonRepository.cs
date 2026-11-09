@@ -1,5 +1,3 @@
-using BergerHarbour.Domain.Shared;
-
 namespace BergerHarbour.Domain.Settings;
 
 public interface ISeasonRepository

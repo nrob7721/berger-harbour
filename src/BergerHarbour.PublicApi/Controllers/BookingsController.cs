@@ -1,22 +1,34 @@
 using BergerHarbour.Application.Bookings;
+using BergerHarbour.Application.Bookings.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.PublicApi.Controllers;
 
 [ApiController]
 [Route("api/bookings")]
-public sealed class BookingsController(OnlineBookingService bookings) : ControllerBase
+public sealed class BookingsController : ControllerBase
 {
-    /// <summary>
-    /// Creates a PendingPayment hold (no customer yet) and an Embedded Checkout session for the deposit. Requires a
-    /// valid, unconverted booking draft.
-    /// </summary>
-    [HttpPost]
-    public Task<CreateOnlineBookingResult> Create(CreateOnlineBookingRequest request, CancellationToken ct) =>
-        bookings.CreateAsync(request, ct);
+    private readonly OnlineBookingService service;
 
-    /// <summary>Completion screen polling. Only answers when session_id matches the booking's deposit checkout.</summary>
-    [HttpGet("{reference}/status")]
-    public Task<BookingStatusDto> Status(string reference, [FromQuery(Name = "session_id")] string? sessionId,
-        CancellationToken ct) => bookings.GetStatusAsync(reference, sessionId, ct);
+    public BookingsController(OnlineBookingService service)
+    {
+        this.service = service;
+    }
+
+    /// <summary>Creates the PendingPayment hold and the deposit's Embedded Checkout session.</summary>
+    [HttpPost]
+    public Task<CreateBookingResponse> Create(CreateBookingRequest request, CancellationToken ct) => service.CreateAsync(request, ct);
+
+    /// <summary>Back from the Payment step.</summary>
+    [HttpPost("{bookingId}/release")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Release(string bookingId, ReleaseBookingRequest request, CancellationToken ct)
+    {
+        await service.ReleaseAsync(bookingId, request, ct);
+        return NoContent();
+    }
+
+    [HttpGet("{bookingId}/status")]
+    public Task<BookingStatusResponse> Status(string bookingId, [FromQuery(Name = "session_id")] string? sessionId, CancellationToken ct) =>
+        service.GetStatusAsync(bookingId, sessionId, ct);
 }

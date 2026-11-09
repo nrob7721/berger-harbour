@@ -1,0 +1,61 @@
+/* Design tokens: the only global CSS besides the reset. Components use CSS Modules. */
+:root {
+  --font-sans: 'Noto Sans', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Brand */
+  --c-brand: #284863;
+  --c-brand-hover: #1e3a52;
+  --c-brand-tint: #e7eef5;
+  --c-brand-tint-strong: #a9c4dc;
+  --c-brand-muted: #7f98ae;
+  --c-brand-muted-tint: #d5e1ec;
+  --c-accent: #d9a92b;
+
+  /* Surfaces and text */
+  --c-bg: #f5f6f8;
+  --c-surface: #ffffff;
+  --c-surface-muted: #f6f7f9;
+  --c-border: #d8dde3;
+  --c-border-strong: #b9c1ca;
+  --c-text: #1b2230;
+  --c-text-muted: #5f6b7a;
+  --c-text-faint: #9aa3ad;
+  --c-disabled: #e8ebef;
+
+  /* Feedback */
+  --c-danger: #b42318;
+  --c-danger-tint: #fdecea;
+  --c-success: #2e7d32;
+  --c-success-tint: #e3f1e5;
+  --c-warning: #8a5a00;
+  --c-warning-tint: #fff4dc;
+  --c-info-tint: #e7eef5;
+  --c-focus: #2f6fb0;
+
+  /* Payment status and calendar states */
+  --c-outstanding: #f4d4d4;
+  --c-deposit-paid: #f7e6ad;
+  --c-part-paid: #d7e4f4;
+  --c-fully-paid: #d3ead6;
+  --c-unavailable: #b9c1c9;
+  --c-blocked: #f6e7c0;
+  --c-blocked-stripe: #ecd9a6;
+  --c-weekend: #f0f2f5;
+  --c-today: #d9a92b;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-pop: 0 10px 30px rgba(16, 24, 40, 0.18);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+}

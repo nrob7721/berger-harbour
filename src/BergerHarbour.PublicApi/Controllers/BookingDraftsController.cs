@@ -1,26 +1,30 @@
-using BergerHarbour.Application.Bookings;
+using BergerHarbour.Application.BookingDrafts;
+using BergerHarbour.Application.BookingDrafts.Dtos;
 using BergerHarbour.Infrastructure.Web;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.PublicApi.Controllers;
 
-/// <summary>
-/// The details a customer has entered before paying. Never a customer record: abandoned drafts are reported to staff.
-/// </summary>
 [ApiController]
 [Route("api/booking-drafts")]
-public sealed class BookingDraftsController(OnlineBookingService bookings) : ControllerBase
+public sealed class BookingDraftsController : ControllerBase
 {
-    /// <summary>Verifies Turnstile and starts a draft from "Your details".</summary>
-    [HttpPost]
-    public Task<BookingDraftCreatedDto> Create(CreateBookingDraftRequest request, CancellationToken ct) =>
-        bookings.CreateDraftAsync(request, HttpContext.ClientIp(), ct);
+    private readonly BookingDraftService service;
 
-    /// <summary>Records progress. 404 when the draft is unknown, converted or deleted.</summary>
-    [HttpPut("{draftId}")]
-    public async Task<IActionResult> Update(string draftId, UpdateBookingDraftRequest request, CancellationToken ct)
+    public BookingDraftsController(BookingDraftService service)
     {
-        await bookings.UpdateDraftAsync(draftId, request, ct);
+        this.service = service;
+    }
+
+    [HttpPost]
+    public Task<CreateDraftResponse> Create(CreateDraftRequest request, CancellationToken ct) =>
+        service.CreateAsync(request, ApiPaths.ClientIp(HttpContext), ct);
+
+    [HttpPut("{draftId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Update(string draftId, UpdateDraftRequest request, CancellationToken ct)
+    {
+        await service.UpdateAsync(draftId, request, ct);
         return NoContent();
     }
 }

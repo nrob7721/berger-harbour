@@ -4,36 +4,19 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Bookings;
 
-public sealed record HirePriceQuote(Season Season, decimal Price);
-
-/// <summary>Prices a stay per boat × season × period type. Prices are always calculated on the server.</summary>
-public static class PricingService
+/// <summary>Prices per boat × season × period type (§7.4).</summary>
+public sealed class PricingService
 {
-    /// <summary>The season whose range contains the date, or the built-in Normal season.</summary>
-    public static Season SeasonFor(DateOnly date, IReadOnlyCollection<Season> seasons) =>
-        seasons.FirstOrDefault(s => !s.IsDefault && s.Contains(date))
+    /// <summary>The season whose range contains the start date, or the default Normal season.</summary>
+    public Season SeasonFor(DateOnly startDate, IReadOnlyList<Season> seasons) =>
+        seasons.FirstOrDefault(s => !s.IsDefault && s.Contains(startDate))
         ?? seasons.FirstOrDefault(s => s.IsDefault)
-        ?? throw new InvalidOperationException("The built-in Normal season is missing. Run the seed.");
+        ?? throw new InvalidOperationException("The default Normal season is missing.");
 
-    /// <summary>The boat's rate for the season containing the start date and the period type.</summary>
-    public static HirePriceQuote QuoteHirePrice(Boat boat, IReadOnlyCollection<Season> seasons, PeriodType periodType,
-        DateOnly startDate)
-    {
-        if (periodType == PeriodType.Custom)
-        {
-            throw new DomainValidationException("periodType", "Custom stays are priced by staff.");
-        }
+    /// <summary>The boat's rate for the season and period type, or null (Custom stays and missing rates: staff type it).</summary>
+    public decimal? HirePrice(Boat boat, PeriodType periodType, DateOnly startDate, IReadOnlyList<Season> seasons) =>
+        periodType == PeriodType.Custom ? null : boat.RateFor(SeasonFor(startDate, seasons).Id, periodType);
 
-        var season = SeasonFor(startDate, seasons);
-        var price = boat.RateFor(season.Id, periodType)
-                    ?? throw new DomainValidationException("periodType",
-                        $"{boat.Name} has no {season.Name} {periodType} rate.");
-        return new HirePriceQuote(season, price);
-    }
-
-    /// <summary>
-    /// The add-on's price for a Midweek, Weekend or Week booking; null (staff enter it) when the add-on is price on
-    /// request or the booking is LongWeekend or Custom.
-    /// </summary>
-    public static decimal? AddonUnitPrice(AddonDefinition addon, PeriodType periodType) => addon.UnitPriceFor(periodType);
+    /// <summary>The add-on's price for the period type, or null for price on request, LongWeekend and Custom.</summary>
+    public decimal? AddonUnitPrice(AddonDefinition addon, PeriodType periodType) => addon.PriceFor(periodType);
 }

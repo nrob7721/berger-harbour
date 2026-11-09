@@ -1,57 +1,46 @@
-using BergerHarbour.Application.Common;
 using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Validation;
 
 /// <summary>
-/// Staff bookings: only StartDate &lt; EndDate, at least one adult, no negative children and a valid customer.
-/// Staff may book any dates, including blocked periods and stays shorter than the lead time. Guest, bed, add-on
-/// capacity and changeover-time limits are non-blocking warnings (<see cref="StaffBookingWarnings"/>).
+/// The staff booking rules: start before end, adults ≥ 1, children ≥ 0 and a valid customer. Everything else is a
+/// non-blocking warning (<see cref="StaffBookingWarnings"/>). Registered in the admin API.
 /// </summary>
 public sealed class InternalBookingValidationStrategy : IBookingRequestValidationStrategy
 {
     public ValidationErrors Validate(BookingRequest request, BookingValidationContext context)
     {
         var errors = new ValidationErrors();
-        if (request.EndDate is not { } end)
-        {
-            errors.Add("endDate", "End date is required.");
-        }
-        else if (request.StartDate >= end)
+        if (request.EndDate is not { } end || end <= request.StartDate)
         {
             errors.Add("endDate", "The end date must be after the start date.");
         }
 
         if (request.NumberOfAdults < 1)
         {
-            errors.Add("numberOfAdults", "There must be at least one adult.");
+            errors.Add("numberOfAdults", "At least 1 adult is required.");
         }
 
         if (request.NumberOfChildren < 0)
         {
-            errors.Add("numberOfChildren", "Number of children cannot be negative.");
+            errors.Add("numberOfChildren", "Children can't be negative.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.FullName))
+        if (string.IsNullOrWhiteSpace(request.FirstName))
         {
-            errors.Add("fullName", "Full name is required.");
+            errors.Add("firstName", "First name is required.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.Email))
+        if (string.IsNullOrWhiteSpace(request.LastName))
         {
-            errors.Add("email", "Email is required.");
-        }
-        else if (!EmailAddress.IsValid(request.Email))
-        {
-            errors.Add("email", "Enter a valid email address.");
+            errors.Add("lastName", "Last name is required.");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Mobile) && !PhoneNumber.IsValid(request.Mobile))
-        {
-            errors.Add("phone", "Enter a valid phone number, including the country code for overseas numbers.");
-        }
-
+        errors.Capture(() => EmailAddress.Create(request.Email));
+        errors.Capture(() => MobileNumber.CreateOptional(request.Mobile, "mobile"));
+        errors.Capture(() => MobileNumber.CreateOptional(request.SecondaryMobile, "secondaryMobile"));
+        errors.Capture(() => Customer.NormaliseAddress(request.Address));
         return errors;
     }
 }

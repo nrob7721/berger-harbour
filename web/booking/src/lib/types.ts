@@ -1,0 +1,19 @@
+import type { PublicSchemas } from '@shared/api';
+
+export type BoatSummary = PublicSchemas['PublicBoatSummary'];
+export type BoatsResponse = PublicSchemas['PublicBoatsResponse'];
+export type BookingSettings = PublicSchemas['PublicBookingSettings'];
+export type BoatDetails = PublicSchemas['PublicBoatDetails'];
+export type PublicAddon = PublicSchemas['PublicAddon'];
+export type FleetAvailability = PublicSchemas['FleetAvailabilityResponse'];
+export type PeriodAvailability = PublicSchemas['PeriodAvailabilityResponse'];
+export type Quote = PublicSchemas['QuoteResponse'];
+export type QuoteRequest = PublicSchemas['QuoteRequest'];
+export type CreateDraftRequest = PublicSchemas['CreateDraftRequest'];
+export type UpdateDraftRequest = PublicSchemas['UpdateDraftRequest'];
+export type CreateBookingRequest = PublicSchemas['CreateBookingRequest'];
+export type CreateBookingResponse = PublicSchemas['CreateBookingResponse'];
+export type BookingStatus = PublicSchemas['BookingStatusResponse'];
+export type PaymentLinkDetails = PublicSchemas['PaymentLinkDetails'];
+export type CheckoutResponse = PublicSchemas['CheckoutResponse'];
+export type DraftStep = PublicSchemas['DraftStep'];

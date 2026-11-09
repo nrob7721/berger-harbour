@@ -1,4 +1,4 @@
-using BergerHarbour.Application.Common;
+using BergerHarbour.Application.Notifications;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Settings;
@@ -7,50 +7,72 @@ using BergerHarbour.Domain.Shared;
 namespace BergerHarbour.Application.Bookings;
 
 /// <summary>
-/// Non-blocking warnings for staff bookings: guests above the boat's maximum or beds, add-on capacity exceeded,
-/// and a custom check-in/check-out time that clashes with a same-day changeover on the boat.
+/// Staff's non-blocking warnings (§7.1): guests above berth, guests above beds, add-on capacity exceeded, and a custom
+/// time clashing with a same-day changeover. Pure: it works on data the application service has loaded.
 /// </summary>
-public static class StaffBookingWarnings
+public sealed class StaffBookingWarnings
 {
-    /// <param name="boatBookings">The boat's bookings around the stay (for changeover clashes).</param>
-    /// <param name="capacityBookings">Bookings of all boats with the booking's capacity-limited add-ons.</param>
-    public static IReadOnlyList<string> For(Boat boat, Stay stay, int adults, int children, TimeOnly checkInTime,
-        TimeOnly checkOutTime, IEnumerable<(AddonDefinition Addon, int Quantity)> addons, IEnumerable<Booking> boatBookings,
-        IEnumerable<Booking> capacityBookings, DateTimeOffset now, BookingId? self)
+    private readonly AddonCapacityService capacity;
+
+    public StaffBookingWarnings(AddonCapacityService capacity)
+    {
+        this.capacity = capacity;
+    }
+
+    /// <param name="boat">The booking's boat.</param>
+    /// <param name="booking">The booking as it will be saved.</param>
+    /// <param name="addons">Every add-on definition.</param>
+    /// <param name="boatNeighbours">The boat's blocking bookings that end on the start date or start on the end date.</param>
+    /// <param name="capacityBookings">Bookings of all boats that use a capacity-limited add-on during the stay.</param>
+    /// <param name="now">Now, to tell live holds from expired ones.</param>
+    public IReadOnlyList<string> For(
+        Boat boat, Booking booking, IReadOnlyList<AddonDefinition> addons, IEnumerable<Booking> boatNeighbours, IReadOnlyList<Booking> capacityBookings,
+        DateTimeOffset now)
     {
         var warnings = new List<string>();
-        var guests = adults + children;
-        if (guests > boat.MaxNoOfGuests)
+        var guests = booking.NumberOfGuests;
+        if (guests > boat.Berth)
         {
-            warnings.Add($"{guests} guests is more than {boat.Name}'s maximum of {boat.MaxNoOfGuests}.");
-        }
-        else if (boat.RequiresRoomingWarning(guests))
-        {
-            warnings.Add($"{guests} guests but only {boat.TotalBeds} beds ({boat.AdultBeds} adult, {boat.KidsBeds ?? 0} kids); " +
-                         "some guests will share.");
+            warnings.Add($"{guests} guests is more than {boat.Name}'s berth of {boat.Berth}.");
         }
 
-        var capacityList = capacityBookings.ToList();
-        foreach (var (addon, quantity) in addons.Where(a => a.Addon.HasCapacity))
+        if (guests > boat.TotalBeds)
         {
-            if (AddonCapacityService.FirstNightExceeded(addon, stay, quantity, capacityList, now, self) is { } night)
+            warnings.Add($"{guests} guests is more than {boat.Name}'s {boat.TotalBeds} beds ({boat.AdultBeds ?? 0} adult + {boat.KidsBeds ?? 0} kids). " +
+                "Some guests will need to share beds.");
+        }
+
+        if (booking.BlocksAvailability(now))
+        {
+            foreach (var line in booking.AddonLines)
             {
-                warnings.Add($"This exceeds {addon.Name.ToLowerInvariant()} capacity on {Format.Date(night)}.");
+                var addon = addons.FirstOrDefault(a => a.Id == line.AddonId);
+                if (addon is not { HasCapacity: true })
+                {
+                    continue;
+                }
+
+                var nights = capacity.NightsOverCapacity(addon, booking.Stay, line.Quantity, capacityBookings, now, booking.Id);
+                if (nights.Count > 0)
+                {
+                    warnings.Add($"This exceeds {addon.Name.ToLowerInvariant()} capacity on {DisplayFormat.Date(nights[0])}.");
+                }
             }
         }
 
-        foreach (var other in boatBookings.Where(b => b.Id != self && b.BoatId == boat.Id && b.BlocksAvailability(now)))
+        foreach (var other in boatNeighbours.Where(b => b.Id != booking.Id && b.BoatId == booking.BoatId && b.BlocksAvailability(now)))
         {
-            if (other.EndDate == stay.StartDate && other.CheckOutTime > checkInTime)
+            var name = other.Reference?.Value ?? "a pending online booking";
+            if (other.EndDate == booking.StartDate && booking.CheckInTime < other.CheckOutTime)
             {
-                warnings.Add($"Check-in at {Format.Time(checkInTime)} on {Format.Date(stay.StartDate)} is before " +
-                             $"{other.Reference.Value} checks out at {Format.Time(other.CheckOutTime)}.");
+                warnings.Add($"Check-in at {DisplayFormat.Time(booking.CheckInTime)} on {DisplayFormat.Date(booking.StartDate)} is before " +
+                    $"{name}'s check-out at {DisplayFormat.Time(other.CheckOutTime)}.");
             }
 
-            if (other.StartDate == stay.EndDate && other.CheckInTime < checkOutTime)
+            if (other.StartDate == booking.EndDate && booking.CheckOutTime > other.CheckInTime)
             {
-                warnings.Add($"Check-out at {Format.Time(checkOutTime)} on {Format.Date(stay.EndDate)} is after " +
-                             $"{other.Reference.Value} checks in at {Format.Time(other.CheckInTime)}.");
+                warnings.Add($"Check-out at {DisplayFormat.Time(booking.CheckOutTime)} on {DisplayFormat.Date(booking.EndDate)} is after " +
+                    $"{name}'s check-in at {DisplayFormat.Time(other.CheckInTime)}.");
             }
         }
 

@@ -1,0 +1,189 @@
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 560px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+}
+
+.title {
+  font-size: 18px;
+}
+
+.nav {
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 12px;
+  cursor: pointer;
+  color: var(--c-text);
+  border-radius: var(--radius);
+}
+
+.nav:hover:not(:disabled) {
+  background: var(--c-surface-muted);
+}
+
+.nav:disabled {
+  color: var(--c-text-faint);
+  cursor: not-allowed;
+}
+
+.weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: opacity 0.15s;
+}
+
+.loading {
+  opacity: 0.55;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.cell {
+  position: relative;
+  width: 100%;
+  height: clamp(42px, 9vw, 64px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--c-text);
+  cursor: pointer;
+  padding: 0;
+}
+
+button.cell:hover:not([aria-disabled='true']):not(.selected) {
+  background: var(--c-brand-tint);
+  border-radius: var(--radius);
+}
+
+.disabled {
+  background: var(--c-disabled);
+  color: var(--c-text-faint);
+  font-weight: 500;
+  cursor: default;
+}
+
+.enquire {
+  background: repeating-linear-gradient(135deg, var(--c-blocked), var(--c-blocked) 6px, var(--c-blocked-stripe) 6px, var(--c-blocked-stripe) 9px);
+  color: var(--c-text-muted);
+}
+
+/* Every day inside the selection uses the active selection colour with normal day numbers. */
+.selected.inner {
+  background: var(--c-brand-tint-strong);
+  color: var(--c-text);
+}
+
+.selected.in,
+.selected.out {
+  background: var(--c-brand);
+  color: #fff;
+}
+
+.in {
+  border-radius: 999px 0 0 999px;
+}
+
+.out {
+  border-radius: 0 999px 999px 0;
+}
+
+/* Adjacent-month days: muted, not clickable, no availability styling … */
+.adjacent {
+  color: var(--c-text-faint);
+  font-weight: 500;
+  cursor: default;
+}
+
+/* … but they show a muted version of the selection when the stay extends into them. */
+.adjacentSelected.inner {
+  background: var(--c-brand-muted-tint);
+}
+
+.adjacentSelected.in,
+.adjacentSelected.out {
+  background: var(--c-brand-muted);
+  color: #fff;
+}
+
+.number {
+  line-height: 1;
+}
+
+.marker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.legend {
+  list-style: none;
+  padding: 0;
+  margin-top: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--c-border);
+}
+
+.swatchAvailable {
+  background: var(--c-surface);
+}
+
+.swatchStay {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+}
+
+.swatchUnavailable {
+  background: var(--c-disabled);
+}
+
+.swatchEnquire {
+  background: repeating-linear-gradient(135deg, var(--c-blocked), var(--c-blocked) 3px, var(--c-blocked-stripe) 3px, var(--c-blocked-stripe) 5px);
+}

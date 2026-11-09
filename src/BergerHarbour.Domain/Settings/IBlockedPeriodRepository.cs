@@ -1,5 +1,3 @@
-using BergerHarbour.Domain.Shared;
-
 namespace BergerHarbour.Domain.Settings;
 
 public interface IBlockedPeriodRepository
@@ -8,7 +6,7 @@ public interface IBlockedPeriodRepository
 
     Task<BlockedPeriod?> GetAsync(BlockedPeriodId id, CancellationToken ct = default);
 
-    Task SaveAsync(BlockedPeriod blockedPeriod, CancellationToken ct = default);
+    Task SaveAsync(BlockedPeriod period, CancellationToken ct = default);
 
-    Task DeleteAsync(BlockedPeriod blockedPeriod, CancellationToken ct = default);
+    Task DeleteAsync(BlockedPeriod period, CancellationToken ct = default);
 }

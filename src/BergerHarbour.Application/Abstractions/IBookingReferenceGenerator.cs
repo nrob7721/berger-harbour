@@ -1,9 +1,8 @@
-using BergerHarbour.Domain.Bookings;
-
 namespace BergerHarbour.Application.Abstractions;
 
-/// <summary>Issues BH-YYNNNN references from a per-year counter incremented transactionally.</summary>
+/// <summary>The booking reference suffix: how many references already have the prefix, from a transactional counter.</summary>
 public interface IBookingReferenceGenerator
 {
-    Task<BookingReference> NextAsync(int year, CancellationToken ct = default);
+    /// <summary>Returns 0 for the first reference with this <c>LASTNAME-YYMMDD</c> prefix, then 1, 2, …</summary>
+    Task<int> NextSuffixAsync(string prefix, CancellationToken ct = default);
 }

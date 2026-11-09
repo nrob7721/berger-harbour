@@ -1,0 +1,140 @@
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 8px 40px 8px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.card:hover:not(.greyed) {
+  border-color: var(--c-border-strong);
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+.selected {
+  border: 2px solid var(--c-brand);
+  background: var(--c-brand-tint);
+  padding: 7px 39px 7px 7px;
+}
+
+.greyed {
+  cursor: not-allowed;
+  background: var(--c-surface-muted);
+}
+
+.greyed .image,
+.greyed .name,
+.greyed .berth,
+.greyed .badges {
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+
+.image {
+  flex: none;
+  width: 96px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.berth {
+  font-size: 14px;
+  color: var(--c-text-muted);
+}
+
+.badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-brand-tint);
+  color: var(--c-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.price {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.reason {
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+.tick {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--c-border-strong);
+  border-radius: 3px;
+  background: var(--c-surface);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.selected .tick {
+  background: var(--c-brand);
+  border-color: var(--c-brand);
+}
+
+.separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+  color: var(--c-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.separator::before,
+.separator::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--c-border);
+}
+
+.empty {
+  color: var(--c-text-muted);
+  font-size: 14px;
+  padding: 8px 0;
+}

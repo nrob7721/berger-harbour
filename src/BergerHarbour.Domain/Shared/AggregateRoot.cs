@@ -1,32 +1,30 @@
 namespace BergerHarbour.Domain.Shared;
 
 /// <summary>
-/// Base class for every aggregate. <see cref="Version"/> is the persisted version the aggregate was loaded at
-/// (0 for an aggregate that has never been saved) and drives optimistic concurrency.
+/// Base of every aggregate. <see cref="Version"/> drives optimistic concurrency: a new aggregate has version 0, and the
+/// repository sets the stored version after each successful write.
 /// </summary>
-public abstract class AggregateRoot<TId> where TId : notnull
+public abstract class AggregateRoot
 {
-    protected AggregateRoot(TId id, int version)
+    public int Version { get; private set; }
+
+    /// <summary>Called by repositories when the aggregate is loaded or has been written.</summary>
+    public void SetPersistedVersion(int version)
     {
-        Id = id;
+        if (version < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(version));
+        }
+
         Version = version;
     }
 
-    public TId Id { get; }
-
-    public int Version { get; private set; }
-
-    public bool IsNew => Version == 0;
-
-    /// <summary>Throws <see cref="ConcurrencyConflictException"/> when the caller edited an older version.</summary>
+    /// <summary>Throws <see cref="ConcurrencyException"/> unless the caller edited the version this aggregate is at.</summary>
     public void EnsureVersion(int expectedVersion)
     {
         if (expectedVersion != Version)
         {
-            throw new ConcurrencyConflictException();
+            throw new ConcurrencyException();
         }
     }
-
-    /// <summary>Called by repositories after a successful write.</summary>
-    public void MarkPersisted() => Version++;
 }

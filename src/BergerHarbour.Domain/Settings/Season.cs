@@ -2,130 +2,116 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Settings;
 
-/// <summary>
-/// A named recurring set of day-month ranges used for pricing. The built-in Normal season has no ranges and covers
-/// every date that no other season covers.
-/// </summary>
-public sealed class Season : AggregateRoot<SeasonId>
+/// <summary>A named recurring pricing season. Exactly one built-in default season (Normal) has no ranges.</summary>
+public sealed class Season : AggregateRoot
 {
-    public const string NormalName = "Normal";
+    public const string DefaultName = "Normal";
 
-    private List<DayMonthRange> _ranges;
-
-    private Season(SeasonId id, int version, string name, IEnumerable<DayMonthRange> ranges)
-        : base(id, version)
+    private Season(SeasonId id, string name, bool isDefault, IReadOnlyList<SeasonRange> ranges)
     {
+        Id = id;
         Name = name;
-        _ranges = ranges.ToList();
+        IsDefault = isDefault;
+        Ranges = ranges;
     }
+
+    public SeasonId Id { get; }
 
     public string Name { get; private set; }
 
-    public IReadOnlyList<DayMonthRange> Ranges => _ranges;
+    public bool IsDefault { get; }
 
-    public bool IsDefault => Id == SeasonId.Normal;
+    public IReadOnlyList<SeasonRange> Ranges { get; private set; }
 
-    public static Season CreateNormal() => new(SeasonId.Normal, 0, NormalName, []);
+    public static Season CreateDefault(SeasonId id) => new(id, DefaultName, true, []);
 
-    public static Season Create(string name, IEnumerable<DayMonthRange> ranges) => CreateWithId(SeasonId.New(), name, ranges);
-
-    /// <summary>Seeds use stable ids so the seed is idempotent.</summary>
-    public static Season CreateWithId(SeasonId id, string name, IEnumerable<DayMonthRange> ranges)
+    /// <summary>A new season. <paramref name="others"/> are the existing seasons its ranges must not overlap.</summary>
+    public static Season Create(SeasonId id, string? name, IReadOnlyList<SeasonRange> ranges, IEnumerable<Season> others)
     {
-        if (string.Equals(name?.Trim(), NormalName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new DomainValidationException("name", "That name is reserved for the built-in Normal season.");
-        }
-
-        var season = new Season(id, 0, Guard.Required(name, "name", "Season name", 60), []);
-        season.SetRanges(ranges);
+        var season = new Season(id, ValidName(name), false, []);
+        season.SetRanges(ranges, others);
         return season;
     }
 
-    public void Update(string name, IEnumerable<DayMonthRange> ranges)
+    public static Season Rehydrate(SeasonId id, string name, bool isDefault, IReadOnlyList<SeasonRange> ranges, int version)
     {
-        var trimmed = Guard.Required(name, "name", "Season name", 60);
-        if (IsDefault)
-        {
-            if (trimmed != NormalName || ranges.Any())
-            {
-                throw new DomainValidationException("name",
-                    "The built-in Normal season cannot be renamed or given ranges.");
-            }
-
-            return;
-        }
-
-        if (string.Equals(trimmed, NormalName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new DomainValidationException("name", "That name is reserved for the built-in Normal season.");
-        }
-
-        Name = trimmed;
-        SetRanges(ranges);
+        var season = new Season(id, name, isDefault, ranges);
+        season.SetPersistedVersion(version);
+        return season;
     }
 
-    public bool Contains(DateOnly date) => _ranges.Any(r => r.Contains(date));
+    public void Update(string? name, IReadOnlyList<SeasonRange> ranges, IEnumerable<Season> others)
+    {
+        var validName = ValidName(name);
+        if (IsDefault && ranges.Count > 0)
+        {
+            throw new DomainValidationException("ranges", "The Normal season covers every date not in another season and has no ranges.");
+        }
 
-    public void EnsureCanBeDeleted()
+        if (!IsDefault)
+        {
+            SetRanges(ranges, others);
+        }
+
+        Name = validName;
+    }
+
+    public void EnsureCanDelete()
     {
         if (IsDefault)
         {
-            throw new DomainValidationException("id", "The built-in Normal season cannot be deleted.");
+            throw new BusinessRuleException("The Normal season can't be deleted.");
         }
     }
 
-    private void SetRanges(IEnumerable<DayMonthRange> ranges)
+    public bool Contains(DateOnly date) => Ranges.Any(r => r.Contains(date));
+
+    private static string ValidName(string? name)
     {
-        var list = ranges.ToList();
-        if (list.Count == 0)
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
         {
-            throw new DomainValidationException("ranges", "A season needs at least one date range.");
+            throw new DomainValidationException("name", "Name is required.");
         }
 
-        for (var i = 0; i < list.Count; i++)
+        if (trimmed.Length > 60)
         {
-            for (var j = i + 1; j < list.Count; j++)
+            throw new DomainValidationException("name", "Name must be 60 characters or fewer.");
+        }
+
+        return trimmed;
+    }
+
+    private void SetRanges(IReadOnlyList<SeasonRange> ranges, IEnumerable<Season> others)
+    {
+        if (ranges.Count == 0)
+        {
+            throw new DomainValidationException("ranges", "Add at least one date range.");
+        }
+
+        for (var i = 0; i < ranges.Count; i++)
+        {
+            for (var j = i + 1; j < ranges.Count; j++)
             {
-                if (list[i].Overlaps(list[j]))
+                if (ranges[i].Overlaps(ranges[j]))
                 {
-                    throw new DomainValidationException("ranges", $"Ranges {list[i]} and {list[j]} overlap.");
+                    throw new DomainValidationException("ranges", $"The ranges {ranges[i]} and {ranges[j]} overlap.");
                 }
             }
         }
 
-        _ranges = list;
-    }
-
-    public SeasonSnapshot ToSnapshot() =>
-        new(Id.Value, Version, Name, _ranges.Select(r => new DayMonthRangeSnapshot(r.Start.ToString(), r.End.ToString())).ToList());
-
-    public static Season FromSnapshot(SeasonSnapshot s) =>
-        new(new SeasonId(s.Id), s.Version, s.Name,
-            s.Ranges.Select(r => new DayMonthRange(DayMonth.Parse(r.StartDayMonth), DayMonth.Parse(r.EndDayMonth))));
-}
-
-public sealed record SeasonSnapshot(string Id, int Version, string Name, IReadOnlyList<DayMonthRangeSnapshot> Ranges);
-
-public sealed record DayMonthRangeSnapshot(string StartDayMonth, string EndDayMonth);
-
-/// <summary>Rules that span all seasons.</summary>
-public static class SeasonCatalogue
-{
-    /// <summary>Season ranges must not overlap each other, across seasons as well as within one.</summary>
-    public static void EnsureNoOverlap(Season candidate, IEnumerable<Season> others)
-    {
-        foreach (var other in others.Where(o => o.Id != candidate.Id))
+        foreach (var other in others.Where(o => o.Id != Id))
         {
-            foreach (var range in candidate.Ranges)
+            foreach (var range in ranges)
             {
                 var clash = other.Ranges.FirstOrDefault(range.Overlaps);
                 if (clash is not null)
                 {
-                    throw new DomainValidationException("ranges",
-                        $"Range {range} overlaps {clash} in season '{other.Name}'.");
+                    throw new DomainValidationException("ranges", $"{range} overlaps {other.Name} ({clash}).");
                 }
             }
         }
+
+        Ranges = ranges;
     }
 }

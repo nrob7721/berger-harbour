@@ -1,0 +1,39 @@
+/* Shared table look (Settings, Customers, Fleet unavailabilities). */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.table th {
+  text-align: left;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text-muted);
+  background: var(--c-surface-muted);
+  padding: 10px 10px;
+}
+
+.table td {
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.muted {
+  color: var(--c-text-muted);
+}
+
+.faded td {
+  opacity: 0.55;
+}
+
+.scroll {
+  overflow-x: auto;
+}

@@ -1,5 +1,6 @@
 namespace BergerHarbour.Infrastructure.Firestore;
 
+/// <summary>Firestore collection names (§14).</summary>
 public static class FirestoreCollections
 {
     public const string Boats = "boats";
@@ -15,4 +16,7 @@ public static class FirestoreCollections
     public const string EmailTemplates = "emailTemplates";
     public const string Settings = "settings";
     public const string Counters = "counters";
+
+    /// <summary>The singleton business settings document id.</summary>
+    public const string BusinessSettingsId = "business";
 }

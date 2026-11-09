@@ -1,27 +1,27 @@
-import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 
-// Local development proxies /api to public-api (dotnet run) and adds the edge proxy secret, like the Pages Function.
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
 export default defineConfig({
-  resolve: { alias: { '@shared': resolve(__dirname, '../shared/src') } },
+  plugins: [react()],
+  resolve: { alias: { '@': r('./src'), '@shared': r('../shared/src') } },
   server: {
     port: 5173,
     strictPort: true,
-    proxy: {
-      '/api': {
-        target: process.env.PUBLIC_API_URL ?? 'http://localhost:5080',
-        changeOrigin: true,
-        headers: { 'X-Edge-Proxy-Secret': process.env.EDGE_PROXY_SECRET ?? 'dev-edge-secret' },
-      },
-    },
+    proxy: { '/api': 'http://localhost:5080' },
   },
   build: {
-    target: 'es2022',
     rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        pay: resolve(__dirname, 'pay/index.html'),
-      },
+      input: { main: r('./index.html'), pay: r('./pay/index.html') },
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/testing/setup.tsx'],
+    css: { modules: { classNameStrategy: 'non-scoped' } },
+    env: { TZ: 'UTC' },
   },
 });

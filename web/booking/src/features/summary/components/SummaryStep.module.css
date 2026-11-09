@@ -1,0 +1,76 @@
+.rows {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 24px;
+  margin: 0;
+}
+
+.rows dt {
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.rows dd {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .rows {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .rows dd {
+    margin-bottom: 8px;
+  }
+}
+
+.addons {
+  padding-left: 18px;
+}
+
+.payNow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--c-brand-tint);
+  font-size: 16px;
+}
+
+.subheading {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.schedule {
+  padding-left: 18px;
+}
+
+.muted {
+  color: var(--c-text-muted);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.terms {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.terms input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--c-brand);
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--c-danger-tint);
+  color: var(--c-danger);
+}

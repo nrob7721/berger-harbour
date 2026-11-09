@@ -8,7 +8,7 @@
     "/api/addons/{addonId}/availability": {
       "get": {
         "tags": [
-          "Addons"
+          "AddonAvailability"
         ],
         "parameters": [
           {
@@ -42,17 +42,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                  "$ref": "#/components/schemas/AddonRemainingResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                  "$ref": "#/components/schemas/AddonRemainingResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicAddonAvailabilityDto"
+                  "$ref": "#/components/schemas/AddonRemainingResponse"
                 }
               }
             }
@@ -89,17 +89,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                  "$ref": "#/components/schemas/FleetAvailabilityResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                  "$ref": "#/components/schemas/FleetAvailabilityResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FleetAvailabilityDto"
+                  "$ref": "#/components/schemas/FleetAvailabilityResponse"
                 }
               }
             }
@@ -135,17 +135,76 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                  "$ref": "#/components/schemas/PeriodAvailabilityResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                  "$ref": "#/components/schemas/PeriodAvailabilityResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PeriodAvailabilityDto"
+                  "$ref": "#/components/schemas/PeriodAvailabilityResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/boats/{slug}/quote": {
+      "post": {
+        "tags": [
+          "BoatQuotes"
+        ],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteResponse"
                 }
               }
             }
@@ -164,17 +223,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicFleetDto"
+                  "$ref": "#/components/schemas/PublicBoatsResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicFleetDto"
+                  "$ref": "#/components/schemas/PublicBoatsResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicFleetDto"
+                  "$ref": "#/components/schemas/PublicBoatsResponse"
                 }
               }
             }
@@ -203,76 +262,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicBoatDto"
+                  "$ref": "#/components/schemas/PublicBoatDetails"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicBoatDto"
+                  "$ref": "#/components/schemas/PublicBoatDetails"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicBoatDto"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/boats/{slug}/quote": {
-      "post": {
-        "tags": [
-          "Boats"
-        ],
-        "parameters": [
-          {
-            "name": "slug",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QuoteRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QuoteRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/QuoteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/QuoteDto"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QuoteDto"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QuoteDto"
+                  "$ref": "#/components/schemas/PublicBoatDetails"
                 }
               }
             }
@@ -289,17 +289,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+                "$ref": "#/components/schemas/CreateDraftRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+                "$ref": "#/components/schemas/CreateDraftRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateBookingDraftRequest"
+                "$ref": "#/components/schemas/CreateDraftRequest"
               }
             }
           },
@@ -311,17 +311,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                  "$ref": "#/components/schemas/CreateDraftResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                  "$ref": "#/components/schemas/CreateDraftResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingDraftCreatedDto"
+                  "$ref": "#/components/schemas/CreateDraftResponse"
                 }
               }
             }
@@ -348,25 +348,25 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+                "$ref": "#/components/schemas/UpdateDraftRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+                "$ref": "#/components/schemas/UpdateDraftRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateBookingDraftRequest"
+                "$ref": "#/components/schemas/UpdateDraftRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "OK"
+          "204": {
+            "description": "No Content"
           }
         }
       }
@@ -380,17 +380,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateOnlineBookingRequest"
+                "$ref": "#/components/schemas/CreateBookingRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateOnlineBookingRequest"
+                "$ref": "#/components/schemas/CreateBookingRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateOnlineBookingRequest"
+                "$ref": "#/components/schemas/CreateBookingRequest"
               }
             }
           },
@@ -402,17 +402,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateOnlineBookingResult"
+                  "$ref": "#/components/schemas/CreateBookingResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateOnlineBookingResult"
+                  "$ref": "#/components/schemas/CreateBookingResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateOnlineBookingResult"
+                  "$ref": "#/components/schemas/CreateBookingResponse"
                 }
               }
             }
@@ -420,14 +420,56 @@
         }
       }
     },
-    "/api/bookings/{reference}/status": {
+    "/api/bookings/{bookingId}/release": {
+      "post": {
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "name": "bookingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBookingRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBookingRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBookingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/bookings/{bookingId}/status": {
       "get": {
         "tags": [
           "Bookings"
         ],
         "parameters": [
           {
-            "name": "reference",
+            "name": "bookingId",
             "in": "path",
             "required": true,
             "schema": {
@@ -448,17 +490,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingStatusDto"
+                  "$ref": "#/components/schemas/BookingStatusResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingStatusDto"
+                  "$ref": "#/components/schemas/BookingStatusResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BookingStatusDto"
+                  "$ref": "#/components/schemas/BookingStatusResponse"
                 }
               }
             }
@@ -487,17 +529,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayPageDto"
+                  "$ref": "#/components/schemas/PaymentLinkDetails"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayPageDto"
+                  "$ref": "#/components/schemas/PaymentLinkDetails"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayPageDto"
+                  "$ref": "#/components/schemas/PaymentLinkDetails"
                 }
               }
             }
@@ -526,17 +568,17 @@
             "content": {
               "text/plain": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayCheckoutResult"
+                  "$ref": "#/components/schemas/CheckoutResponse"
                 }
               },
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayCheckoutResult"
+                  "$ref": "#/components/schemas/CheckoutResponse"
                 }
               },
               "text/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PayCheckoutResult"
+                  "$ref": "#/components/schemas/CheckoutResponse"
                 }
               }
             }
@@ -547,70 +589,19 @@
   },
   "components": {
     "schemas": {
-      "AddonPricesDto": {
+      "AddonRemainingResponse": {
         "required": [
-          "midweek",
-          "weekend",
-          "week"
+          "remaining"
         ],
         "type": "object",
         "properties": {
-          "midweek": {
-            "type": "number",
-            "format": "double"
-          },
-          "weekend": {
-            "type": "number",
-            "format": "double"
-          },
-          "week": {
-            "type": "number",
-            "format": "double"
+          "remaining": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
-      "BoatAvailabilityDto": {
-        "required": [
-          "slug",
-          "unavailable"
-        ],
-        "type": "object",
-        "properties": {
-          "slug": {
-            "type": "string"
-          },
-          "unavailable": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DateRangeDto"
-            }
-          }
-        }
-      },
-      "BoatPeriodDto": {
-        "required": [
-          "slug",
-          "available",
-          "hirePrice"
-        ],
-        "type": "object",
-        "properties": {
-          "slug": {
-            "type": "string"
-          },
-          "available": {
-            "type": "boolean"
-          },
-          "hirePrice": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          }
-        }
-      },
-      "BookingAddonRequest": {
+      "AddonRequestDto": {
         "required": [
           "addonId",
           "quantity"
@@ -626,14 +617,21 @@
           }
         }
       },
-      "BookingDraftCreatedDto": {
+      "BoatAvailability": {
         "required": [
-          "draftId"
+          "slug",
+          "unavailable"
         ],
         "type": "object",
         "properties": {
-          "draftId": {
+          "slug": {
             "type": "string"
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StayRangeDto"
+            }
           }
         }
       },
@@ -646,23 +644,25 @@
           "Expired"
         ]
       },
-      "BookingStatusDto": {
+      "BookingStatusResponse": {
         "required": [
-          "reference",
           "status",
+          "reference",
           "boatName",
           "startDate",
           "endDate",
-          "email",
-          "amountPaid"
+          "email"
         ],
         "type": "object",
         "properties": {
-          "reference": {
-            "type": "string"
-          },
           "status": {
             "$ref": "#/components/schemas/BookingStatus"
+          },
+          "reference": {
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "boatName": {
             "type": "string"
@@ -677,29 +677,127 @@
           },
           "email": {
             "type": "string"
-          },
-          "amountPaid": {
-            "type": "number",
-            "format": "double"
           }
         }
       },
-      "BookingStep": {
-        "enum": [
-          "Details",
-          "Addons",
-          "Summary",
-          "Payment"
-        ]
+      "CheckoutResponse": {
+        "required": [
+          "clientSecret",
+          "sessionId"
+        ],
+        "type": "object",
+        "properties": {
+          "clientSecret": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        }
       },
-      "CreateBookingDraftRequest": {
+      "CreateBookingRequest": {
+        "required": [
+          "draftId",
+          "slug",
+          "periodType",
+          "startDate",
+          "numberOfAdults",
+          "numberOfChildren",
+          "firstName",
+          "lastName",
+          "email",
+          "mobile",
+          "addons",
+          "roomingWarningAccepted",
+          "roomingWarningText",
+          "termsAccepted"
+        ],
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mobile": {
+            "type": "string"
+          },
+          "addons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AddonRequestDto"
+            }
+          },
+          "roomingWarningAccepted": {
+            "type": "boolean"
+          },
+          "roomingWarningText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "termsAccepted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateBookingResponse": {
+        "required": [
+          "bookingId",
+          "clientSecret",
+          "sessionId"
+        ],
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateDraftRequest": {
         "required": [
           "slug",
           "periodType",
           "startDate",
           "numberOfAdults",
           "numberOfChildren",
-          "fullName",
+          "firstName",
+          "lastName",
           "email",
           "mobile",
           "turnstileToken"
@@ -724,23 +822,17 @@
             "type": "integer",
             "format": "int32"
           },
-          "fullName": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
           },
           "email": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "mobile": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "turnstileToken": {
             "type": [
@@ -750,131 +842,26 @@
           }
         }
       },
-      "CreateOnlineBookingRequest": {
+      "CreateDraftResponse": {
         "required": [
-          "draftId",
-          "slug",
-          "periodType",
-          "startDate",
-          "numberOfAdults",
-          "numberOfChildren",
-          "fullName",
-          "email",
-          "mobile",
-          "addons",
-          "roomingWarningAccepted",
-          "roomingWarningText",
-          "termsAccepted"
+          "draftId"
         ],
         "type": "object",
         "properties": {
           "draftId": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "slug": {
             "type": "string"
-          },
-          "periodType": {
-            "$ref": "#/components/schemas/PeriodType"
-          },
-          "startDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "numberOfAdults": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "numberOfChildren": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "fullName": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "email": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "mobile": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "addons": {
-            "type": [
-              "null",
-              "array"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/BookingAddonRequest"
-            }
-          },
-          "roomingWarningAccepted": {
-            "type": "boolean"
-          },
-          "roomingWarningText": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "termsAccepted": {
-            "type": "boolean"
           }
         }
       },
-      "CreateOnlineBookingResult": {
-        "required": [
-          "reference",
-          "clientSecret",
-          "sessionId",
-          "amount"
-        ],
-        "type": "object",
-        "properties": {
-          "reference": {
-            "type": "string"
-          },
-          "clientSecret": {
-            "type": "string"
-          },
-          "sessionId": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "number",
-            "format": "double"
-          }
-        }
+      "DraftStep": {
+        "enum": [
+          "Details",
+          "Addons",
+          "Summary",
+          "Payment"
+        ]
       },
-      "DateRangeDto": {
-        "required": [
-          "start",
-          "end"
-        ],
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string",
-            "format": "date"
-          },
-          "end": {
-            "type": "string",
-            "format": "date"
-          }
-        }
-      },
-      "EnquireOnlyDto": {
+      "EnquireOnlyRange": {
         "required": [
           "name",
           "firstNight",
@@ -895,7 +882,7 @@
           }
         }
       },
-      "FleetAvailabilityDto": {
+      "FleetAvailabilityResponse": {
         "required": [
           "enquireOnly",
           "boats"
@@ -905,51 +892,14 @@
           "enquireOnly": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/EnquireOnlyDto"
+              "$ref": "#/components/schemas/EnquireOnlyRange"
             }
           },
           "boats": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/BoatAvailabilityDto"
+              "$ref": "#/components/schemas/BoatAvailability"
             }
-          }
-        }
-      },
-      "MilestoneDto": {
-        "required": [
-          "kind",
-          "label",
-          "amount",
-          "requiredCumulative",
-          "dueDate",
-          "dueNow"
-        ],
-        "type": "object",
-        "properties": {
-          "kind": {
-            "$ref": "#/components/schemas/MilestoneKind"
-          },
-          "label": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "number",
-            "format": "double"
-          },
-          "requiredCumulative": {
-            "type": "number",
-            "format": "double"
-          },
-          "dueDate": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "date"
-          },
-          "dueNow": {
-            "type": "boolean"
           }
         }
       },
@@ -957,51 +907,28 @@
         "enum": [
           "Deposit",
           "Balance",
-          "FirstInstalment",
+          "First",
           "Final"
         ]
       },
-      "PayCheckoutResult": {
-        "required": [
-          "clientSecret",
-          "sessionId",
-          "amount"
-        ],
-        "type": "object",
-        "properties": {
-          "clientSecret": {
-            "type": "string"
-          },
-          "sessionId": {
-            "type": "string"
-          },
-          "amount": {
-            "type": "number",
-            "format": "double"
-          }
-        }
-      },
-      "PaymentSchedule": {
-        "enum": [
-          "Standard",
-          "Extended"
-        ]
-      },
-      "PayPageDto": {
+      "PaymentLinkDetails": {
         "required": [
           "reference",
+          "customerFirstName",
           "boatName",
           "startDate",
           "endDate",
           "totalPrice",
           "amountPaid",
           "amountOwing",
-          "amountDueNow",
-          "canPay"
+          "amountDueNow"
         ],
         "type": "object",
         "properties": {
           "reference": {
+            "type": "string"
+          },
+          "customerFirstName": {
             "type": "string"
           },
           "boatName": {
@@ -1030,23 +957,57 @@
           "amountDueNow": {
             "type": "number",
             "format": "double"
-          },
-          "canPay": {
-            "type": "boolean"
           }
         }
       },
-      "PeriodAvailabilityDto": {
+      "PeriodAvailabilityResponse": {
         "required": [
+          "periodType",
+          "startDate",
+          "endDate",
           "boats"
         ],
         "type": "object",
         "properties": {
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          },
           "boats": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/BoatPeriodDto"
+              "$ref": "#/components/schemas/PeriodBoatAvailability"
             }
+          }
+        }
+      },
+      "PeriodBoatAvailability": {
+        "required": [
+          "slug",
+          "available",
+          "hirePrice"
+        ],
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "hirePrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           }
         }
       },
@@ -1059,19 +1020,7 @@
           "Custom"
         ]
       },
-      "PublicAddonAvailabilityDto": {
-        "required": [
-          "remaining"
-        ],
-        "type": "object",
-        "properties": {
-          "remaining": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "PublicAddonDto": {
+      "PublicAddon": {
         "required": [
           "id",
           "name",
@@ -1103,14 +1052,7 @@
             "type": "boolean"
           },
           "prices": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AddonPricesDto"
-              }
-            ]
+            "$ref": "#/components/schemas/PublicAddonPrices"
           },
           "hasCapacity": {
             "type": "boolean"
@@ -1123,12 +1065,43 @@
           }
         }
       },
-      "PublicBoatDto": {
+      "PublicAddonPrices": {
+        "required": [
+          "midweek",
+          "weekend",
+          "week"
+        ],
+        "type": "object",
+        "properties": {
+          "midweek": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "weekend": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "week": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "PublicBoatDetails": {
         "required": [
           "slug",
           "name",
           "imageUrl",
-          "maxNoOfGuests",
+          "berth",
           "hasSpa",
           "isPetFriendly",
           "adultBeds",
@@ -1153,7 +1126,7 @@
               "string"
             ]
           },
-          "maxNoOfGuests": {
+          "berth": {
             "type": "integer",
             "format": "int32"
           },
@@ -1164,17 +1137,11 @@
             "type": "boolean"
           },
           "adultBeds": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": "integer",
             "format": "int32"
           },
           "kidsBeds": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": "integer",
             "format": "int32"
           },
           "beddingDescription": {
@@ -1197,63 +1164,35 @@
           "addons": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PublicAddonDto"
+              "$ref": "#/components/schemas/PublicAddon"
             }
           }
         }
       },
-      "PublicBookingSettingsDto": {
+      "PublicBoatsResponse": {
         "required": [
-          "minimumLeadTimeDays",
-          "bookingsOpenUntil",
-          "contactPhone",
-          "contactEmail",
-          "hireTermsUrl",
-          "today",
-          "checkInTime",
-          "checkInWindowEnd",
-          "checkOutTime"
+          "boats",
+          "settings"
         ],
         "type": "object",
         "properties": {
-          "minimumLeadTimeDays": {
-            "type": "integer",
-            "format": "int32"
+          "boats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicBoatSummary"
+            }
           },
-          "bookingsOpenUntil": {
-            "type": "string",
-            "format": "date"
-          },
-          "contactPhone": {
-            "type": "string"
-          },
-          "contactEmail": {
-            "type": "string"
-          },
-          "hireTermsUrl": {
-            "type": "string"
-          },
-          "today": {
-            "type": "string",
-            "format": "date"
-          },
-          "checkInTime": {
-            "type": "string"
-          },
-          "checkInWindowEnd": {
-            "type": "string"
-          },
-          "checkOutTime": {
-            "type": "string"
+          "settings": {
+            "$ref": "#/components/schemas/PublicBookingSettings"
           }
         }
       },
-      "PublicFleetBoatDto": {
+      "PublicBoatSummary": {
         "required": [
           "slug",
           "name",
           "imageUrl",
-          "maxNoOfGuests",
+          "berth",
           "hasSpa",
           "isPetFriendly"
         ],
@@ -1271,7 +1210,7 @@
               "string"
             ]
           },
-          "maxNoOfGuests": {
+          "berth": {
             "type": "integer",
             "format": "int32"
           },
@@ -1283,25 +1222,47 @@
           }
         }
       },
-      "PublicFleetDto": {
+      "PublicBookingSettings": {
         "required": [
-          "boats",
-          "settings"
+          "minimumLeadTimeDays",
+          "bookingsOpenUntil",
+          "today",
+          "contactPhone",
+          "contactEmail",
+          "hireTermsUrl"
         ],
         "type": "object",
         "properties": {
-          "boats": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PublicFleetBoatDto"
-            }
+          "minimumLeadTimeDays": {
+            "type": "integer",
+            "format": "int32"
           },
-          "settings": {
-            "$ref": "#/components/schemas/PublicBookingSettingsDto"
+          "bookingsOpenUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "contactPhone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "contactEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hireTermsUrl": {
+            "type": "string"
           }
         }
       },
-      "QuoteAddonDto": {
+      "QuoteAddonLine": {
         "required": [
           "addonId",
           "name",
@@ -1337,107 +1298,6 @@
           }
         }
       },
-      "QuoteDto": {
-        "required": [
-          "boatName",
-          "periodType",
-          "startDate",
-          "endDate",
-          "checkInTime",
-          "checkInWindowEnd",
-          "checkOutTime",
-          "numberOfAdults",
-          "numberOfChildren",
-          "seasonName",
-          "hirePrice",
-          "addons",
-          "totalPrice",
-          "depositAmount",
-          "amountDueAtCheckout",
-          "paymentSchedule",
-          "milestones",
-          "roomingWarningText",
-          "securityBond"
-        ],
-        "type": "object",
-        "properties": {
-          "boatName": {
-            "type": "string"
-          },
-          "periodType": {
-            "$ref": "#/components/schemas/PeriodType"
-          },
-          "startDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "endDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "checkInTime": {
-            "type": "string"
-          },
-          "checkInWindowEnd": {
-            "type": "string"
-          },
-          "checkOutTime": {
-            "type": "string"
-          },
-          "numberOfAdults": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "numberOfChildren": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "seasonName": {
-            "type": "string"
-          },
-          "hirePrice": {
-            "type": "number",
-            "format": "double"
-          },
-          "addons": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/QuoteAddonDto"
-            }
-          },
-          "totalPrice": {
-            "type": "number",
-            "format": "double"
-          },
-          "depositAmount": {
-            "type": "number",
-            "format": "double"
-          },
-          "amountDueAtCheckout": {
-            "type": "number",
-            "format": "double"
-          },
-          "paymentSchedule": {
-            "$ref": "#/components/schemas/PaymentSchedule"
-          },
-          "milestones": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MilestoneDto"
-            }
-          },
-          "roomingWarningText": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "securityBond": {
-            "type": "number",
-            "format": "double"
-          }
-        }
-      },
       "QuoteRequest": {
         "required": [
           "periodType",
@@ -1469,19 +1329,171 @@
               "array"
             ],
             "items": {
-              "$ref": "#/components/schemas/BookingAddonRequest"
+              "$ref": "#/components/schemas/AddonRequestDto"
             }
           }
         }
       },
-      "UpdateBookingDraftRequest": {
+      "QuoteResponse": {
+        "required": [
+          "boatName",
+          "periodType",
+          "startDate",
+          "endDate",
+          "numberOfAdults",
+          "numberOfChildren",
+          "seasonName",
+          "hirePrice",
+          "addons",
+          "totalPrice",
+          "hasPriceOnRequestAddons",
+          "depositAmount",
+          "amountDueAtCheckout",
+          "paymentSchedule",
+          "securityBond",
+          "roomingWarning"
+        ],
+        "type": "object",
+        "properties": {
+          "boatName": {
+            "type": "string"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "numberOfAdults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "numberOfChildren": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "seasonName": {
+            "type": "string"
+          },
+          "hirePrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "addons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteAddonLine"
+            }
+          },
+          "totalPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "hasPriceOnRequestAddons": {
+            "type": "boolean"
+          },
+          "depositAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "amountDueAtCheckout": {
+            "type": "number",
+            "format": "double"
+          },
+          "paymentSchedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleItem"
+            }
+          },
+          "securityBond": {
+            "type": "number",
+            "format": "double"
+          },
+          "roomingWarning": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ReleaseBookingRequest": {
+        "required": [
+          "draftId"
+        ],
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string"
+          }
+        }
+      },
+      "ScheduleItem": {
+        "required": [
+          "kind",
+          "label",
+          "requiredCumulative",
+          "amount",
+          "dueDate",
+          "dueAtBooking"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MilestoneKind"
+          },
+          "label": {
+            "type": "string"
+          },
+          "requiredCumulative": {
+            "type": "number",
+            "format": "double"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "dueAtBooking": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StayRangeDto": {
+        "required": [
+          "start",
+          "end"
+        ],
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      },
+      "UpdateDraftRequest": {
         "required": [
           "slug",
           "periodType",
           "startDate",
           "numberOfAdults",
           "numberOfChildren",
-          "fullName",
+          "firstName",
+          "lastName",
           "email",
           "mobile",
           "addons",
@@ -1507,23 +1519,17 @@
             "type": "integer",
             "format": "int32"
           },
-          "fullName": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
           },
           "email": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "mobile": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "addons": {
             "type": [
@@ -1531,11 +1537,11 @@
               "array"
             ],
             "items": {
-              "$ref": "#/components/schemas/BookingAddonRequest"
+              "$ref": "#/components/schemas/AddonRequestDto"
             }
           },
           "lastStepReached": {
-            "$ref": "#/components/schemas/BookingStep"
+            "$ref": "#/components/schemas/DraftStep"
           }
         }
       }
@@ -1543,10 +1549,13 @@
   },
   "tags": [
     {
-      "name": "Addons"
+      "name": "AddonAvailability"
     },
     {
       "name": "Availability"
+    },
+    {
+      "name": "BoatQuotes"
     },
     {
       "name": "Boats"

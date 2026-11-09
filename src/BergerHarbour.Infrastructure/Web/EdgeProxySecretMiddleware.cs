@@ -6,41 +6,35 @@ using Microsoft.Extensions.Logging;
 namespace BergerHarbour.Infrastructure.Web;
 
 /// <summary>
-/// Requires the X-Edge-Proxy-Secret header the Cloudflare Pages Function adds, so the Cloud Run URL cannot be used
-/// directly. The Stripe webhook and the jobs endpoint have their own authentication and are exempt.
+/// Requires the Pages Function proxy's <c>X-Edge-Proxy-Secret</c> on every route except the Stripe webhook and the jobs
+/// endpoint. Bypassed only in Local when no secret is configured.
 /// </summary>
-public sealed class EdgeProxySecretMiddleware(RequestDelegate next, string secret, bool allowWhenUnset,
-    IReadOnlyList<PathString> exemptPrefixes, ILogger<EdgeProxySecretMiddleware> logger)
+public sealed class EdgeProxySecretMiddleware
 {
-    public const string HeaderName = "X-Edge-Proxy-Secret";
+    private readonly RequestDelegate next;
+    private readonly byte[]? secret;
+    private readonly ILogger<EdgeProxySecretMiddleware> logger;
 
-    private readonly byte[]? _expected = string.IsNullOrEmpty(secret) ? null : Encoding.UTF8.GetBytes(secret);
+    public EdgeProxySecretMiddleware(RequestDelegate next, string? secret, ILogger<EdgeProxySecretMiddleware> logger)
+    {
+        this.next = next;
+        this.secret = string.IsNullOrEmpty(secret) ? null : Encoding.UTF8.GetBytes(secret);
+        this.logger = logger;
+    }
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (exemptPrefixes.Any(p => context.Request.Path.StartsWithSegments(p)) || HttpMethods.IsOptions(context.Request.Method))
+        if (secret is null || ApiPaths.IsStripeWebhook(context.Request.Path) || ApiPaths.IsJobs(context.Request.Path))
         {
             await next(context);
             return;
         }
 
-        if (_expected is null)
+        var sent = Encoding.UTF8.GetBytes(context.Request.Headers[Headers.EdgeProxySecret].FirstOrDefault() ?? string.Empty);
+        if (!CryptographicOperations.FixedTimeEquals(sent, secret))
         {
-            if (allowWhenUnset)
-            {
-                await next(context);
-                return;
-            }
-
-            logger.LogError("EDGE_PROXY_SECRET is not configured; rejecting request");
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
-        }
-
-        var provided = Encoding.UTF8.GetBytes(context.Request.Headers[HeaderName].ToString());
-        if (!CryptographicOperations.FixedTimeEquals(provided, _expected))
-        {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            logger.LogWarning("Rejected a request without the edge proxy secret: {Path}", context.Request.Path.Value);
+            await ProblemResponses.WriteAsync(context, StatusCodes.Status403Forbidden, "Forbidden.");
             return;
         }
 

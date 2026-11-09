@@ -1,20 +1,22 @@
+using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Unavailabilities;
 
-/// <summary>A range of nights when a specific boat cannot be hired (maintenance, etc.).</summary>
-public sealed class BoatUnavailability : AggregateRoot<UnavailabilityId>
+/// <summary>Nights a specific boat can't be hired (maintenance etc.). Inclusive nights.</summary>
+public sealed class BoatUnavailability : AggregateRoot
 {
-    private BoatUnavailability(UnavailabilityId id, int version, BoatId boatId, NightRange nights, string? comments,
-        DateTimeOffset createdDate, DateTimeOffset modifiedDate)
-        : base(id, version)
+    private BoatUnavailability(BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset createdDate)
     {
+        Id = id;
         BoatId = boatId;
         Nights = nights;
         Comments = comments;
         CreatedDate = createdDate;
-        ModifiedDate = modifiedDate;
+        ModifiedDate = createdDate;
     }
+
+    public BoatUnavailabilityId Id { get; }
 
     public BoatId BoatId { get; }
 
@@ -26,32 +28,28 @@ public sealed class BoatUnavailability : AggregateRoot<UnavailabilityId>
 
     public DateTimeOffset ModifiedDate { get; private set; }
 
-    public static BoatUnavailability Create(BoatId boatId, DateOnly firstNight, DateOnly lastNight, string? comments,
-        DateTimeOffset now) =>
-        new(UnavailabilityId.New(), 0, boatId, new NightRange(firstNight, lastNight),
-            Guard.Optional(comments, "comments", "Comments"), now, now);
+    public static BoatUnavailability Create(BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset now) =>
+        new(id, boatId, nights, Normalise(comments), now);
 
-    public void Update(DateOnly firstNight, DateOnly lastNight, string? comments, DateTimeOffset now)
+    public static BoatUnavailability Rehydrate(
+        BoatUnavailabilityId id, BoatId boatId, NightRange nights, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate,
+        int version)
     {
-        Nights = new NightRange(firstNight, lastNight);
-        Comments = Guard.Optional(comments, "comments", "Comments");
+        var unavailability = new BoatUnavailability(id, boatId, nights, comments, createdDate) { ModifiedDate = modifiedDate };
+        unavailability.SetPersistedVersion(version);
+        return unavailability;
+    }
+
+    public void Update(NightRange nights, string? comments, DateTimeOffset now)
+    {
+        Nights = nights;
+        Comments = Normalise(comments);
         ModifiedDate = now;
     }
 
-    public BoatUnavailabilitySnapshot ToSnapshot() =>
-        new(Id.Value, Version, BoatId.Value, Nights.FirstNight, Nights.LastNight, Comments, CreatedDate, ModifiedDate);
-
-    public static BoatUnavailability FromSnapshot(BoatUnavailabilitySnapshot s) =>
-        new(new UnavailabilityId(s.Id), s.Version, new BoatId(s.BoatId), new NightRange(s.FirstNight, s.LastNight),
-            s.Comments, s.CreatedDate, s.ModifiedDate);
+    private static string? Normalise(string? comments)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(comments) ? null : comments.Trim();
+        return trimmed?.Length > 1000 ? throw new DomainValidationException("comments", "Comments must be 1000 characters or fewer.") : trimmed;
+    }
 }
-
-public sealed record BoatUnavailabilitySnapshot(
-    string Id,
-    int Version,
-    string BoatId,
-    DateOnly FirstNight,
-    DateOnly LastNight,
-    string? Comments,
-    DateTimeOffset CreatedDate,
-    DateTimeOffset ModifiedDate);

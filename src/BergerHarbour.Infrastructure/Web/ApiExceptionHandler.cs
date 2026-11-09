@@ -1,6 +1,5 @@
-using BergerHarbour.Application.Common;
+using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Domain.Shared;
-using BergerHarbour.Infrastructure.Stripe;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -9,65 +8,50 @@ using Microsoft.Extensions.Logging;
 namespace BergerHarbour.Infrastructure.Web;
 
 /// <summary>
-/// Maps exceptions to ProblemDetails: validation → 400 with per-field errors, overlaps and version conflicts → 409,
-/// missing records → 404, anything else → 500.
+/// Maps exceptions to ProblemDetails: field errors → 400 with <c>errors</c>, rule breaks → 400, not found → 404, overlaps
+/// and version conflicts → 409 (with <c>conflictingReferences</c>), anything else → 500.
 /// </summary>
-public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails, ILogger<ApiExceptionHandler> logger)
-    : IExceptionHandler
+public sealed class ApiExceptionHandler : IExceptionHandler
 {
+    private readonly ILogger<ApiExceptionHandler> logger;
+
+    public ApiExceptionHandler(ILogger<ApiExceptionHandler> logger)
+    {
+        this.logger = logger;
+    }
+
     public async ValueTask<bool> TryHandleAsync(HttpContext context, Exception exception, CancellationToken ct)
     {
         ProblemDetails problem = exception switch
         {
-            RequestValidationException ex => new ValidationProblemDetails(ex.Errors.ToDictionary(e => e.Key, e => e.Value))
+            DomainValidationException e => new ValidationProblemDetails(e.Errors.ByField.ToDictionary(kv => kv.Key, kv => kv.Value))
             {
                 Status = StatusCodes.Status400BadRequest,
-                Title = "Please check the highlighted fields.",
+                Title = e.Message,
             },
-            DomainValidationException ex => new ValidationProblemDetails(new Dictionary<string, string[]> { [ex.Field] = [ex.Message] })
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = ex.Message,
-            },
-            AvailabilityConflictException ex => new ProblemDetails
-            {
-                Status = StatusCodes.Status409Conflict,
-                Title = ex.Message,
-                Type = "availability-conflict",
-                Extensions = { ["conflictingReferences"] = ex.ConflictingReferences },
-            },
-            ConcurrencyConflictException ex => new ProblemDetails
-            {
-                Status = StatusCodes.Status409Conflict,
-                Title = ex.Message,
-                Type = "concurrency-conflict",
-            },
-            NotFoundException ex => new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = ex.Message },
-            InvalidStripeSignatureException ex => new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = ex.Message },
-            BadHttpRequestException ex => new ProblemDetails { Status = ex.StatusCode, Title = "Bad request." },
-            _ => new ProblemDetails
-            {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "Something went wrong. Please try again.",
-            },
+            BusinessRuleException e => new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = e.Message },
+            InvalidWebhookException e => new ProblemDetails { Status = StatusCodes.Status400BadRequest, Title = e.Message },
+            NotFoundException e => new ProblemDetails { Status = StatusCodes.Status404NotFound, Title = e.Message },
+            ConflictException e => Conflict(e.Message, e.ConflictingReferences),
+            ConcurrencyException e => Conflict(e.Message, []),
+            BadHttpRequestException e => new ProblemDetails { Status = e.StatusCode, Title = "The request couldn't be read." },
+            _ => new ProblemDetails { Status = StatusCodes.Status500InternalServerError, Title = "Something went wrong. Please try again." },
         };
 
         if (problem.Status >= 500)
         {
-            logger.LogError(exception, "Unhandled error on {Method} {Path}", context.Request.Method, context.Request.Path);
-        }
-        else
-        {
-            logger.LogInformation("{Status} on {Method} {Path}: {Message}", problem.Status, context.Request.Method,
-                context.Request.Path, exception.Message);
+            logger.LogError(exception, "Unhandled error on {Method} {Path}", context.Request.Method, context.Request.Path.Value);
         }
 
-        context.Response.StatusCode = problem.Status ?? 500;
-        return await problemDetails.TryWriteAsync(new ProblemDetailsContext
-        {
-            HttpContext = context,
-            ProblemDetails = problem,
-            Exception = exception,
-        });
+        context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
+        await context.Response.WriteAsJsonAsync(problem, problem.GetType(), (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json", ct);
+        return true;
+    }
+
+    private static ProblemDetails Conflict(string message, IReadOnlyList<string> references)
+    {
+        var problem = new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = message };
+        problem.Extensions["conflictingReferences"] = references;
+        return problem;
     }
 }

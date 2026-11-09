@@ -1,0 +1,16 @@
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.reference {
+  font-size: 18px;
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+}

@@ -1,0 +1,261 @@
+.scroller {
+  overflow: auto;
+  max-height: calc(100vh - 200px);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.headerRow {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--c-surface);
+}
+
+.name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.corner {
+  z-index: 4;
+}
+
+.muted {
+  color: var(--c-text-muted);
+}
+
+.days,
+.cells {
+  display: grid;
+}
+
+.dayHead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--c-text-muted);
+  border-right: 1px solid var(--c-border);
+  line-height: 1.2;
+}
+
+.dayHead strong {
+  color: var(--c-text);
+  font-size: 13px;
+}
+
+.track {
+  position: relative;
+  min-width: 0;
+}
+
+.cells {
+  position: absolute;
+  inset: 0;
+}
+
+.cell {
+  border: none;
+  border-right: 1px solid #e6e9ee;
+  background: transparent;
+  padding: 0;
+  cursor: copy;
+}
+
+.cell:hover {
+  background: var(--c-brand-tint);
+}
+
+/* Inactive boats' empty cells: no pointer, no hover. */
+.static {
+  cursor: default;
+}
+
+.static:hover {
+  background: transparent;
+}
+
+.static.weekend:hover {
+  background: var(--c-weekend);
+}
+
+.weekend {
+  background: var(--c-weekend);
+}
+
+.bar {
+  position: absolute;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #8aa6c1;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  color: var(--c-text);
+  z-index: 1;
+}
+
+.bar:hover {
+  filter: brightness(0.96);
+  z-index: 2;
+}
+
+.outstanding {
+  background: var(--c-outstanding);
+  border-color: #d9a0a0;
+}
+
+.depositPaid {
+  background: var(--c-deposit-paid);
+  border-color: #d6bd63;
+}
+
+.partPaid {
+  background: var(--c-part-paid);
+  border-color: #8aa6c1;
+}
+
+.fullyPaid {
+  background: var(--c-fully-paid);
+  border-color: #8cbf92;
+}
+
+.pending {
+  background: var(--c-surface);
+  border: 2px dashed var(--c-brand);
+}
+
+.standby {
+  background-image: repeating-linear-gradient(135deg, rgba(40, 72, 99, 0.18) 0 4px, transparent 4px 8px);
+  border-style: dotted;
+  border-color: var(--c-text);
+}
+
+.inactive {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.unavailable {
+  position: absolute;
+  background: var(--c-unavailable);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #3b4450;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.blocked {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: var(--c-blocked);
+  border: 1px solid #e5cf8f;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.blockedShade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(246, 231, 192, 0.45);
+  pointer-events: none;
+}
+
+.today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--c-today);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 0;
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--c-text-muted);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 22px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.pendingSwatch {
+  border: 2px dashed var(--c-brand);
+}
+
+.standbySwatch {
+  border: 1.5px dotted var(--c-text);
+  background-image: repeating-linear-gradient(135deg, rgba(40, 72, 99, 0.25) 0 3px, transparent 3px 6px);
+}
+
+.unavailableSwatch {
+  background: var(--c-unavailable);
+}
+
+.blockedSwatch {
+  background: var(--c-blocked);
+}

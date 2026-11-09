@@ -1,10 +1,11 @@
 namespace BergerHarbour.Infrastructure.Stripe;
 
+/// <summary>Stripe secrets (from Secret Manager in deployed environments).</summary>
 public sealed class StripeOptions
 {
-    /// <summary>STRIPE_SECRET_KEY</summary>
     public string SecretKey { get; set; } = string.Empty;
 
-    /// <summary>STRIPE_WEBHOOK_SECRET</summary>
     public string WebhookSecret { get; set; } = string.Empty;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(SecretKey);
 }

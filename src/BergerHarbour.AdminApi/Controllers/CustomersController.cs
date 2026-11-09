@@ -1,25 +1,30 @@
-using BergerHarbour.Application.Common;
 using BergerHarbour.Application.Customers;
+using BergerHarbour.Application.Customers.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BergerHarbour.AdminApi.Controllers;
 
-/// <summary>
-/// Read-only in v1, apart from opening bookings. Contact details are updated from the booking dialog.
-/// </summary>
 [ApiController]
 [Route("api/customers")]
-public sealed class CustomersController(CustomerQueries customers) : ControllerBase
+public sealed class CustomersController : ControllerBase
 {
+    private readonly CustomerService service;
+
+    public CustomersController(CustomerService service)
+    {
+        this.service = service;
+    }
+
     [HttpGet]
-    public Task<IReadOnlyList<CustomerDto>> List([FromQuery] string? q, CancellationToken ct) => customers.ListAsync(q, ct);
+    public Task<IReadOnlyList<AdminCustomer>> List([FromQuery] string? q, CancellationToken ct) => service.ListAsync(q, ct);
 
-    /// <summary>Used by the booking dialog to pre-fill an existing customer.</summary>
     [HttpGet("by-email")]
-    public async Task<CustomerDto> ByEmail([FromQuery] string email, CancellationToken ct) =>
-        await customers.GetByEmailAsync(email, ct) ?? throw new NotFoundException("No customer with that email.");
+    public Task<CustomerLookupResponse> ByEmail([FromQuery] string? email, CancellationToken ct) => service.GetByEmailAsync(email, ct);
 
-    /// <summary>All of the customer's bookings, any status, newest stay first.</summary>
+    [HttpPut("{id}/comments")]
+    public Task<AdminCustomer> UpdateComments(string id, UpdateCustomerCommentsRequest request, CancellationToken ct) =>
+        service.UpdateCommentsAsync(id, request, ct);
+
     [HttpGet("{id}/bookings")]
-    public Task<IReadOnlyList<CustomerBookingDto>> Bookings(string id, CancellationToken ct) => customers.ListBookingsAsync(id, ct);
+    public Task<IReadOnlyList<CustomerBookingItem>> Bookings(string id, CancellationToken ct) => service.ListBookingsAsync(id, ct);
 }

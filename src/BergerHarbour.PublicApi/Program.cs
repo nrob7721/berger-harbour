@@ -1,20 +1,13 @@
 using BergerHarbour.Application.Bookings.Validation;
-using BergerHarbour.Infrastructure;
 using BergerHarbour.Infrastructure.Web;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.AddBergerHarbourWeb(maxRequestBodyBytes: 64 * 1024);
-builder.Services.AddBergerHarbourInfrastructure(builder.Configuration, builder.Environment.IsLocal());
-builder.AddClientRateLimiting(BergerHarbour.PublicApi.Controllers.StripeWebhookController.Route);
-
-// Customer bookings use the online rules (period shape, lead time, open-until, blocked periods, …).
+builder.AddBergerApi(ApiKind.Public);
 builder.Services.AddSingleton<IBookingRequestValidationStrategy, OnlineBookingValidationStrategy>();
 
 var app = builder.Build();
-app.UseBergerHarbourWeb(BergerHarbour.PublicApi.Controllers.StripeWebhookController.Route);
-app.UseClientRateLimiting();
-app.MapControllers();
+app.UseBergerApi(ApiKind.Public);
 app.Run();
 
+/// <summary>The public API entry point (customers and the Stripe webhook).</summary>
 public partial class Program;

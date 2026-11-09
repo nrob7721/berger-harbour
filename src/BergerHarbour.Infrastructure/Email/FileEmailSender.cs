@@ -1,20 +1,37 @@
+using System.Globalization;
+using System.Net;
 using BergerHarbour.Application.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BergerHarbour.Infrastructure.Email;
 
-/// <summary>Local development: writes each email to a folder as .html and logs it, instead of sending it.</summary>
-public sealed class FileEmailSender(string directory, ILogger<FileEmailSender> logger) : IEmailSender
+/// <summary>Local development: writes each email to an HTML file (or the console), never sends it.</summary>
+public sealed class FileEmailSender : IEmailSender
 {
+    private readonly EmailOptions options;
+    private readonly ILogger<FileEmailSender> logger;
+
+    public FileEmailSender(IOptions<EmailOptions> options, ILogger<FileEmailSender> logger)
+    {
+        this.options = options.Value;
+        this.logger = logger;
+    }
+
     public async Task SendAsync(EmailMessage message, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(directory);
-        var safeSubject = new string(message.Subject.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
-        var path = Path.Combine(directory, $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}-{safeSubject[..Math.Min(60, safeSubject.Length)]}.html");
-        var html = $"<!-- To: {System.Net.WebUtility.HtmlEncode(message.To)} | Subject: {System.Net.WebUtility.HtmlEncode(message.Subject)} -->\n" +
-                   $"<p><strong>To:</strong> {System.Net.WebUtility.HtmlEncode(message.To)}<br><strong>Subject:</strong> " +
-                   $"{System.Net.WebUtility.HtmlEncode(message.Subject)}</p><hr>\n{message.HtmlBody}";
-        await File.WriteAllTextAsync(path, html, ct);
-        logger.LogInformation("[fake email] To {To}: {Subject} → {Path}", message.To, message.Subject, path);
+        var subject = options.SubjectPrefix + message.Subject;
+        if (string.IsNullOrWhiteSpace(options.OutputDirectory))
+        {
+            logger.LogInformation("Email to {To}: {Subject}\n{Body}", message.To, subject, message.HtmlBody);
+            return;
+        }
+
+        Directory.CreateDirectory(options.OutputDirectory);
+        var name = $"{DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)}-{Guid.NewGuid().ToString("N")[..6]}.html";
+        var html = $"<!doctype html><meta charset=\"utf-8\"><title>{WebUtility.HtmlEncode(subject)}</title>" +
+            $"<p><strong>To:</strong> {WebUtility.HtmlEncode(message.To)}<br><strong>Subject:</strong> {WebUtility.HtmlEncode(subject)}</p><hr>{message.HtmlBody}";
+        await File.WriteAllTextAsync(Path.Combine(options.OutputDirectory, name), html, ct);
+        logger.LogInformation("Email to {To} written to {File}: {Subject}", message.To, name, subject);
     }
 }

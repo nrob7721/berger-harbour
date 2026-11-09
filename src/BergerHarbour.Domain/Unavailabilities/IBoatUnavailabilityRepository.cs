@@ -1,20 +1,17 @@
-using BergerHarbour.Domain.Shared;
+using BergerHarbour.Domain.Boats;
 
 namespace BergerHarbour.Domain.Unavailabilities;
 
 /// <summary>
-/// Reads and deletes unavailabilities. Creating or moving one changes occupancy, so those writes go through the
-/// per-boat exclusive section instead.
+/// Reads of unavailabilities. Creating, editing and deleting one changes occupancy, so those writes go through the
+/// boat schedule lock's session.
 /// </summary>
 public interface IBoatUnavailabilityRepository
 {
-    Task<BoatUnavailability?> GetAsync(UnavailabilityId id, CancellationToken ct = default);
+    Task<BoatUnavailability?> GetAsync(BoatUnavailabilityId id, CancellationToken ct = default);
 
-    Task<IReadOnlyList<BoatUnavailability>> ListByBoatAsync(BoatId boatId, CancellationToken ct = default);
+    Task<IReadOnlyList<BoatUnavailability>> ListForBoatAsync(BoatId boatId, CancellationToken ct = default);
 
-    /// <summary>Unavailabilities of any boat with at least one night in [from, to).</summary>
-    Task<IReadOnlyList<BoatUnavailability>> ListOverlappingAsync(DateOnly from, DateOnly to, BoatId? boatId = null,
-        CancellationToken ct = default);
-
-    Task DeleteAsync(BoatUnavailability unavailability, CancellationToken ct = default);
+    /// <summary>Every boat's unavailabilities with a night in <c>[from, to)</c>.</summary>
+    Task<IReadOnlyList<BoatUnavailability>> ListInRangeAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
 }

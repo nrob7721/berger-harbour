@@ -1,0 +1,19 @@
+.section {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-margin-top: 12px;
+}
+
+.title {
+  font-size: 19px;
+}
+
+.help {
+  color: var(--c-text-muted);
+  font-size: 14px;
+}

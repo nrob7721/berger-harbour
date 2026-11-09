@@ -1,16 +1,15 @@
-using BergerHarbour.Domain.Customers;
+using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Bookings;
 
 /// <summary>
-/// An add-on on a booking. Lines have no status: a line on the booking is accepted, and staff decline an add-on by
-/// deleting its line. A line without a price yet (price on request, LongWeekend/Custom bookings) does not count
-/// toward the total until staff enter one.
+/// An add-on on a booking. A line has no status: a line on the booking is accepted, and staff decline by deleting it.
+/// <see cref="UnitPrice"/> is null until staff set it (price on request, LongWeekend and Custom bookings).
 /// </summary>
-public sealed class AddonLine
+public sealed record AddonLine
 {
-    internal AddonLine(string id, AddonId addonId, string nameSnapshot, int quantity, decimal? unitPrice)
+    private AddonLine(string id, AddonId addonId, string nameSnapshot, int quantity, decimal? unitPrice)
     {
         Id = id;
         AddonId = addonId;
@@ -25,99 +24,24 @@ public sealed class AddonLine
 
     public string NameSnapshot { get; }
 
-    public int Quantity { get; private set; }
+    public int Quantity { get; }
 
-    /// <summary>Null until staff set it.</summary>
-    public decimal? UnitPrice { get; private set; }
+    public decimal? UnitPrice { get; }
 
-    /// <summary>The amount this line adds to the booking total, or null while it has no price.</summary>
-    public decimal? LineTotal => UnitPrice is { } price ? price * Quantity : null;
+    public decimal? LineTotal => UnitPrice is null ? null : Quantity * UnitPrice.Value;
 
-    internal static AddonLine Create(AddonId addonId, string name, int quantity, decimal? unitPrice) =>
-        new(IdGenerator.NewId(), addonId, Guard.Required(name, "addons", "Add-on name"), ValidateQuantity(quantity),
-            ValidatePrice(unitPrice));
-
-    internal void Update(int quantity, decimal? unitPrice)
+    public static AddonLine Create(string? id, AddonId addonId, string nameSnapshot, int quantity, decimal? unitPrice, string field = "addonLines")
     {
-        Quantity = ValidateQuantity(quantity);
-        UnitPrice = ValidatePrice(unitPrice);
-    }
+        if (quantity < 1)
+        {
+            throw new DomainValidationException(field, "Each add-on needs a quantity of at least 1.");
+        }
 
-    private static int ValidateQuantity(int quantity) => quantity >= 1
-        ? quantity
-        : throw new DomainValidationException("quantity", "Quantity must be at least 1.");
+        if (unitPrice < 0)
+        {
+            throw new DomainValidationException(field, "Add-on prices can't be negative.");
+        }
 
-    private static decimal? ValidatePrice(decimal? price) =>
-        price is { } p ? Guard.Money(p, "unitPrice", "Unit price") : null;
-}
-
-/// <summary>A payment received against a booking.</summary>
-public sealed record Payment
-{
-    internal Payment(string id, decimal amount, PaymentMethod method, string? stripePaymentIntentId, DateTimeOffset paidAt,
-        string? note, PaymentRecordedBy recordedBy)
-    {
-        Id = id;
-        Amount = Guard.PositiveMoney(amount, "amount", "Payment amount");
-        Method = method;
-        StripePaymentIntentId = stripePaymentIntentId;
-        PaidAt = paidAt;
-        Note = Guard.Optional(note, "note", "Note", 500);
-        RecordedBy = recordedBy;
-    }
-
-    public string Id { get; }
-
-    public decimal Amount { get; }
-
-    public PaymentMethod Method { get; }
-
-    public string? StripePaymentIntentId { get; }
-
-    public DateTimeOffset PaidAt { get; }
-
-    public string? Note { get; }
-
-    public PaymentRecordedBy RecordedBy { get; }
-}
-
-/// <summary>The customer accepted the rooming warning that was shown to them.</summary>
-public sealed record RoomingWarningAcceptance(DateTimeOffset AcceptedAt, string WarningTextShown);
-
-/// <summary>A notification already sent, used to keep scheduled emails idempotent.</summary>
-public sealed record SentNotification(string Key, DateTimeOffset SentAt);
-
-/// <summary>The contact details a customer entered online, kept on the booking until it becomes Active.</summary>
-public sealed record BookingCustomerDetails
-{
-    public BookingCustomerDetails(string fullName, string email, string mobileNumber)
-    {
-        FullName = Guard.Required(fullName, "fullName", "Full name");
-        Email = EmailAddress.Create(email).Value;
-        MobileNumber = PhoneNumber.Normalise(mobileNumber, "mobile", "Mobile number");
-    }
-
-    public string FullName { get; }
-
-    /// <summary>Normalised (lower-case, trimmed).</summary>
-    public string Email { get; }
-
-    /// <summary>E.164.</summary>
-    public string MobileNumber { get; }
-
-    /// <summary>Rebuilds stored details without re-validating them.</summary>
-    public static BookingCustomerDetails Restore(string fullName, string email, string mobileNumber) =>
-        new(fullName, email, mobileNumber, RestoreMarker.Instance);
-
-    private BookingCustomerDetails(string fullName, string email, string mobileNumber, RestoreMarker _)
-    {
-        FullName = fullName;
-        Email = email;
-        MobileNumber = mobileNumber;
-    }
-
-    private sealed class RestoreMarker
-    {
-        public static readonly RestoreMarker Instance = new();
+        return new AddonLine(string.IsNullOrWhiteSpace(id) ? Guid.NewGuid().ToString("N") : id, addonId, nameSnapshot, quantity, unitPrice);
     }
 }

@@ -1,62 +1,71 @@
 using BergerHarbour.Application.Abstractions;
+using BergerHarbour.Application.Bookings.Dtos;
+using BergerHarbour.Application.Customers.Dtos;
+using BergerHarbour.Domain.Boats;
+using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Customers;
 
-/// <summary>Customers are matched by normalised email; booking again updates the name and mobile.</summary>
-public sealed class CustomerService(ICustomerRepository customers, IClock clock)
+/// <summary>The Customers page and the booking dialog's email lookup (<c>CustomersController</c>). Only comments are edited here.</summary>
+public sealed class CustomerService
 {
-    private const int MaxAttempts = 8;
+    private readonly ICustomerRepository customers;
+    private readonly IBookingRepository bookings;
+    private readonly IBoatRepository boats;
+    private readonly FrequentFloaterService frequentFloaters;
+    private readonly IClock clock;
 
-    /// <summary>Online: called when the booking becomes Active, from the details the customer entered.</summary>
-    public Task<Customer> UpsertAsync(string fullName, string email, string? mobile, CancellationToken ct = default) =>
-        UpsertAsync(fullName, email, mobile, null, false, ct);
-
-    /// <summary>Staff: the booking dialog also sets (or clears) the secondary phone.</summary>
-    public Task<Customer> UpsertFromStaffAsync(string fullName, string email, string? phone, string? secondaryPhone,
-        CancellationToken ct = default) =>
-        UpsertAsync(fullName, email, phone, secondaryPhone, true, ct);
-
-    private async Task<Customer> UpsertAsync(string fullName, string email, string? mobile, string? secondaryPhone,
-        bool setSecondaryPhone, CancellationToken ct)
+    public CustomerService(
+        ICustomerRepository customers, IBookingRepository bookings, IBoatRepository boats, FrequentFloaterService frequentFloaters, IClock clock)
     {
-        var address = EmailAddress.Create(email);
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                var existing = await customers.GetByEmailAsync(address, ct);
-                if (existing is null)
-                {
-                    var created = Customer.Create(fullName, address.Value, mobile, clock.UtcNow);
-                    if (setSecondaryPhone)
-                    {
-                        created.ChangeSecondaryPhone(secondaryPhone, clock.UtcNow);
-                    }
+        this.customers = customers;
+        this.bookings = bookings;
+        this.boats = boats;
+        this.frequentFloaters = frequentFloaters;
+        this.clock = clock;
+    }
 
-                    await customers.SaveAsync(created, ct);
-                    return created;
-                }
+    public async Task<IReadOnlyList<AdminCustomer>> ListAsync(string? q, CancellationToken ct = default)
+    {
+        var term = (q ?? string.Empty).Trim();
+        return (await customers.ListAsync(ct))
+            .Where(c => term.Length == 0 || c.FullName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || c.Email.Value.Contains(term, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.LastName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(c => c.FirstName, StringComparer.OrdinalIgnoreCase)
+            .Select(c => c.ToDto())
+            .ToList();
+    }
 
-                var changed = existing.UpdateContactDetails(fullName, mobile, clock.UtcNow);
-                if (setSecondaryPhone)
-                {
-                    changed |= existing.ChangeSecondaryPhone(secondaryPhone, clock.UtcNow);
-                }
+    /// <summary>Pre-fills the booking dialog; the Frequent Floater check is anchored at now. 404 when no customer has the email.</summary>
+    public async Task<CustomerLookupResponse> GetByEmailAsync(string? email, CancellationToken ct = default)
+    {
+        var customer = await customers.GetByEmailAsync(EmailAddress.Create(email), ct)
+            ?? throw new NotFoundException("No customer has that email.");
+        var result = frequentFloaters.Evaluate(clock.UtcNow, await bookings.ListByCustomerAsync(customer.Id, ct), null);
+        return new CustomerLookupResponse(customer.ToDto(), new FrequentFloaterDto(result.IsFrequentFloater, result.OtherBookingCount));
+    }
 
-                if (changed)
-                {
-                    await customers.SaveAsync(existing, ct);
-                }
+    public async Task<AdminCustomer> UpdateCommentsAsync(string id, UpdateCustomerCommentsRequest request, CancellationToken ct = default)
+    {
+        var customer = await customers.GetAsync(new CustomerId(id), ct) ?? throw new NotFoundException("We couldn't find that customer.");
+        customer.EnsureVersion(request.Version);
+        customer.UpdateComments(request.Comments, clock.UtcNow);
+        await customers.SaveAsync(customer, ct);
+        return customer.ToDto();
+    }
 
-                return existing;
-            }
-            catch (Exception ex) when (attempt < MaxAttempts &&
-                                       ex is DuplicateCustomerEmailException or ConcurrencyConflictException)
-            {
-                // Someone else created or changed this customer at the same moment; re-read and retry.
-            }
-        }
+    /// <summary>All of the customer's bookings, every status, newest start date first.</summary>
+    public async Task<IReadOnlyList<CustomerBookingItem>> ListBookingsAsync(string id, CancellationToken ct = default)
+    {
+        var customer = await customers.GetAsync(new CustomerId(id), ct) ?? throw new NotFoundException("We couldn't find that customer.");
+        var names = (await boats.ListAsync(ct)).ToDictionary(b => b.Id, b => b.Name);
+        return (await bookings.ListByCustomerAsync(customer.Id, ct))
+            .OrderByDescending(b => b.StartDate)
+            .Select(b => new CustomerBookingItem(b.Id.Value, b.Reference?.Value, names.GetValueOrDefault(b.BoatId, string.Empty), b.StartDate, b.EndDate,
+                b.PeriodType, b.Status, b.PaymentStatus, b.IsStandby))
+            .ToList();
     }
 }
