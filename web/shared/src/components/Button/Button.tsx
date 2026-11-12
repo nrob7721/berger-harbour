@@ -22,7 +22,7 @@ export function Button({ variant = 'secondary', size = 'md', busy = false, busyL
     >
       {busy ? (
         <>
-          <Spinner size={14} />
+          <Spinner size="small" />
           <span>{busyLabel ?? children}</span>
         </>
       ) : (

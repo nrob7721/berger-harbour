@@ -1431,6 +1431,14 @@ export interface components {
             /** Format: int32 */
             remaining: number;
         };
+        AddressDto: {
+            line1: null | string;
+            line2: null | string;
+            locality: null | string;
+            state: null | string;
+            postcode: null | string;
+            country: null | string;
+        };
         AdminBoat: {
             id: string;
             name: string;
@@ -1504,6 +1512,8 @@ export interface components {
             roomingWarningAcceptance: null | components["schemas"]["RoomingAcceptanceDto"];
             /** Format: date-time */
             holdExpiresAt: null | string;
+            /** Format: double */
+            checkoutAmount: null | number;
             /** Format: date-time */
             createdDate: string;
             /** Format: date-time */
@@ -1518,7 +1528,7 @@ export interface components {
             email: string;
             mobile: null | string;
             secondaryMobile: null | string;
-            address: null | string;
+            address: null | components["schemas"]["AddressDto"];
             comments: null | string;
             /** Format: date-time */
             createdDate: string;
@@ -1627,7 +1637,7 @@ export interface components {
             lastName: string;
             mobile: null | string;
             secondaryMobile: null | string;
-            address: null | string;
+            address: null | components["schemas"]["AddressDto"];
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
         };
         CustomerBookingItem: {
@@ -1805,14 +1815,6 @@ export interface components {
             /** Format: date */
             lastNight: string;
         };
-        TimelineBoat: {
-            id: string;
-            name: string;
-            slug: string;
-            /** Format: int32 */
-            berth: number;
-            isActive: boolean;
-        };
         TimelineBooking: {
             id: string;
             boatId: string;
@@ -1830,7 +1832,6 @@ export interface components {
             checkOutTime: string;
         };
         TimelineResponse: {
-            boats: components["schemas"]["TimelineBoat"][];
             bookings: components["schemas"]["TimelineBooking"][];
             unavailabilities: components["schemas"]["TimelineUnavailability"][];
             blockedPeriods: components["schemas"]["TimelineBlockedPeriod"][];
@@ -1884,7 +1885,7 @@ export interface components {
             lastName: null | string;
             mobile: null | string;
             secondaryMobile: null | string;
-            address: null | string;
+            address: null | components["schemas"]["AddressDto"];
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
             /** Format: int32 */
             version: number;

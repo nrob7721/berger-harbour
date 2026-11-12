@@ -2,6 +2,7 @@ using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Bookings.Dtos;
 using BergerHarbour.Application.Bookings.Validation;
 using BergerHarbour.Application.Customers;
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Application.Notifications;
 using BergerHarbour.Application.Payments;
 using BergerHarbour.Domain.Boats;
@@ -31,6 +32,7 @@ public sealed class StaffBookingService
     private readonly StaffBookingWarnings warnings;
     private readonly CustomerRegistry customers;
     private readonly BookingNotifier notifier;
+    private readonly BookingActivator activator;
     private readonly PaymentLinkTokens links;
     private readonly IClock clock;
 
@@ -39,7 +41,7 @@ public sealed class StaffBookingService
         ReferenceDataLoader referenceData, IBookingRequestValidationStrategy strategy, IBoatScheduleLock scheduleLock,
         IBookingReferenceGenerator references, BookingAvailabilityService availability, PricingService pricing, PaymentScheduleService schedule,
         FrequentFloaterService frequentFloaters, StaffBookingWarnings warnings, CustomerRegistry customers, BookingNotifier notifier,
-        PaymentLinkTokens links, IClock clock)
+        BookingActivator activator, PaymentLinkTokens links, IClock clock)
     {
         this.bookings = bookings;
         this.boats = boats;
@@ -56,11 +58,15 @@ public sealed class StaffBookingService
         this.warnings = warnings;
         this.customers = customers;
         this.notifier = notifier;
+        this.activator = activator;
         this.links = links;
         this.clock = clock;
     }
 
-    /// <summary>Timeline data for <c>[from, to)</c>: every boat, its bookings, unavailabilities and the blocked periods.</summary>
+    /// <summary>
+    /// Timeline data for <c>[from, to)</c>: the bookings, unavailabilities and blocked periods. The boat rows come from
+    /// <c>GET /api/boats</c>. Lapsed holds are reported as Expired.
+    /// </summary>
     public async Task<TimelineResponse> GetTimelineAsync(DateOnly? from, DateOnly? to, bool includeInactive, CancellationToken ct = default)
     {
         if (from is not { } start || to is not { } end)
@@ -70,14 +76,12 @@ public sealed class StaffBookingService
 
         var range = StayRange.Create(start, end, "to");
         var reference = await referenceData.LoadAsync(ct);
-        var allBoats = Boat.InListOrder(await boats.ListAsync(ct)).ToList();
-        var inRange = (await bookings.ListOverlappingAsync(start, end, ct))
+        var inRange = ReportLapsedHolds(await bookings.ListOverlappingAsync(start, end, ct))
             .Where(b => includeInactive || b.Status is BookingStatus.Active or BookingStatus.PendingPayment)
             .OrderBy(b => b.StartDate)
             .ToList();
         var names = await CustomerNamesAsync(ct);
         return new TimelineResponse(
-            allBoats.Select(b => new TimelineBoat(b.Id.Value, b.Name, b.Slug, b.Berth, b.IsActive)).ToList(),
             inRange.Select(b => new TimelineBooking(b.Id.Value, b.BoatId.Value, b.Reference?.Value, NameOf(b, names), b.Status, b.IsStandby, b.PaymentStatus,
                 b.PeriodType, b.StartDate, b.EndDate, StaffTimes.Format(b.CheckInTime), StaffTimes.Format(b.CheckOutTime))).ToList(),
             (await unavailabilities.ListInRangeAsync(start, end, ct))
@@ -95,7 +99,7 @@ public sealed class StaffBookingService
             return [];
         }
 
-        var all = await bookings.ListAllAsync(ct);
+        var all = ReportLapsedHolds(await bookings.ListAllAsync(ct));
         var byId = (await customerRepository.ListAsync(ct)).ToDictionary(c => c.Id);
         var boatNames = (await boats.ListAsync(ct)).ToDictionary(b => b.Id, b => b.Name);
         return all
@@ -170,26 +174,17 @@ public sealed class StaffBookingService
     {
         var booking = await LoadAsync(id, ct);
         booking.EnsureVersion(request.Version);
-        if (booking.Status == BookingStatus.PendingPayment)
-        {
-            throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be edited yet.");
-        }
+        booking.EnsureEditableByStaff();
 
         var reference = await referenceData.LoadAsync(ct);
         var errors = new ValidationErrors();
         var boat = await BookableBoatAsync(request.BoatId, booking.BoatId, errors, ct);
-        var hasCustomer = booking.CustomerId is not null;
-        var snapshot = booking.CustomerDetails;
         var bookingRequest = new BookingRequest(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
-            hasCustomer ? request.FirstName : snapshot?.FirstName, hasCustomer ? request.LastName : snapshot?.LastName,
-            hasCustomer ? request.Email : snapshot?.Email.Value, hasCustomer ? request.Mobile : snapshot?.MobileNumber.Value,
-            hasCustomer ? request.SecondaryMobile : null, hasCustomer ? request.Address : null, [], false, null, false, null);
+            request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address, [], false, null, false, null);
         var input = Validate(bookingRequest, boat, reference, request.CheckInTime, request.CheckOutTime, request.HirePrice, request.AddonLines,
             booking.AddonLines, errors);
-        var contact = hasCustomer
-            ? ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address,
-                request.CustomerComments, errors)
-            : null;
+        var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address,
+            request.CustomerComments, errors);
         if (booking.Status is not (BookingStatus.Active or BookingStatus.Cancelled) && request.Status != booking.Status)
         {
             errors.Add("status", $"A {booking.Status} booking's status can't be changed.");
@@ -204,6 +199,7 @@ public sealed class StaffBookingService
         {
             var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
             current.EnsureVersion(request.Version);
+            current.ExpireIfLapsed(now);
             current.UpdateByStaff(details, now);
             if (current.Status is BookingStatus.Active or BookingStatus.Cancelled)
             {
@@ -236,7 +232,10 @@ public sealed class StaffBookingService
         return new BookingSaveResponse(await DetailAsync(saved, ct), await WarningsAsync(boat, saved, reference, ct));
     }
 
-    /// <summary>Records a manual payment and sends #5.</summary>
+    /// <summary>
+    /// A manual payment. On an Active booking it is recorded and #5 is sent. On an Expired booking without payments it is
+    /// staff confirmation (§7.3). Every other booking rejects it.
+    /// </summary>
     public async Task<AdminBookingDetail> AddManualPaymentAsync(string id, ManualPaymentRequest request, CancellationToken ct = default)
     {
         var booking = await LoadAsync(id, ct);
@@ -250,10 +249,20 @@ public sealed class StaffBookingService
         }
 
         var payment = new Payment(Guid.NewGuid().ToString("N"), request.Amount, PaymentMethod.Manual, null, paidAt, note, BookingCreator.SystemUser);
-        booking.RecordPayment(payment, now);
-        await bookings.SaveAsync(booking, ct);
-        await notifier.SendPaymentReceivedAsync(booking, payment, ct);
-        return await DetailAsync(booking, ct);
+        switch (booking.Status)
+        {
+            case BookingStatus.Active:
+                booking.RecordPayment(payment, now);
+                await bookings.SaveAsync(booking, ct);
+                await notifier.SendPaymentReceivedAsync(booking, payment, ct);
+                return await DetailAsync(booking, ct);
+            case BookingStatus.Expired:
+                return await ConfirmAsync(booking, request.Version, payment, ct);
+            case BookingStatus.PendingPayment:
+                throw new BusinessRuleException("This booking is waiting for the customer's online payment. Manual payments can't be recorded yet.");
+            default:
+                throw new BusinessRuleException("Manual payments can only be recorded on Active bookings.");
+        }
     }
 
     /// <summary>Sends #4 now for the amount due now. Manual sends are not deduplicated.</summary>
@@ -282,6 +291,37 @@ public sealed class StaffBookingService
         }
     }
 
+    /// <summary>
+    /// Staff confirmation of an Expired hold: the payment (at least the checkout amount) is recorded and the booking
+    /// activated in one transaction, exactly as if the deposit had been paid online. Sends #1 (and #8), never #2 or #5.
+    /// </summary>
+    private async Task<AdminBookingDetail> ConfirmAsync(Booking booking, int version, Payment payment, CancellationToken ct)
+    {
+        booking.RecordStaffConfirmation(payment, clock.UtcNow); // fails fast before a reference suffix is used up
+        var bookingReference = await activator.ReferenceForAsync(booking, ct);
+        var now = clock.UtcNow;
+        var (confirmed, superseded) = await scheduleLock.RunExclusiveAsync(booking.BoatId, async session =>
+        {
+            var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
+            current.EnsureVersion(version);
+            current.ExpireIfLapsed(now);
+            current.RecordStaffConfirmation(payment, now);
+            current.AssignReference(bookingReference);
+            var attempt = await activator.TryActivateAsync(session, current, now);
+            if (!attempt.Activated)
+            {
+                throw new ConflictException(ConflictException.DatesTaken, attempt.Check.References);
+            }
+
+            session.SaveBooking(current);
+            return (current, attempt.Superseded);
+        });
+
+        await activator.CompleteAsync(confirmed, ct);
+        await AfterSaveAsync(confirmed, superseded, ct);
+        return await DetailAsync(confirmed, ct);
+    }
+
     private static bool Matches(string term, Booking booking, Customer? customer)
     {
         bool Has(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
@@ -305,13 +345,13 @@ public sealed class StaffBookingService
     }
 
     private static StaffContact? ContactFrom(
-        string? firstName, string? lastName, string? email, string? mobile, string? secondaryMobile, string? address, string? comments,
+        string? firstName, string? lastName, string? email, string? mobile, string? secondaryMobile, AddressDto? address, string? comments,
         ValidationErrors errors)
     {
         var e = errors.Capture(() => EmailAddress.Create(email));
         var m = errors.Capture(() => MobileNumber.CreateOptional(mobile, "mobile"));
         var s = errors.Capture(() => MobileNumber.CreateOptional(secondaryMobile, "secondaryMobile"));
-        var a = errors.Capture(() => Customer.NormaliseAddress(address));
+        var a = errors.Capture(() => address.ToAddress());
         if (comments?.Trim().Length > Customer.MaxCommentsLength)
         {
             errors.Add("customerComments", "Comments must be 5000 characters or fewer.");
@@ -322,8 +362,25 @@ public sealed class StaffBookingService
             : new StaffContact(firstName.Trim(), lastName.Trim(), e, m, s, a, comments);
     }
 
-    private async Task<Booking> LoadAsync(string id, CancellationToken ct) =>
-        await bookings.GetAsync(new BookingId(id), ct) ?? throw new NotFoundException("We couldn't find that booking.");
+    /// <summary>Loads a booking, reporting a lapsed hold as Expired. Nothing is saved.</summary>
+    private async Task<Booking> LoadAsync(string id, CancellationToken ct)
+    {
+        var booking = await bookings.GetAsync(new BookingId(id), ct) ?? throw new NotFoundException("We couldn't find that booking.");
+        booking.ExpireIfLapsed(clock.UtcNow);
+        return booking;
+    }
+
+    /// <summary>Staff never see a lapsed hold as PendingPayment. Reads don't save it; the hourly job does (§9).</summary>
+    private IReadOnlyList<Booking> ReportLapsedHolds(IReadOnlyList<Booking> loaded)
+    {
+        var now = clock.UtcNow;
+        foreach (var booking in loaded)
+        {
+            booking.ExpireIfLapsed(now);
+        }
+
+        return loaded;
+    }
 
     private async Task<Boat?> BookableBoatAsync(string? boatId, BoatId? currentBoatId, ValidationErrors errors, CancellationToken ct)
     {
@@ -438,6 +495,7 @@ public sealed class StaffBookingService
             b.TermsAcceptedAt,
             b.RoomingWarningAcceptance is { } r ? new RoomingAcceptanceDto(r.AcceptedAt, r.WarningTextShown) : null,
             b.Status == BookingStatus.PendingPayment ? b.HoldExpiresAt : null,
+            b.Status == BookingStatus.Expired ? b.CheckoutAmount : null,
             b.CreatedDate, b.ModifiedDate, b.Version);
     }
 

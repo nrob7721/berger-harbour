@@ -44,14 +44,17 @@ public sealed class BookingDraftService
         return new CreateDraftResponse(draft.Id.Value);
     }
 
+    /// <summary>Only the personal details, for resuming saved progress. 404 if unknown, converted or deleted.</summary>
+    public async Task<DraftDetailsResponse> GetDetailsAsync(string draftId, CancellationToken ct = default)
+    {
+        var contents = (await OpenDraftAsync(draftId, ct)).Contents;
+        return new DraftDetailsResponse(contents.FirstName, contents.LastName, contents.Email.Value, contents.MobileNumber.Value);
+    }
+
     /// <summary>Updates the draft (including its boat) and its last activity. 404 if unknown, converted or deleted.</summary>
     public async Task UpdateAsync(string draftId, UpdateDraftRequest request, CancellationToken ct = default)
     {
-        var draft = await drafts.GetAsync(new BookingDraftId(draftId), ct);
-        if (draft is null || draft.IsConverted)
-        {
-            throw new NotFoundException("Your booking session has expired. Please start again.");
-        }
+        var draft = await OpenDraftAsync(draftId, ct);
 
         var addons = (request.Addons ?? []).Where(a => !string.IsNullOrWhiteSpace(a.AddonId))
             .Select(a => new AddonRequest(new AddonId(a.AddonId), a.Quantity)).ToList();
@@ -59,6 +62,14 @@ public sealed class BookingDraftService
             request.FirstName, request.LastName, request.Email, request.Mobile, addons, request.LastStepReached, ct);
         draft.Update(contents, clock.UtcNow);
         await drafts.SaveAsync(draft, ct);
+    }
+
+    private async Task<BookingDraft> OpenDraftAsync(string draftId, CancellationToken ct)
+    {
+        var draft = await drafts.GetAsync(new BookingDraftId(draftId), ct);
+        return draft is null || draft.IsConverted
+            ? throw new NotFoundException("Your booking session has expired. Please start again.")
+            : draft;
     }
 
     private async Task<DraftContents> ContentsAsync(

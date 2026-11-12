@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { api, boats, emptyTimeline } from '@/testing/server';
+import { http, HttpResponse, delay } from 'msw';
+import { api, boats, emptyTimeline, server } from '@/testing/server';
 import { renderAdmin } from '@/testing/render';
 import { rangeFor } from '../utils/timeline';
 import type { TimelineBooking } from '@/lib/types';
@@ -19,7 +20,7 @@ const noop = () => {};
 describe('Timeline', () => {
   it('labels holds "Pending payment" and active bookings with their reference', () => {
     const data = { ...emptyTimeline, bookings: [booking({ id: 'a' }), booking({ id: 'h', reference: null, status: 'PendingPayment', customerName: 'Ann Lee', startDate: '2026-10-19', endDate: '2026-10-23' })] };
-    renderAdmin(<Timeline range={rangeFor('month', '2026-10-01')} data={data} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    renderAdmin(<Timeline boats={boats} range={rangeFor('month', '2026-10-01')} data={data} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
     expect(screen.getByTestId('bar-a')).toHaveTextContent('Jane Smith · SMITH-2610120');
     expect(screen.getByTestId('bar-h')).toHaveTextContent('Ann Lee · Pending payment');
     expect(screen.getByTestId('bar-h')).toHaveClass('pending');
@@ -32,7 +33,7 @@ describe('Timeline', () => {
       booking({ id: 'b', startDate: '2026-10-21', endDate: '2026-10-23' }),
       booking({ id: 'c', startDate: '2026-10-23', endDate: '2026-10-25' }),
     ] };
-    renderAdmin(<Timeline range={rangeFor('week', '2026-10-19')} data={data} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    renderAdmin(<Timeline boats={boats} range={rangeFor('week', '2026-10-19')} data={data} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
     const a = screen.getByTestId('bar-a');
     expect(parseFloat(a.style.left)).toBeCloseTo((100 / 7) * (11 / 24));
     expect(a.dataset.lane).toBe('0');
@@ -41,18 +42,18 @@ describe('Timeline', () => {
   });
 
   it('fills the width in month view and only scrolls below the minimum column width', () => {
-    const { unmount } = renderAdmin(<Timeline range={rangeFor('month', '2026-10-01')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    const { unmount } = renderAdmin(<Timeline boats={boats} range={rangeFor('month', '2026-10-01')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
     const grid = screen.getByTestId('timeline-grid');
     expect(grid.style.minWidth).toBe('calc(170px + 868px)'); // 31 days × 28px
     expect(screen.getAllByRole('columnheader')).toHaveLength(32);
     unmount();
-    renderAdmin(<Timeline range={rangeFor('week', '2026-10-19')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    renderAdmin(<Timeline boats={boats} range={rangeFor('week', '2026-10-19')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
     expect(screen.getByTestId('timeline-grid').style.minWidth).toBe('');
   });
 
   it('opens a new booking with the boat and date of an empty cell', async () => {
     const opened: [string, string][] = [];
-    renderAdmin(<Timeline range={rangeFor('week', '2026-10-19')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={(b, d) => opened.push([b, d])} />);
+    renderAdmin(<Timeline boats={boats} range={rangeFor('week', '2026-10-19')} data={emptyTimeline} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={(b, d) => opened.push([b, d])} />);
     await userEvent.setup().click(screen.getByRole('button', { name: 'New booking for Misty Blue on 21/10/2026' }));
     expect(opened).toEqual([['b-mb', '2026-10-21']]);
   });
@@ -60,12 +61,9 @@ describe('Timeline', () => {
   it('keeps inactive boats with muted names: their empty cells are not clickable but their bars still open', async () => {
     const opened: string[] = [];
     const newBookings: string[] = [];
-    const data = {
-      ...emptyTimeline,
-      boats: emptyTimeline.boats.map((b) => (b.slug === 'misty-blue' ? { ...b, isActive: false } : b)),
-      bookings: [booking({ id: 'old', boatId: 'b-mb', startDate: '2026-10-19', endDate: '2026-10-23' })],
-    };
-    renderAdmin(<Timeline range={rangeFor('week', '2026-10-19')} data={data} todayIso="2026-10-01" onOpenBooking={(id) => opened.push(id)} onNewBooking={(b) => newBookings.push(b)} />);
+    const data = { ...emptyTimeline, bookings: [booking({ id: 'old', boatId: 'b-mb', startDate: '2026-10-19', endDate: '2026-10-23' })] };
+    const rows = boats.map((b) => (b.slug === 'misty-blue' ? { ...b, isActive: false } : b));
+    renderAdmin(<Timeline boats={rows} range={rangeFor('week', '2026-10-19')} data={data} todayIso="2026-10-01" onOpenBooking={(id) => opened.push(id)} onNewBooking={(b) => newBookings.push(b)} />);
     const row = screen.getByTestId('row-misty-blue');
     expect(within(row).getByRole('rowheader')).toHaveClass('muted');
     expect(screen.queryByRole('button', { name: /New booking for Misty Blue/ })).not.toBeInTheDocument();
@@ -75,6 +73,58 @@ describe('Timeline', () => {
     await user.click(screen.getByTestId('bar-old'));
     expect(opened).toEqual(['old']);
     expect(screen.getAllByRole('button', { name: /New booking for Pacific Blue/ })).toHaveLength(7);
+  });
+});
+
+describe('Timeline loading', () => {
+  it('shows a large spinner in the cell area while a range loads, keeping the day headers and boat names', () => {
+    renderAdmin(<Timeline boats={boats} range={rangeFor('week', '2026-10-19')} data={undefined} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    expect(screen.getByRole('status', { name: 'Loading bookings' })).toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(8);
+    expect(screen.getByRole('rowheader', { name: 'Pacific Blue' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New booking for/ })).not.toBeInTheDocument();
+  });
+
+  it('on the very first load the boat-name column waits too', () => {
+    renderAdmin(<Timeline boats={undefined} range={rangeFor('week', '2026-10-19')} data={undefined} todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    expect(screen.getByRole('status', { name: 'Loading boats' })).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading bookings' })).toBeInTheDocument();
+  });
+
+  it('shows the error with Retry when loading fails', async () => {
+    const onRetry = vi.fn();
+    renderAdmin(<Timeline boats={boats} range={rangeFor('week', '2026-10-19')} data={undefined} error={new Error('Network down')} onRetry={onRetry}
+      todayIso="2026-10-01" onOpenBooking={noop} onNewBooking={noop} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Network down');
+    expect(screen.queryByRole('status', { name: 'Loading bookings' })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('never lets a slower, older response replace a newer range, and shows a loaded range without a spinner', async () => {
+    const bar = (id: string, start: string, end: string) => booking({ id, startDate: start, endDate: end });
+    server.use(http.get('*/api/bookings', async ({ request }) => {
+      const from = new URL(request.url).searchParams.get('from');
+      if (from === '2026-10-19') {
+        await delay(150);
+        return HttpResponse.json({ ...emptyTimeline, bookings: [bar('old', '2026-10-20', '2026-10-22')] });
+      }
+      return HttpResponse.json({ ...emptyTimeline, bookings: [bar('new', '2026-10-27', '2026-10-29')] });
+    }));
+    window.localStorage.setItem('bh-admin-timeline-view', 'week');
+    renderAdmin(<BookingsPage todayIso="2026-10-21" />);
+    const user = userEvent.setup();
+    expect(await screen.findByRole('status', { name: 'Loading bookings' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next ›' })); // the controls stay usable while loading
+    expect(await screen.findByTestId('bar-new')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 200)); // the older range's response arrives
+    expect(screen.queryByTestId('bar-old')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bar-new')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '‹ Prev' }));
+    expect(screen.getByTestId('bar-old')).toBeInTheDocument(); // already loaded: shown straight away
+    expect(screen.queryByRole('status', { name: 'Loading bookings' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('bar-old')).toBeInTheDocument());
   });
 });
 

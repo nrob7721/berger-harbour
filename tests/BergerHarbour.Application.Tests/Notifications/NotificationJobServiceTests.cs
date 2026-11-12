@@ -160,4 +160,22 @@ public class NotificationJobServiceTests
         Assert.Equal(1, result.DraftsDeleted);
         Assert.Empty(h.Db.Drafts.All);
     }
+
+    [Fact]
+    public async Task A_hold_staff_confirm_days_later_gets_no_catch_up_reminder_but_gets_the_due_email()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync(start: "2027-02-15"), start: "2027-02-15"));
+        var due = CheckIn("2027-02-15") - TimeSpan.FromDays(30);
+        h.Clock.UtcNow = due - TimeSpan.FromDays(6);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+        await h.Staff.AddManualPaymentAsync(expired.Id, new Application.Bookings.Dtos.ManualPaymentRequest(1000, Sydney.DateOf(h.Clock.UtcNow), null, expired.Version));
+        await Job.RunAsync();
+        Assert.Equal(0, h.CountEmails("Payment due"));
+        h.Clock.UtcNow = due;
+        await Job.RunAsync();
+        Assert.Equal(1, h.CountEmails("Payment due"));
+        h.Clock.UtcNow = due + TimeSpan.FromHours(1);
+        await Job.RunAsync();
+        Assert.Single(h.EmailsTo(StaffEmail), m => m.Subject.Contains("Overdue", StringComparison.Ordinal));
+    }
 }

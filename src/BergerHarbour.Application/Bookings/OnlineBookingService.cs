@@ -44,13 +44,19 @@ public sealed class OnlineBookingService
     }
 
     /// <summary>
-    /// Validates, creates the PendingPayment hold atomically (no customer, no reference yet), updates the draft and
-    /// creates the deposit's Embedded Checkout session.
+    /// Releases any hold from the same draft that is still PendingPayment, then validates, creates the new PendingPayment
+    /// hold atomically (no customer, no reference yet), updates the draft and creates the deposit's Embedded Checkout
+    /// session. The session closes before the hold lapses.
     /// </summary>
     public async Task<CreateBookingResponse> CreateAsync(CreateBookingRequest request, CancellationToken ct = default)
     {
         var boat = await preparer.HouseBoatAsync(request.Slug, ct);
         var draft = string.IsNullOrWhiteSpace(request.DraftId) ? null : await drafts.GetAsync(new BookingDraftId(request.DraftId), ct);
+        if (draft is { IsConverted: false })
+        {
+            await ReleaseDraftHoldsAsync(draft.Id, ct);
+        }
+
         var bookingRequest = OnlineRequestMapper.ToRequest(request);
         var p = await preparer.PrepareAsync(boat, bookingRequest, BookingValidationScope.Submit, draft, ct);
         var now = clock.UtcNow;
@@ -87,13 +93,14 @@ public sealed class OnlineBookingService
         }, now);
         await drafts.SaveAsync(draft, ct);
 
+        var checkoutExpiresAt = now + options.CheckoutSessionLifetime;
         CheckoutSession session;
         try
         {
             session = await payments.CreateCheckoutSessionAsync(new CheckoutSessionRequest(booking.Id, CheckoutPurpose.Deposit, p.CheckoutAmount,
                 $"{boat.Name} deposit", $"Deposit for {boat.Name}, check-in {Notifications.DisplayFormat.Date(p.Stay.Start)}", details.Email.Value,
                 $"{links.BaseUrl}/?boat={Uri.EscapeDataString(boat.Slug)}&booking={booking.Id.Value}&session_id={{CHECKOUT_SESSION_ID}}",
-                now + options.CheckoutSessionLifetime), ct);
+                checkoutExpiresAt), ct);
         }
         catch
         {
@@ -104,7 +111,7 @@ public sealed class OnlineBookingService
 
         booking.AttachCheckoutSession(session.SessionId);
         await bookings.SaveAsync(booking, ct);
-        return new CreateBookingResponse(booking.Id.Value, session.ClientSecret, session.SessionId);
+        return new CreateBookingResponse(booking.Id.Value, session.ClientSecret, session.SessionId, checkoutExpiresAt);
     }
 
     /// <summary>
@@ -113,14 +120,43 @@ public sealed class OnlineBookingService
     /// </summary>
     public async Task ReleaseAsync(string bookingId, ReleaseBookingRequest request, CancellationToken ct = default)
     {
+        var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
+        if (booking is null || booking.CreatedBy != BookingCreator.Customer || booking.BookingDraftId?.Value != request.DraftId)
+        {
+            throw new NotFoundException("We couldn't find that booking.");
+        }
+
+        await ReleaseHoldAsync(booking, ct);
+    }
+
+    /// <summary>The completion screen's status, only when <paramref name="sessionId"/> matches the booking.</summary>
+    public async Task<BookingStatusResponse> GetStatusAsync(string bookingId, string? sessionId, CancellationToken ct = default)
+    {
+        var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
+        if (booking is null || string.IsNullOrEmpty(sessionId) || booking.StripeCheckoutSessionId != sessionId)
+        {
+            throw new NotFoundException("We couldn't find that booking.");
+        }
+
+        var boat = await preparer.BoatByIdAsync(booking.BoatId, ct);
+        return new BookingStatusResponse(booking.Status, booking.Reference?.Value, boat?.Name ?? string.Empty, booking.StartDate, booking.EndDate,
+            booking.CustomerDetails?.Email.Value ?? string.Empty);
+    }
+
+    /// <summary>A customer never collides with their own earlier hold: every PendingPayment hold from the draft is released.</summary>
+    private async Task ReleaseDraftHoldsAsync(BookingDraftId draftId, CancellationToken ct)
+    {
+        foreach (var hold in (await bookings.ListByStatusAsync(BookingStatus.PendingPayment, ct)).Where(b => b.BookingDraftId == draftId))
+        {
+            await ReleaseHoldAsync(hold, ct);
+        }
+    }
+
+    /// <summary>Expires the hold's Checkout session and the hold. Already Expired: nothing to do. Paid: 409.</summary>
+    private async Task ReleaseHoldAsync(Booking booking, CancellationToken ct)
+    {
         for (var attempt = 1; ; attempt++)
         {
-            var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
-            if (booking is null || booking.CreatedBy != BookingCreator.Customer || booking.BookingDraftId?.Value != request.DraftId)
-            {
-                throw new NotFoundException("We couldn't find that booking.");
-            }
-
             switch (booking.Status)
             {
                 case BookingStatus.Expired:
@@ -146,21 +182,8 @@ public sealed class OnlineBookingService
             catch (ConcurrencyException) when (attempt < 3)
             {
                 // The webhook changed it meanwhile: reload and decide again.
+                booking = await bookings.GetAsync(booking.Id, ct) ?? throw new NotFoundException("We couldn't find that booking.");
             }
         }
-    }
-
-    /// <summary>The completion screen's status, only when <paramref name="sessionId"/> matches the booking.</summary>
-    public async Task<BookingStatusResponse> GetStatusAsync(string bookingId, string? sessionId, CancellationToken ct = default)
-    {
-        var booking = await bookings.GetAsync(new BookingId(bookingId), ct);
-        if (booking is null || string.IsNullOrEmpty(sessionId) || booking.StripeCheckoutSessionId != sessionId)
-        {
-            throw new NotFoundException("We couldn't find that booking.");
-        }
-
-        var boat = await preparer.BoatByIdAsync(booking.BoatId, ct);
-        return new BookingStatusResponse(booking.Status, booking.Reference?.Value, boat?.Name ?? string.Empty, booking.StartDate, booking.EndDate,
-            booking.CustomerDetails?.Email.Value ?? string.Empty);
     }
 }

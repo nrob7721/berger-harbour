@@ -120,7 +120,7 @@ public sealed class NotificationJobService
 
     /// <summary>
     /// #4 at <c>due − reminder</c> and at <c>due</c>, #7 once <c>now &gt; due</c>, each per milestone with a shortfall and
-    /// never when its trigger was at or before the booking's creation; #6 at <c>check-in − pre-hire</c>.
+    /// never when its trigger was at or before the booking's activation; #6 at <c>check-in − pre-hire</c>.
     /// </summary>
     private async Task<int> SendDueAsync(Booking booking, DateTimeOffset now, CancellationToken ct)
     {
@@ -134,7 +134,7 @@ public sealed class NotificationJobService
             }
 
             var reminderAt = schedule.ReminderAt(m);
-            if (now >= m.DueAt && m.DueAt > booking.CreatedDate)
+            if (now >= m.DueAt && m.DueAt > booking.ActivationAnchor)
             {
                 if (await notifier.SendPaymentDueAsync(booking, shortfall, m.DueDate, NotificationKeys.PaymentDue(m.Kind), ct))
                 {
@@ -148,7 +148,7 @@ public sealed class NotificationJobService
                     sent++;
                 }
             }
-            else if (now >= reminderAt && now < m.DueAt && reminderAt > booking.CreatedDate
+            else if (now >= reminderAt && now < m.DueAt && reminderAt > booking.ActivationAnchor
                 && await notifier.SendPaymentDueAsync(booking, shortfall, m.DueDate, NotificationKeys.PaymentDueReminder(m.Kind), ct))
             {
                 sent++;

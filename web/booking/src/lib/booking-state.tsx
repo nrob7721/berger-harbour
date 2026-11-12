@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from 'react';
 import type { OnlinePeriodType, Stay } from '@shared/utils/periods';
+import { clearSavedProgress, writeSavedProgress } from './saved-progress';
 
 export type Step = 'dates' | 'details' | 'addons' | 'summary' | 'payment' | 'complete';
+
+export const STEP_ORDER: readonly Step[] = ['dates', 'details', 'addons', 'summary', 'payment', 'complete'];
+
+const later = (a: Step, b: Step): Step => (STEP_ORDER.indexOf(b) > STEP_ORDER.indexOf(a) ? b : a);
 
 export interface ContactDetails {
   firstName: string;
@@ -21,11 +26,18 @@ export interface Hold {
   bookingId: string;
   clientSecret: string;
   sessionId: string;
+  /** When Checkout closes; the hold itself lasts a little longer (§8.1). */
+  checkoutExpiresAt: string;
 }
 
-/** The booking app's step state. Everything else is server data (TanStack Query) or local to a component. */
+/**
+ * The booking app's step state. Everything else is server data (TanStack Query) or local to a component. All of it except
+ * the personal details is also kept as saved progress (§11.2).
+ */
 export interface BookingState {
   step: Step;
+  /** The furthest step reached; a resumed booking opens it (at most the Summary). */
+  furthestStep: Step;
   requestedSlug: string | null;
   periodType: OnlinePeriodType;
   period: Stay | null;
@@ -68,29 +80,10 @@ export type BookingAction =
   | { type: 'cachesCleared' }
   | { type: 'notice'; notice: string | null };
 
-const DRAFT_KEY = 'bh-booking-draft-id';
-
-export function readDraftId(): string | null {
-  try {
-    return window.sessionStorage.getItem(DRAFT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeDraftId(id: string | null) {
-  try {
-    if (id) window.sessionStorage.setItem(DRAFT_KEY, id);
-    else window.sessionStorage.removeItem(DRAFT_KEY);
-  } catch {
-    /* storage unavailable: the draft id still lives in memory */
-  }
-}
-
 export function initialState(requestedSlug: string | null, overrides: Partial<BookingState> = {}): BookingState {
   return {
-    step: 'dates', requestedSlug, periodType: 'Midweek', period: null, adults: 1, children: 0, spa: false, pets: false,
-    selectedSlug: null, showSelectedOnly: false, rooming: null, details: null, addons: {}, draftId: readDraftId(), hold: null,
+    step: 'dates', furthestStep: 'dates', requestedSlug, periodType: 'Midweek', period: null, adults: 1, children: 0, spa: false, pets: false,
+    selectedSlug: null, showSelectedOnly: false, rooming: null, details: null, addons: {}, draftId: null, hold: null,
     completed: null, reachedPayment: false, notice: null, ...overrides,
   };
 }
@@ -118,22 +111,19 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
     case 'details':
       return { ...state, details: action.details };
     case 'draft':
-      writeDraftId(action.draftId);
       return { ...state, draftId: action.draftId };
     case 'draftLost':
-      writeDraftId(null);
       return { ...state, draftId: null };
     case 'addons':
       return { ...state, addons: action.addons };
     case 'goto':
       return {
-        ...state, step: action.step, notice: action.notice ?? null,
+        ...state, step: action.step, furthestStep: later(state.furthestStep, action.step), notice: action.notice ?? null,
         reachedPayment: state.reachedPayment || action.step === 'payment',
       };
     case 'hold':
       return { ...state, hold: action.hold };
     case 'complete':
-      writeDraftId(null);
       return {
         ...state, step: 'complete', hold: null, draftId: null, notice: null,
         completed: { bookingId: action.bookingId, sessionId: action.sessionId, email: action.email },
@@ -163,6 +153,11 @@ export function BookingProvider({ initial, children }: { initial: BookingState; 
   useEffect(() => {
     window.scrollTo?.({ top: 0 });
   }, [state.step]);
+  // Saved progress follows the state, and is deleted once the booking reaches Complete.
+  useEffect(() => {
+    if (state.step === 'complete') clearSavedProgress();
+    else writeSavedProgress(state);
+  }, [state]);
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;
 }

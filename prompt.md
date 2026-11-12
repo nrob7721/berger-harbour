@@ -318,7 +318,7 @@ Any write that can create or move occupancy for a boat (create or update a booki
 - `Address` has the parts `Line1`, `Line2`, `Locality` (City/Locality), `State`, `Postcode` and `Country`:
   - **No part is required.** Staff may store a partial address and complete it later.
   - Every part is trimmed, and a blank part is stored empty. Limits: `Line1` and `Line2` 100 characters, `Locality` and `State` 60, `Postcode` 10.
-  - `Country` is an ISO 3166-1 alpha-2 code (e.g. `AU`).
+  - `Country` is an ISO 3166-1 alpha-2 code (e.g. `AU`) from a hard-coded list. Any other value is rejected ("Choose a country from the list.").
   - When `Country` is `AU`, a `State` must be one of `NSW`, `VIC`, `QLD`, `SA`, `WA`, `TAS`, `NT`, `ACT` ("Choose an Australian state or territory.") and a `Postcode` must be 4 digits ("Enter a 4-digit postcode."). For other countries both are free text.
   - An address whose only part is `Country` counts as no address and is stored empty.
   - It is not available to email templates. It is kept to fill hire agreements later (§2).
@@ -382,7 +382,7 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 - **When assigned:**
   - Staff bookings: at creation.
   - Online bookings: when the deposit is paid, on activation and also in the paid-but-expired case (§8.3), so staff can find it; or on staff confirmation.
-  - Unpaid holds (expired or released) that staff don't confirm never get a reference and use up no suffix.
+  - Unpaid holds (expired or released) that staff don't confirm never get a reference and use up no suffix. A staff confirmation that fails because the dates were taken may use up a suffix.
 - **Never changes:** not even if the start date or the customer's last name changes later. The reference appears in emails, Stripe and bank-transfer descriptions.
 - **Search:** references are matched case-insensitively.
 
@@ -391,7 +391,7 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 - `PendingPayment → Expired` at the **earliest** of:
   - the customer going back from the Payment step (release, §8.1);
   - the Stripe Checkout session expiring (`checkout.session.expired`, §8.3);
-  - `HoldExpiresAt` passing. admin-api expires a lapsed hold whenever it loads one (timeline, search, booking dialog, a customer's bookings) before returning it, so staff never see a lapsed hold as `PendingPayment`. The hourly job expires the rest (§9).
+  - `HoldExpiresAt` passing. admin-api **reports** a lapsed hold as `Expired` whenever it returns one (timeline, search, booking dialog, a customer's bookings), so staff never see a lapsed hold as `PendingPayment`. These reads never write. Staff confirmation expires a lapsed hold and confirms it in the same transaction. The hourly job saves the expiry of the rest (§9).
 - `Expired → Active`, with the same activation as above, inside `IBoatScheduleLock` and only when the dates are still free:
   - **Online:** a deposit whose webhook arrives after the hold expired (§8.3).
   - **Staff confirmation:** staff record a manual payment of **at least the checkout amount** `min(DepositAmount, HirePrice)` (§7.6) on an Expired booking that has no payments. The payment is recorded and the booking activated in the same transaction. `CreatedBy` stays `Customer`, and the prices stay as snapshotted.
@@ -770,7 +770,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 - **Resuming.** On load, saved progress for the same requested boat (the same `?boat=`, or none for both) is resumed:
   1. If it holds a booking id from the Payment step, the app releases that hold (`POST /api/bookings/{bookingId}/release`). A `409` (the payment completed meanwhile) goes to Complete.
   2. If it holds a draft id, the app reads the personal details with `GET /api/booking-drafts/{draftId}` and fills Your details.
-  3. When it resumes past Dates & boat, the app re-checks the period with `GET /api/availability/period`.
+  3. When the saved progress holds a period, whichever step it resumes on, the app re-checks the period with `GET /api/availability/period`.
      - If the period now fails the online rules (e.g. it has fallen inside the lead time), the period is cleared and the selected boat is kept. The app opens Dates & boat with "Your saved dates can no longer be booked online. Please choose new dates."
      - If the selected boat is no longer free for the period, the period is kept and the boat is deselected. The app opens Dates & boat with "Your saved booking has changed: {Boat} is no longer available for those dates."
   4. Otherwise the app opens the furthest step reached, **at most the Summary** (a customer who was on Payment lands on the Summary).
@@ -930,7 +930,7 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
   - **First name** and **Last name** (required).
   - **Mobile** (optional) and **Secondary mobile** (optional, empty by default). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1).
   - **Address**, below Secondary mobile: **Address line 1**, **Address line 2**, **City/Locality**, **State**, **Postcode** and **Country**. None is required (§7.3).
-    - **Country** is a dropdown, defaulting to Australia. It follows the Mobile field's country selector until staff choose a Country themselves or the customer has a stored address country.
+    - **Country** is a dropdown of ISO 3166-1 alpha-2 countries (the same hard-coded list the server validates against, with names from `Intl.DisplayNames`), defaulting to Australia, or the customer's stored address country.
     - For Australia, **State** is a dropdown (NSW, VIC, QLD, SA, WA, TAS, NT, ACT) and **Postcode** must be 4 digits. For other countries both are free text. Switching Country to Australia clears a State that isn't one of these.
 - **Frequent Floater badge:** "⭐ Frequent Floater" next to the customer's name when §7.8 applies. A new booking is checked against now, after the email lookup; an existing booking is anchored at its `ActivatedAt`. A tooltip gives the number of other bookings.
 - Stand-by checkbox
@@ -1118,7 +1118,7 @@ Sections:
     - The suffix sequence, including past 9.
     - The reference is unchanged when the dates or the last name change later.
   - Frequent Floater: the ±1 year boundaries around the anchor; only other Active non-stand-by bookings count; an existing booking is anchored at `ActivatedAt`.
-  - AddonDefinition: price on request clears prices; the capacity unit label is cleared without a capacity and required with one (including a capacity of 0).
+  - AddonDefinition: price on request clears prices; the capacity unit label is cleared without a capacity and required with one.
   - Booking draft abandonment rules.
 - **Organisation:** every test class follows §7.9: one production class or use case per test class, named `<Class>Tests`, in the matching folder.
 - **Application tests:**
@@ -1128,7 +1128,7 @@ Sections:
   - Abandoned drafts: threshold, latest draft per email only, suppression after a booking for that email becomes Active, deletion after retention.
   - Webhook handling: idempotent replay, deposit activation creating/updating the Customer and converting the draft, a late deposit activating an Expired booking whose dates are free, expired-hold conflict path creating no Customer, a deposit for a booking staff already confirmed recorded with an error logged and nothing sent, and `checkout.session.expired` expiring a hold.
   - An expired hold never creates or changes a Customer unless staff confirm it.
-  - Hold expiry: admin-api returns a hold whose `HoldExpiresAt` has passed as `Expired` (timeline, search, dialog, a customer's bookings) and persists it; the job expires the rest.
+  - Hold expiry: admin-api returns a hold whose `HoldExpiresAt` has passed as `Expired` (timeline, search, dialog, a customer's bookings) without saving it; staff confirmation of a lapsed hold expires and confirms it in one transaction; the job saves the expiry of the rest.
   - Staff confirmation (`POST /api/bookings/{id}/payments` on an Expired booking):
     - A payment of at least `min(DepositAmount, HirePrice)` records it and activates the booking (reference, `ActivatedAt`, Customer from `CustomerDetails`, draft converted, stand-bys superseded with #8), sending #1 only (no #2, no #5).
     - A smaller amount is rejected with a field error and records nothing.
@@ -1138,7 +1138,7 @@ Sections:
   - `POST /api/bookings` releases a still-`PendingPayment` hold from the same draft before creating the new one, and returns `checkoutExpiresAt` = the session's `expires_at`, which is before `HoldExpiresAt`.
   - Fleet availability (`GET /api/availability`) and period availability (`GET /api/availability/period`): only active House boats are included; blocking bookings and unavailabilities make a boat unavailable while stand-by, Cancelled, Expired, Superseded bookings and expired holds do not; hire prices match `PricingService`; no booking or customer data is returned; invalid stays (period shape, lead time, open-until, blocked periods) return `400`.
   - Updating a draft with a different boat changes its `BoatId`, and `POST /api/bookings` then accepts it for that boat.
-  - References: online bookings get one when the deposit is paid (including paid-but-expired), staff bookings at creation, and confirmed holds on staff confirmation; expired and released holds that staff don't confirm get none and use up no suffix.
+  - References: online bookings get one when the deposit is paid (including paid-but-expired), staff bookings at creation, and confirmed holds on staff confirmation; expired and released holds that staff don't confirm get none and use up no suffix (a staff confirmation failing with `409` may use one up).
   - Release (`POST /api/bookings/{bookingId}/release`): expires the Stripe session and the booking and frees the dates; a wrong draft id is rejected; an already Active booking returns `409`; repeating it is harmless.
   - Staff bookings with `addonLines`: new lines added, edited lines updated, left-out lines deleted; `POST /api/bookings/quote` pre-fill and recalculation prices (null for price on request, LongWeekend and Custom).
   - Customer comments are saved from staff booking create/update and from `PUT /api/customers/{id}/comments`; the address (every part, including a partial address) is saved from staff booking create/update; online activation and staff confirmation never change comments, the secondary mobile or the address.
@@ -1194,7 +1194,7 @@ Sections:
     - The live price breakdown (Total, Paid, Owing, the unpriced-line note) and the "Schedule updates when you save" note.
     - The Frequent Floater badge.
     - Address and customer comments: always filled from the customer on an email lookup that finds one, and kept as typed when none is found.
-    - Address fields: none required; Country following the Mobile country until staff choose one or a stored country exists; the Australian State dropdown and 4-digit postcode; free text for other countries.
+    - Address fields: none required; Country defaulting to Australia or the stored country; the Australian State dropdown and 4-digit postcode; free text for other countries.
     - No customer lookup for an invalid email.
     - Manual payment and Send payment link are disabled while there are unsaved changes.
     - Holds: a PendingPayment booking fully read-only with its expiry banner; an Expired booking read-only except Add manual payment, with the minimum shown, becoming editable once confirmed; a paid-but-expired booking with Add manual payment disabled.

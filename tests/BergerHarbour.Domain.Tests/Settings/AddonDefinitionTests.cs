@@ -22,6 +22,21 @@ public class AddonDefinitionTests
     }
 
     [Fact]
+    public void A_capacity_is_at_least_1_and_needs_a_unit_label()
+    {
+        var missing = Assert.Throws<DomainValidationException>(() =>
+            AddonDefinition.Create(AddonId.New(), "Car parking", null, true, AddonPrices.None, true, 11, "  ", 0));
+        Assert.Equal("Required", missing.Errors.ByField["capacityUnitLabel"][0]);
+        var zero = Assert.Throws<DomainValidationException>(() =>
+            AddonDefinition.Create(AddonId.New(), "Car parking", null, true, AddonPrices.None, true, 0, "car spots", 0));
+        Assert.Equal(["capacity"], zero.Errors.ByField.Keys);
+        var tooLong = Assert.Throws<DomainValidationException>(() =>
+            AddonDefinition.Create(AddonId.New(), "Car parking", null, true, AddonPrices.None, true, 1, new string('a', 31), 0));
+        Assert.True(tooLong.Errors.Has("capacityUnitLabel"));
+        Assert.Equal(1, AddonDefinition.Create(AddonId.New(), "Car parking", null, true, AddonPrices.None, true, 1, new string('a', 30), 0).Capacity);
+    }
+
+    [Fact]
     public void Priced_addons_need_every_online_price()
     {
         var e = Assert.Throws<DomainValidationException>(() =>

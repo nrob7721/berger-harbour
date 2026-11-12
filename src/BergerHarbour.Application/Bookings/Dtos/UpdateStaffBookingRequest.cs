@@ -1,3 +1,4 @@
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 
@@ -23,6 +24,6 @@ public sealed record UpdateStaffBookingRequest(
     string? LastName,
     string? Mobile,
     string? SecondaryMobile,
-    string? Address,
+    AddressDto? Address,
     IReadOnlyList<StaffAddonLineInput>? AddonLines,
     int Version);

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { ApiError } from '@shared/lib/http';
 import { Notice } from '@/components/Notice/Notice';
 import { StepProgress } from '@/components/StepProgress/StepProgress';
@@ -9,7 +9,9 @@ import { PayButton, PaymentStep } from '@/features/deposit-checkout/components/D
 import { DetailsStep } from '@/features/details/components/DetailsStep';
 import { SummaryStep } from '@/features/summary/components/SummaryStep';
 import { useBoatDetails, useFleet } from '@/hooks/useFleet';
-import { BookingProvider, initialState, useBooking } from '@/lib/booking-state';
+import { BookingProvider, initialState, useBooking, type BookingState } from '@/lib/booking-state';
+import { resumeProgress } from '@/lib/resume-progress';
+import { clearSavedProgress, readSavedProgress } from '@/lib/saved-progress';
 import type { BoatDetails, BoatsResponse } from '@/lib/types';
 import { Shell } from './Shell';
 import styles from './BookingApp.module.css';
@@ -26,17 +28,7 @@ export function BookingApp({ requestedSlug, returnedBooking }: BookingAppProps) 
   const requested = useBoatDetails(requestedSlug);
   const title = requested.data ? `Book ${requested.data.name}` : 'Book a houseboat';
 
-  if (fleet.isLoading || (requestedSlug && requested.isLoading)) {
-    return (
-      <Shell title={requestedSlug ? 'Book a houseboat' : title}>
-        <div className={styles.skeleton} aria-busy="true" aria-label="Loading">
-          <div className={styles.bar} />
-          <div className={styles.block} />
-          <div className={styles.bar} />
-        </div>
-      </Shell>
-    );
-  }
+  if (fleet.isLoading || (requestedSlug && requested.isLoading)) return <Skeleton title={requestedSlug ? 'Book a houseboat' : title} />;
   if (requestedSlug && requested.error instanceof ApiError && requested.error.status === 404) {
     return (
       <Shell title="Book a houseboat">
@@ -61,7 +53,9 @@ function Flow({ fleet, requested, requestedSlug, returnedBooking, title }: {
   returnedBooking: BookingAppProps['returnedBooking'];
   title: string;
 }) {
-  const initial = useMemo(() => {
+  const [initial, setInitial] = useState<BookingState | null>(() => (returnedBooking ? fresh() : null));
+
+  function fresh(): BookingState {
     const activeRequested = requested?.isActive ? requested.slug : null;
     return initialState(requestedSlug, {
       // An active requested boat is selected with "Show {Boat}'s availability only" ticked.
@@ -69,11 +63,49 @@ function Flow({ fleet, requested, requestedSlug, returnedBooking, title }: {
       showSelectedOnly: !!activeRequested,
       ...(returnedBooking ? { step: 'complete' as const, completed: { ...returnedBooking, email: '' } } : {}),
     });
+  }
+
+  // Saved progress for the same requested boat (the same ?boat=, or none for both) is resumed; any other is discarded (§11.2).
+  useEffect(() => {
+    if (initial) return;
+    let cancelled = false;
+    const saved = readSavedProgress();
+    if (!saved || saved.requestedSlug !== requestedSlug) {
+      if (saved) clearSavedProgress();
+      setInitial(fresh());
+      return;
+    }
+    resumeProgress(saved, fleet.boats)
+      .then((resumed) => {
+        if (cancelled) return;
+        if (!resumed) clearSavedProgress();
+        setInitial(resumed ? initialState(requestedSlug, resumed) : fresh());
+      })
+      .catch(() => {
+        if (!cancelled) setInitial(fresh());
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!initial) return <Skeleton title={title} />;
   return (
     <BookingProvider initial={initial}>
       <Steps fleet={fleet} requested={requested} title={title} />
     </BookingProvider>
+  );
+}
+
+function Skeleton({ title }: { title: string }) {
+  return (
+    <Shell title={title}>
+      <div className={styles.skeleton} aria-busy="true" aria-label="Loading">
+        <div className={styles.bar} />
+        <div className={styles.block} />
+        <div className={styles.bar} />
+      </div>
+    </Shell>
   );
 }
 

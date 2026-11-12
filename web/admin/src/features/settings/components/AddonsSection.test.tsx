@@ -24,4 +24,13 @@ describe('Add-on settings', () => {
     expect(screen.getByLabelText('Capacity unit label')).toBeDisabled();
     expect(screen.getByLabelText('Capacity unit label')).toHaveValue('');
   });
+
+  it('a capacity without a unit label shows "Required" and saves nothing', async () => {
+    renderAdmin(<AddonDialog addon={addons[0]} onClose={() => {}} />);
+    const user = userEvent.setup();
+    fireEvent.change(screen.getByLabelText('Capacity'), { target: { value: '4' } });
+    expect(screen.getByLabelText('Capacity unit label')).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Required')).toBeInTheDocument();
+  });
 });

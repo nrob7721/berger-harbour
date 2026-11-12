@@ -259,3 +259,36 @@
 .blockedSwatch {
   background: var(--c-blocked);
 }
+
+.body {
+  position: relative;
+}
+
+/* While the displayed range loads, its cells are replaced by a large spinner (or the error and Retry). */
+.cellOverlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 170px;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  background: var(--c-surface);
+}
+
+.loadingName {
+  justify-content: center;
+}
+
+.loadError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--c-danger);
+  text-align: center;
+  padding: 16px;
+}

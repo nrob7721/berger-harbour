@@ -7,7 +7,7 @@ import { Dialog } from '@shared/components/Dialog/Dialog';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { useToast } from '@shared/components/Toast/Toast';
 import { applyServerErrors, useAppForm } from '@shared/lib/forms';
-import { errorMessage } from '@shared/lib/http';
+import { ApiError, errorMessage } from '@shared/lib/http';
 import { formatDate, formatTimestamp, todayInSydney } from '@shared/utils/dates';
 import { formatMoney } from '@shared/utils/money';
 import { api, keys } from '@/lib/api';
@@ -26,7 +26,10 @@ export function PaymentsSection({ detail, dirty }: { detail: BookingDetail; dirt
     onSuccess: () => toast.show(`Payment link for ${formatMoney(detail.amountDueNow)} sent.`),
     onError: (e) => toast.show(errorMessage(e), 'error'),
   });
-  const actionsBlocked = dirty || detail.status !== 'Active';
+  // Manual payments: Active bookings, and (as staff confirmation, §7.3) Expired holds without payments.
+  const confirming = detail.status === 'Expired' && detail.payments.length === 0;
+  const canAddPayment = !dirty && (detail.status === 'Active' || confirming);
+  const canSendLink = !dirty && detail.status === 'Active' && !detail.isStandby && detail.amountOwing > 0;
 
   return (
     <section className={styles.payments} aria-label="Payments">
@@ -51,8 +54,8 @@ export function PaymentsSection({ detail, dirty }: { detail: BookingDetail; dirt
         ))}
       </ul>
       <div className={styles.paymentActions}>
-        <Button onClick={() => setAdding(true)} disabled={actionsBlocked}>Add manual payment</Button>
-        <Button onClick={() => send.mutate()} busy={send.isPending} busyLabel="Sending…" disabled={actionsBlocked || detail.amountOwing <= 0 || detail.isStandby}>
+        <Button onClick={() => setAdding(true)} disabled={!canAddPayment}>Add manual payment</Button>
+        <Button onClick={() => send.mutate()} busy={send.isPending} busyLabel="Sending…" disabled={!canSendLink}>
           Send payment link
         </Button>
         {dirty && <span className={styles.muted}>Save your changes first</span>}
@@ -60,12 +63,16 @@ export function PaymentsSection({ detail, dirty }: { detail: BookingDetail; dirt
       {adding && (
         <ManualPaymentDialog
           detail={detail}
+          minimum={confirming ? detail.checkoutAmount : null}
           onClose={() => setAdding(false)}
           onSaved={(updated) => {
+            setAdding(false);
             queryClient.setQueryData(keys.booking(detail.id), updated);
             void queryClient.invalidateQueries({ queryKey: keys.timelineRoot });
-            toast.show(`Payment of ${formatMoney(updated.amountPaid - detail.amountPaid)} recorded.`);
-            setAdding(false);
+            void queryClient.invalidateQueries({ queryKey: keys.customers });
+            toast.show(confirming
+              ? `Booking ${updated.reference} confirmed.`
+              : `Payment of ${formatMoney(updated.amountPaid - detail.amountPaid)} recorded.`);
           }}
         />
       )}
@@ -80,29 +87,45 @@ const paymentSchema = z.object({
 });
 type PaymentForm = z.infer<typeof paymentSchema>;
 
-function ManualPaymentDialog({ detail, onClose, onSaved }: { detail: BookingDetail; onClose: () => void; onSaved: (d: BookingDetail) => void }) {
+function ManualPaymentDialog({ detail, minimum, onClose, onSaved }: {
+  detail: BookingDetail;
+  /** Set when the payment confirms an expired hold: the least it must be (the checkout amount). */
+  minimum: number | null;
+  onClose: () => void;
+  onSaved: (d: BookingDetail) => void;
+}) {
   const ids = { amount: useId(), date: useId(), note: useId() };
   // Each field is validated when it loses focus (§6.1).
   const { register, handleSubmit, setError, formState: { errors } } = useAppForm<PaymentForm>({
     resolver: zodResolver(paymentSchema),
-    defaultValues: { amount: Math.max(0, detail.amountDueNow) || undefined, date: todayInSydney(), note: '' },
+    defaultValues: { amount: (minimum ?? Math.max(0, detail.amountDueNow)) || undefined, date: todayInSydney(), note: '' },
   });
   const save = useMutation({
     mutationFn: (v: PaymentForm) => api.addPayment(detail.id, { amount: v.amount, date: v.date, note: v.note || null, version: detail.version }),
     onSuccess: onSaved,
     onError: (e) => applyServerErrors(e, setError, ['amount', 'date', 'note']),
   });
-  const submit = handleSubmit((v) => save.mutate(v));
+  const submit = handleSubmit((v) => {
+    if (minimum !== null && v.amount < minimum) {
+      setError('amount', { type: 'min', message: `To confirm this booking, record at least ${formatMoney(minimum)}.` });
+      return;
+    }
+    save.mutate(v);
+  });
+  const conflict = save.error instanceof ApiError && save.error.status === 409;
   return (
     <Dialog open title="Add manual payment" onClose={onClose} locked={save.isPending} size="sm"
       footer={<>
-        {save.isError && <span role="alert" className={styles.footerError}>{errorMessage(save.error)}</span>}
+        {save.isError && (
+          <span role="alert" className={styles.footerError}>{errorMessage(save.error)}{conflict ? ' Nothing was recorded.' : ''}</span>
+        )}
         <Button onClick={onClose} disabled={save.isPending}>Cancel</Button>
         <Button variant="primary" onClick={submit} busy={save.isPending} busyLabel="Saving…">Save payment</Button>
       </>}>
       <form onSubmit={submit} noValidate>
         <fieldset className={styles.fieldset} disabled={save.isPending}>
-          <Field label="Amount" htmlFor={ids.amount} error={errors.amount?.message}>
+          <Field label="Amount" htmlFor={ids.amount} error={errors.amount?.message}
+            hint={minimum !== null ? `To confirm this booking, record at least ${formatMoney(minimum)}.` : undefined}>
             <input id={ids.amount} type="number" step="0.01" min={0} className={inputClass} {...register('amount', { valueAsNumber: true })} />
           </Field>
           <Field label="Date" htmlFor={ids.date} error={errors.date?.message}>

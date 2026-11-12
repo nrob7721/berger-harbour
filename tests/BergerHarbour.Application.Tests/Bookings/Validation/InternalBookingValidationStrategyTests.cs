@@ -1,4 +1,5 @@
 using BergerHarbour.Application.Bookings.Validation;
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Domain.Settings;
 using BergerHarbour.Domain.Shared;
 using static BergerHarbour.Application.Tests.Support.ApplicationHarness;
@@ -30,13 +31,14 @@ public class InternalBookingValidationStrategyTests
     }
 
     [Fact]
-    public void Customer_names_and_a_valid_email_are_required_mobiles_optional_but_valid_and_address_at_most_500()
+    public void Customer_names_and_a_valid_email_are_required_mobiles_optional_but_valid_and_the_address_follows_its_rules()
     {
         var errors = strategy.Validate(Request() with
         {
-            FirstName = null, LastName = "", Email = "jane@gmail", Mobile = "+61295551234", SecondaryMobile = "nope", Address = new string('a', 501),
+            FirstName = null, LastName = "", Email = "jane@gmail", Mobile = "+61295551234", SecondaryMobile = "nope",
+            Address = new AddressDto(new string('a', 101), null, null, "Sydney", null, "AU"),
         }, Context);
-        Assert.Equal(["address", "email", "firstName", "lastName", "mobile", "secondaryMobile"], errors.ByField.Keys.Order());
+        Assert.Equal(["address.line1", "address.state", "email", "firstName", "lastName", "mobile", "secondaryMobile"], errors.ByField.Keys.Order());
         Assert.True(strategy.Validate(Request() with { Mobile = null, SecondaryMobile = "" }, Context).IsEmpty);
     }
 }

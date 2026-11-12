@@ -1,7 +1,7 @@
 import { http, query } from '@shared/lib/http';
 import type { OnlinePeriodType } from '@shared/utils/periods';
 import type {
-  BoatDetails, BoatsResponse, BookingStatus, CheckoutResponse, CreateBookingRequest, CreateBookingResponse, CreateDraftRequest,
+  BoatDetails, BoatsResponse, BookingStatus, CheckoutResponse, CreateBookingRequest, CreateBookingResponse, CreateDraftRequest, DraftDetails,
   FleetAvailability, PaymentLinkDetails, PeriodAvailability, Quote, QuoteRequest, UpdateDraftRequest,
 } from './types';
 
@@ -14,6 +14,8 @@ export const api = {
   addonRemaining: (addonId: string, startDate: string, endDate: string) =>
     http.get<{ remaining: number }>(`/api/addons/${encodeURIComponent(addonId)}/availability${query({ startDate, endDate })}`),
   createDraft: (body: CreateDraftRequest) => http.post<{ draftId: string }>('/api/booking-drafts', body),
+  /** Only the personal details, for resuming saved progress. */
+  draft: (draftId: string) => http.get<DraftDetails>(`/api/booking-drafts/${encodeURIComponent(draftId)}`),
   updateDraft: (draftId: string, body: UpdateDraftRequest) => http.put<void>(`/api/booking-drafts/${encodeURIComponent(draftId)}`, body),
   quote: (slug: string, body: QuoteRequest) => http.post<Quote>(`/api/boats/${encodeURIComponent(slug)}/quote`, body),
   createBooking: (body: CreateBookingRequest) => http.post<CreateBookingResponse>('/api/bookings', body),

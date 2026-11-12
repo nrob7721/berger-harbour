@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '@/testing/server';
 import { currentState, filledState, renderWithBooking } from '@/testing/render';
-import { PayButton, PaymentStep } from './DepositCheckout';
+import { minutesLeft, PayButton, PaymentStep } from './DepositCheckout';
 
-const hold = { bookingId: 'b-1', clientSecret: 'cs_1_secret', sessionId: 'cs_1' };
+const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+const hold = { bookingId: 'b-1', clientSecret: 'cs_1_secret', sessionId: 'cs_1', checkoutExpiresAt: inMinutes(30) };
 
 describe('Payment step', () => {
   it('Back releases the hold and returns to the Summary', async () => {
@@ -39,6 +40,34 @@ describe('Payment step', () => {
     renderWithBooking(<PaymentStep />, { ...filledState, step: 'payment', hold });
     await userEvent.setup().click(screen.getByRole('button', { name: 'Simulate payment' }));
     expect(currentState().step).toBe('complete');
+  });
+});
+
+describe('Payment step: hold countdown', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('counts whole minutes rounded up', () => {
+    const now = Date.parse('2026-10-01T00:00:00Z');
+    expect(minutesLeft('2026-10-01T00:30:00Z', now)).toBe(30);
+    expect(minutesLeft('2026-10-01T00:29:00.001Z', now)).toBe(30);
+    expect(minutesLeft('2026-10-01T00:00:01Z', now)).toBe(1);
+    expect(minutesLeft('2026-10-01T00:00:00Z', now)).toBe(0);
+  });
+
+  it('updates as time passes, says "1 minute" in the last minute, then shows that the dates are no longer held', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    vi.setSystemTime(new Date('2026-10-01T00:00:00Z'));
+    renderWithBooking(<PaymentStep />, { ...filledState, step: 'payment', hold: { ...hold, checkoutExpiresAt: '2026-10-01T00:01:30Z' } });
+    expect(screen.getByText('Dates are guaranteed for the next 2 minutes')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(31_000));
+    expect(screen.getByText('Dates are guaranteed for the next 1 minute')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText('Your dates are no longer held. Go back to try again.')).toBeInTheDocument();
+    expect(screen.queryByTestId('embedded-checkout')).not.toBeInTheDocument();
+    vi.useRealTimers();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => expect(currentState().step).toBe('summary'));
+    expect(currentState().hold).toBeNull();
   });
 });
 

@@ -106,7 +106,7 @@ export function AddonsStep() {
                   <span className={styles.name}>{a.name}</span>
                   {a.description && <span className={styles.description}>{a.description}</span>}
                   {a.hasCapacity && left !== undefined && (
-                    <span className={styles.remaining}>{a.capacityUnitLabel ? `${left} ${a.capacityUnitLabel} remaining` : `${left} available for your dates`}</span>
+                    <span className={styles.remaining}>{left} {a.capacityUnitLabel} remaining</span>
                   )}
                 </span>
               </label>

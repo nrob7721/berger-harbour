@@ -124,7 +124,3 @@
   padding: 8px 10px;
   color: var(--c-text-muted);
 }
-
-.error {
-  color: var(--c-danger);
-}

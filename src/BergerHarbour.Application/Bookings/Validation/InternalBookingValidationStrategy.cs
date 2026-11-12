@@ -1,4 +1,4 @@
-using BergerHarbour.Domain.Customers;
+using BergerHarbour.Application.Customers;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Validation;
@@ -40,7 +40,7 @@ public sealed class InternalBookingValidationStrategy : IBookingRequestValidatio
         errors.Capture(() => EmailAddress.Create(request.Email));
         errors.Capture(() => MobileNumber.CreateOptional(request.Mobile, "mobile"));
         errors.Capture(() => MobileNumber.CreateOptional(request.SecondaryMobile, "secondaryMobile"));
-        errors.Capture(() => Customer.NormaliseAddress(request.Address));
+        errors.Capture(() => request.Address.ToAddress());
         return errors;
     }
 }

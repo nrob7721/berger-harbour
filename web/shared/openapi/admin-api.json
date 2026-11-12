@@ -1933,6 +1933,55 @@
           }
         }
       },
+      "AddressDto": {
+        "required": [
+          "line1",
+          "line2",
+          "locality",
+          "state",
+          "postcode",
+          "country"
+        ],
+        "type": "object",
+        "properties": {
+          "line1": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "line2": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "locality": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "postcode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "country": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "AdminBoat": {
         "required": [
           "id",
@@ -2077,6 +2126,7 @@
           "termsAcceptedAt",
           "roomingWarningAcceptance",
           "holdExpiresAt",
+          "checkoutAmount",
           "createdDate",
           "modifiedDate",
           "version"
@@ -2240,6 +2290,13 @@
             ],
             "format": "date-time"
           },
+          "checkoutAmount": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
           "createdDate": {
             "type": "string",
             "format": "date-time"
@@ -2294,9 +2351,13 @@
             ]
           },
           "address": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AddressDto"
+              }
             ]
           },
           "comments": {
@@ -2713,9 +2774,13 @@
             ]
           },
           "address": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AddressDto"
+              }
             ]
           },
           "addonLines": {
@@ -3387,34 +3452,6 @@
           }
         }
       },
-      "TimelineBoat": {
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "berth",
-          "isActive"
-        ],
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "berth": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "isActive": {
-            "type": "boolean"
-          }
-        }
-      },
       "TimelineBooking": {
         "required": [
           "id",
@@ -3477,19 +3514,12 @@
       },
       "TimelineResponse": {
         "required": [
-          "boats",
           "bookings",
           "unavailabilities",
           "blockedPeriods"
         ],
         "type": "object",
         "properties": {
-          "boats": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TimelineBoat"
-            }
-          },
           "bookings": {
             "type": "array",
             "items": {
@@ -3714,9 +3744,13 @@
             ]
           },
           "address": {
-            "type": [
-              "null",
-              "string"
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AddressDto"
+              }
             ]
           },
           "addonLines": {

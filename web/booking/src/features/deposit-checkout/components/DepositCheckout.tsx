@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { ApiError, errorMessage } from '@shared/lib/http';
@@ -9,7 +9,7 @@ import { api, keys } from '@/lib/api';
 import { useBooking } from '@/lib/booking-state';
 import styles from './DepositCheckout.module.css';
 
-/** Step 5's entry: creates the hold and the Checkout session, then moves to Payment. */
+/** The Payment step's entry: creates the hold and the Checkout session, then moves to Payment. */
 export function PayButton({ amount, termsAccepted }: { amount: number; termsAccepted: boolean }) {
   const { state, dispatch } = useBooking();
   const queryClient = useQueryClient();
@@ -48,10 +48,28 @@ export function PayButton({ amount, termsAccepted }: { amount: number; termsAcce
   );
 }
 
-/** Embedded Checkout for the deposit. Back releases the hold. */
+/** Whole minutes left until `expiresAt`, rounded up; 0 once it has passed. */
+export function minutesLeft(expiresAt: string, now: number): number {
+  return Math.max(0, Math.ceil((Date.parse(expiresAt) - now) / 60_000));
+}
+
+/** The minutes left on the hold, updated as time passes. Uses the browser's clock. */
+function useMinutesLeft(expiresAt: string | undefined): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!expiresAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+  return expiresAt ? minutesLeft(expiresAt, now) : null;
+}
+
+/** Embedded Checkout for the deposit, with the hold countdown. Back releases the hold. */
 export function PaymentStep() {
   const { state, dispatch } = useBooking();
   const hold = state.hold;
+  const minutes = useMinutesLeft(hold?.checkoutExpiresAt);
+  const timedOut = minutes === 0;
   const complete = useCallback(() => {
     if (hold && state.details) dispatch({ type: 'complete', bookingId: hold.bookingId, sessionId: hold.sessionId, email: state.details.email });
   }, [hold, state.details, dispatch]);
@@ -72,9 +90,24 @@ export function PaymentStep() {
     <StepLayout
       title="Payment"
       error={release.isError && !(release.error instanceof ApiError && release.error.status === 409) ? errorMessage(release.error) : null}
-      back={<Button onClick={() => release.mutate()} busy={release.isPending} busyLabel="Going back…">Back</Button>}
+      back={!timedOut && <Button onClick={() => release.mutate()} busy={release.isPending} busyLabel="Going back…">Back</Button>}
     >
-      {!release.isPending && <EmbeddedCheckout clientSecret={hold.clientSecret} onComplete={complete} />}
+      {timedOut ? (
+        // Checkout has closed: paying again creates a new hold.
+        <div className={styles.timedOut} role="alert">
+          <p>Your dates are no longer held. Go back to try again.</p>
+          <Button variant="primary" onClick={() => release.mutate()} busy={release.isPending} busyLabel="Going back…">Back</Button>
+        </div>
+      ) : (
+        <>
+          {minutes !== null && (
+            <p className={styles.countdown} role="status">
+              Dates are guaranteed for the next {minutes} minute{minutes === 1 ? '' : 's'}
+            </p>
+          )}
+          {!release.isPending && <EmbeddedCheckout clientSecret={hold.clientSecret} onComplete={complete} />}
+        </>
+      )}
     </StepLayout>
   );
 }

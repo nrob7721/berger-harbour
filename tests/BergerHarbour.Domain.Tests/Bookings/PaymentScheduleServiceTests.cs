@@ -19,7 +19,7 @@ public class PaymentScheduleServiceTests
         Assert.Equal(4060m, m[1].RequiredCumulative);
         Assert.Equal(Sydney.InstantOf(D("2027-02-06"), new TimeOnly(11, 0)), m[1].DueAt);
         Assert.Equal(D("2027-02-06"), m[1].DueDate);
-        Assert.False(m[1].DueAtCreation);
+        Assert.False(m[1].DueAtActivation);
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public class PaymentScheduleServiceTests
     public void A_milestone_due_before_creation_is_due_at_creation()
     {
         var m = schedule.Milestones(PaymentScheduleType.Standard, D("2026-11-30"), 1000, 4060, At("2026-11-09T00:00:00Z"));
-        Assert.True(m[1].DueAtCreation);
+        Assert.True(m[1].DueAtActivation);
     }
 
     [Fact]

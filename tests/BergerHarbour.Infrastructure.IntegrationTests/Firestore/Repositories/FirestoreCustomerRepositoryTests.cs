@@ -14,12 +14,14 @@ public class FirestoreCustomerRepositoryTests(EmulatorFixture fx)
     {
         var customer = Customer.Create(CustomerId.New(), "Jane", "Smith", EmailAddress.Create("round@example.com"), MobileNumber.Create("0412345678"),
             fx.Clock.UtcNow);
-        customer.UpdateByStaff("Jane", "Smith", customer.Email, customer.MobileNumber, MobileNumber.Create("0412000111"), "1 River Rd", "VIP", fx.Clock.UtcNow);
+        customer.UpdateByStaff("Jane", "Smith", customer.Email, customer.MobileNumber, MobileNumber.Create("0412000111"),
+            Address.Create("1 River Rd", "Unit 2", "Brooklyn", "NSW", "2083", "AU"), "VIP", fx.Clock.UtcNow);
         await Repository.SaveAsync(customer);
         var loaded = (await Repository.GetByEmailAsync(EmailAddress.Create("ROUND@example.com")))!;
         Assert.Equal(customer.Id, loaded.Id);
         Assert.Equal("+61412000111", loaded.SecondaryMobileNumber!.Value);
-        Assert.Equal("1 River Rd", loaded.Address);
+        Assert.Equal(customer.Address, loaded.Address);
+        Assert.Equal("Unit 2", loaded.Address!.Line2);
         Assert.Equal("VIP", loaded.Comments);
     }
 

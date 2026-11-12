@@ -5,7 +5,6 @@ namespace BergerHarbour.Domain.Customers;
 /// <summary>A customer, unique by normalised email. Created only by staff bookings or when an online deposit is paid.</summary>
 public sealed class Customer : AggregateRoot
 {
-    public const int MaxAddressLength = 500;
     public const int MaxCommentsLength = 5000;
 
     private Customer(CustomerId id, string firstName, string lastName, EmailAddress email, DateTimeOffset createdDate)
@@ -30,7 +29,8 @@ public sealed class Customer : AggregateRoot
 
     public MobileNumber? SecondaryMobileNumber { get; private set; }
 
-    public string? Address { get; private set; }
+    /// <summary>Staff-entered only; empty when the customer is created.</summary>
+    public Address? Address { get; private set; }
 
     public string? Comments { get; private set; }
 
@@ -53,7 +53,7 @@ public sealed class Customer : AggregateRoot
 
     public static Customer Rehydrate(
         CustomerId id, string firstName, string lastName, EmailAddress email, MobileNumber? mobile, MobileNumber? secondaryMobile,
-        string? address, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate, int version)
+        Address? address, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate, int version)
     {
         var customer = new Customer(id, firstName, lastName, email, createdDate)
         {
@@ -65,15 +65,6 @@ public sealed class Customer : AggregateRoot
         };
         customer.SetPersistedVersion(version);
         return customer;
-    }
-
-    /// <summary>Trimmed, empty when blank, at most 500 characters.</summary>
-    public static string? NormaliseAddress(string? address)
-    {
-        var trimmed = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
-        return trimmed?.Length > MaxAddressLength
-            ? throw new DomainValidationException("address", "Address must be 500 characters or fewer.")
-            : trimmed;
     }
 
     /// <summary>The same email booked again: the name and mobile take the latest values.</summary>
@@ -91,13 +82,12 @@ public sealed class Customer : AggregateRoot
 
     /// <summary>Staff edit every contact detail from the booking dialog.</summary>
     public void UpdateByStaff(
-        string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, MobileNumber? secondaryMobile, string? address,
+        string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, MobileNumber? secondaryMobile, Address? address,
         string? comments, DateTimeOffset now)
     {
         var errors = new ValidationErrors();
         var first = errors.Capture(() => RequiredName(firstName, "firstName", "First name is required."));
         var last = errors.Capture(() => RequiredName(lastName, "lastName", "Last name is required."));
-        var normalisedAddress = errors.Capture(() => NormaliseAddress(address));
         var normalisedComments = errors.Capture(() => NormaliseComments(comments, "customerComments"));
         errors.ThrowIfAny();
         FirstName = first!;
@@ -105,7 +95,7 @@ public sealed class Customer : AggregateRoot
         Email = email;
         MobileNumber = mobile;
         SecondaryMobileNumber = secondaryMobile;
-        Address = normalisedAddress;
+        Address = address;
         Comments = normalisedComments;
         ModifiedDate = now;
     }

@@ -62,7 +62,14 @@ public sealed class CustomerService
     {
         var customer = await customers.GetAsync(new CustomerId(id), ct) ?? throw new NotFoundException("We couldn't find that customer.");
         var names = (await boats.ListAsync(ct)).ToDictionary(b => b.Id, b => b.Name);
-        return (await bookings.ListByCustomerAsync(customer.Id, ct))
+        var now = clock.UtcNow;
+        var list = await bookings.ListByCustomerAsync(customer.Id, ct);
+        foreach (var booking in list)
+        {
+            booking.ExpireIfLapsed(now); // reported only, never saved here
+        }
+
+        return list
             .OrderByDescending(b => b.StartDate)
             .Select(b => new CustomerBookingItem(b.Id.Value, b.Reference?.Value, names.GetValueOrDefault(b.BoatId, string.Empty), b.StartDate, b.EndDate,
                 b.PeriodType, b.Status, b.PaymentStatus, b.IsStandby))

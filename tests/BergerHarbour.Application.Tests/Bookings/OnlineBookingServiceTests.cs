@@ -131,4 +131,24 @@ public class OnlineBookingServiceTests
         await Assert.ThrowsAsync<DomainValidationException>(() =>
             h.Get<OnlineQuoteService>().QuoteAsync("pacific-blue", new QuoteRequest(PeriodType.Midweek, D("2026-11-16"), 2, 0, [])));
     }
+
+    [Fact]
+    public async Task Paying_again_from_the_same_draft_releases_its_own_hold_first()
+    {
+        var draft = await h.CreateDraftAsync();
+        var first = await h.Online.CreateAsync(BookingRequest(draft));
+        var second = await h.Online.CreateAsync(BookingRequest(draft));
+        Assert.Equal(BookingStatus.Expired, h.Booking(first.BookingId).Status);
+        Assert.Equal(BookingStatus.PendingPayment, h.Booking(second.BookingId).Status);
+        Assert.Contains(first.SessionId, h.Payments.Expired);
+    }
+
+    [Fact]
+    public async Task Checkout_closes_before_the_hold_lapses()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        Assert.Equal(h.Clock.UtcNow + TimeSpan.FromMinutes(30), created.CheckoutExpiresAt);
+        Assert.Equal(created.CheckoutExpiresAt, h.Payments.Created.Single().ExpiresAt);
+        Assert.True(created.CheckoutExpiresAt < h.Booking(created.BookingId).HoldExpiresAt);
+    }
 }

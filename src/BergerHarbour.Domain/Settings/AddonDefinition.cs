@@ -5,6 +5,8 @@ namespace BergerHarbour.Domain.Settings;
 /// <summary>An add-on in the catalogue (e.g. Car parking). Optionally capacity-limited across all boats and bookings.</summary>
 public sealed class AddonDefinition : AggregateRoot
 {
+    public const int MaxCapacityUnitLabelLength = 30;
+
     private AddonDefinition(AddonId id)
     {
         Id = id;
@@ -92,15 +94,19 @@ public sealed class AddonDefinition : AggregateRoot
             CheckPrice(errors, "weekPrice", prices.Week);
         }
 
-        if (capacity < 0)
+        if (capacity < 1)
         {
-            errors.Add("capacity", "Capacity can't be negative.");
+            errors.Add("capacity", "Capacity must be at least 1.");
         }
 
         var label = capacity is null || string.IsNullOrWhiteSpace(capacityUnitLabel) ? null : capacityUnitLabel.Trim();
-        if (label?.Length > 40)
+        if (capacity is not null && label is null)
         {
-            errors.Add("capacityUnitLabel", "Capacity unit label must be 40 characters or fewer.");
+            errors.Add("capacityUnitLabel", "Required");
+        }
+        else if (label?.Length > MaxCapacityUnitLabelLength)
+        {
+            errors.Add("capacityUnitLabel", $"Capacity unit label must be {MaxCapacityUnitLabelLength} characters or fewer.");
         }
 
         errors.ThrowIfAny();

@@ -1,3 +1,4 @@
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Shared;
 
@@ -15,7 +16,7 @@ public sealed record BookingRequest(
     string? Email,
     string? Mobile,
     string? SecondaryMobile,
-    string? Address,
+    AddressDto? Address,
     IReadOnlyList<BookingRequestAddon> Addons,
     bool RoomingWarningAccepted,
     string? RoomingWarningText,

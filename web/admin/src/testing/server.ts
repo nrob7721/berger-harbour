@@ -39,12 +39,12 @@ export function detail(overrides: Partial<BookingDetail> = {}): BookingDetail {
       { kind: 'Balance', label: 'Balance (100%)', requiredCumulative: 4010, dueDate: '2026-09-12', shortfall: 3010 },
     ],
     customer, customerDetails: null, frequentFloater: { isFrequentFloater: false, otherBookingCount: 0 }, termsAcceptedAt: null,
-    roomingWarningAcceptance: null, holdExpiresAt: null, createdDate: '2026-08-01T00:00:00Z', modifiedDate: '2026-08-01T00:00:00Z', version: 4,
+    roomingWarningAcceptance: null, holdExpiresAt: null, checkoutAmount: null, createdDate: '2026-08-01T00:00:00Z', modifiedDate: '2026-08-01T00:00:00Z', version: 4,
     ...overrides,
   };
 }
 
-export const emptyTimeline: Timeline = { boats: boats.map((b) => ({ id: b.id, name: b.name, slug: b.slug, berth: b.berth, isActive: b.isActive })), bookings: [], unavailabilities: [], blockedPeriods: [] };
+export const emptyTimeline: Timeline = { bookings: [], unavailabilities: [], blockedPeriods: [] };
 
 /** Per-test API state. */
 export const api = {

@@ -23,7 +23,7 @@ public sealed class CustomerDocument : IVersionedDocument
     public string? SecondaryMobileNumber { get; set; }
 
     [FirestoreProperty("address")]
-    public string? Address { get; set; }
+    public AddressDocument? Address { get; set; }
 
     [FirestoreProperty("comments")]
     public string? Comments { get; set; }
@@ -44,7 +44,7 @@ public sealed class CustomerDocument : IVersionedDocument
         Email = c.Email.Value,
         MobileNumber = c.MobileNumber?.Value,
         SecondaryMobileNumber = c.SecondaryMobileNumber?.Value,
-        Address = c.Address,
+        Address = AddressDocument.From(c.Address),
         Comments = c.Comments,
         CreatedDate = FirestoreValues.Instant(c.CreatedDate),
         ModifiedDate = FirestoreValues.Instant(c.ModifiedDate),
@@ -53,6 +53,6 @@ public sealed class CustomerDocument : IVersionedDocument
 
     public Customer ToDomain(string id) => Customer.Rehydrate(
         new CustomerId(id), FirstName, LastName, EmailAddress.Create(Email), MobileNumber is null ? null : Domain.Shared.MobileNumber.Create(MobileNumber),
-        SecondaryMobileNumber is null ? null : Domain.Shared.MobileNumber.Create(SecondaryMobileNumber), Address, Comments,
+        SecondaryMobileNumber is null ? null : Domain.Shared.MobileNumber.Create(SecondaryMobileNumber), Address?.ToDomain(), Comments,
         FirestoreValues.Instant(CreatedDate), FirestoreValues.Instant(ModifiedDate), Version);
 }

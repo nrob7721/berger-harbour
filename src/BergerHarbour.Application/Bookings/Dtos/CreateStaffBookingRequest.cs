@@ -1,3 +1,4 @@
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Dtos;
@@ -21,5 +22,5 @@ public sealed record CreateStaffBookingRequest(
     string LastName,
     string? Mobile,
     string? SecondaryMobile,
-    string? Address,
+    AddressDto? Address,
     IReadOnlyList<StaffAddonLineInput>? AddonLines);

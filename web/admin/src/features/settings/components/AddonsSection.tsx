@@ -90,7 +90,12 @@ export interface AddonForm {
 const numberOrNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v));
 const FIELDS = ['name', 'description', 'midweekPrice', 'weekendPrice', 'weekPrice', 'capacity', 'capacityUnitLabel'] as const;
 
-/** Ticking Price on request disables and clears the prices; an empty Capacity disables and clears the unit label. */
+const isEmptyCapacity = (capacity: number | null | undefined) => capacity === null || capacity === undefined || Number.isNaN(capacity);
+
+/**
+ * Ticking Price on request disables and clears the prices; an empty Capacity disables and clears the unit label, which is
+ * required once a capacity is entered.
+ */
 export function AddonDialog({ addon, onClose }: { addon: Addon | null; onClose: () => void }) {
   const base = useId();
   const id = (f: string) => `${base}-${f}`;
@@ -105,7 +110,7 @@ export function AddonDialog({ addon, onClose }: { addon: Addon | null; onClose: 
     },
   });
   const [priceOnRequest, capacity] = useWatch({ control, name: ['priceOnRequest', 'capacity'] });
-  const noCapacity = capacity === null || capacity === undefined || Number.isNaN(capacity);
+  const noCapacity = isEmptyCapacity(capacity);
 
   useEffect(() => {
     if (priceOnRequest) for (const f of ['midweekPrice', 'weekendPrice', 'weekPrice'] as const) setValue(f, null);
@@ -163,10 +168,13 @@ export function AddonDialog({ addon, onClose }: { addon: Addon | null; onClose: 
           <div className={styles.formGrid}>
             <Field label="Capacity" htmlFor={id('cap')} error={errors.capacity?.message} hint="Optional. Shared across all boats and bookings.">
               <input id={id('cap')} type="number" min={0} className={inputClass}
-                {...register('capacity', { setValueAs: numberOrNull, validate: rules.number({ min: 0, integer: true, message: "Capacity can't be negative." }) })} />
+                {...register('capacity', { setValueAs: numberOrNull, validate: rules.number({ min: 1, integer: true, message: 'Capacity must be at least 1.' }) })} />
             </Field>
             <Field label="Capacity unit label" htmlFor={id('unit')} error={errors.capacityUnitLabel?.message} hint='e.g. "car spots"'>
-              <input id={id('unit')} className={inputClass} disabled={noCapacity} {...register('capacityUnitLabel', { validate: rules.maxLength(40, 'Capacity unit label') })} />
+              <input id={id('unit')} className={inputClass} disabled={noCapacity} {...register('capacityUnitLabel', {
+                  // Required once a capacity is entered (§7.3).
+                  validate: (v, form) => (isEmptyCapacity(form.capacity) || v.trim() ? rules.maxLength(30, 'Capacity unit label')(v) : 'Required'),
+                })} />
             </Field>
           </div>
         </fieldset>

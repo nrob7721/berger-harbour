@@ -10,3 +10,27 @@
   color: var(--c-danger);
   font-size: 14px;
 }
+
+.countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--space-3);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--c-brand-tint);
+  color: var(--c-brand);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.countdown::before {
+  content: "ⓘ";
+}
+
+.timedOut {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}

@@ -18,11 +18,25 @@
   }
   .bh-book-now:hover { background: #1e3a52; }
   .bh-book-now:focus-visible { outline: 3px solid #2f6fb0; outline-offset: 2px; }
-  .bh-modal { position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(16, 24, 40, 0.6); }
-  .bh-modal__panel { position: relative; width: min(1100px, 100%); height: min(860px, 100%); background: #f5f6f8; border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(16, 24, 40, 0.3); }
+  /* A native <dialog> opened with showModal(): it sits in the top layer, so no z-index is needed. */
+  .bh-modal {
+    width: min(1100px, calc(100vw - 48px));
+    height: min(860px, calc(100vh - 48px));
+    max-width: none;
+    max-height: none;
+    padding: 0;
+    border: none;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f5f6f8;
+    box-shadow: 0 10px 30px rgba(16, 24, 40, 0.3);
+  }
+  .bh-modal::backdrop { background: rgba(16, 24, 40, 0.6); }
   .bh-modal__frame { width: 100%; height: 100%; border: 0; display: block; }
   .bh-modal__close { position: absolute; top: 8px; right: 10px; z-index: 1; width: 40px; height: 40px; border: none; border-radius: 50%; background: #fff; color: #1b2230; font-size: 26px; line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
   .bh-modal__close:focus-visible { outline: 3px solid #2f6fb0; outline-offset: 2px; }
+  /* The page doesn't scroll behind an open booking dialog. */
+  html:has(dialog.bh-modal[open]) { overflow: hidden; }
 </style>
 
 <script>
@@ -33,45 +47,26 @@
 
     var BOOKING_ORIGIN = 'https://bookings.bergerhouseboats.com.au';
     var MOBILE = '(max-width: 768px), (pointer: coarse)';
-    var open = null;
+    var current = null;
 
     function bookingUrl(slug) {
       return BOOKING_ORIGIN + '/?boat=' + encodeURIComponent(slug);
     }
 
-    function focusables(root) {
-      return Array.prototype.slice.call(
-        root.querySelectorAll('button, iframe, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
-      );
-    }
-
-    function close() {
-      if (!open) return;
-      document.removeEventListener('keydown', open.onKey, true);
-      document.body.style.overflow = open.overflow;
-      open.modal.parentNode.removeChild(open.modal);
-      var opener = open.opener;
-      open = null;
-      if (opener && opener.focus) opener.focus();
-    }
-
     function openModal(slug, name, opener) {
-      if (open) close();
-      var modal = document.createElement('div');
-      modal.className = 'bh-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
-      modal.setAttribute('aria-label', 'Book ' + name);
+      if (current) return; // showModal() makes the page inert, so this only guards against a double click
 
-      var panel = document.createElement('div');
-      panel.className = 'bh-modal__panel';
+      // Each click creates a fresh dialog. showModal() traps focus and makes the rest of the page inert.
+      var dialog = document.createElement('dialog');
+      dialog.className = 'bh-modal';
+      dialog.setAttribute('aria-label', 'Book ' + name);
 
       var closeButton = document.createElement('button');
       closeButton.type = 'button';
       closeButton.className = 'bh-modal__close';
       closeButton.setAttribute('aria-label', 'Close booking');
       closeButton.innerHTML = '&times;';
-      closeButton.addEventListener('click', close);
+      closeButton.addEventListener('click', function () { dialog.close(); });
 
       var frame = document.createElement('iframe');
       frame.className = 'bh-modal__frame';
@@ -79,45 +74,33 @@
       frame.title = 'Book ' + name;
       frame.setAttribute('allow', 'payment');
 
-      panel.appendChild(closeButton);
-      panel.appendChild(frame);
-      modal.appendChild(panel);
-      modal.addEventListener('click', function (e) {
-        if (e.target === modal) close();
+      dialog.appendChild(closeButton);
+      dialog.appendChild(frame);
+
+      // A click on the backdrop targets the dialog itself (its content fills the dialog box).
+      // closedby="any" isn't used because Safari doesn't support it.
+      dialog.addEventListener('click', function (e) {
+        if (e.target === dialog) dialog.close();
       });
 
-      var onKey = function (e) {
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          close();
-          return;
-        }
-        if (e.key === 'Tab') {
-          // Keep focus inside the dialog (the iframe manages focus within itself).
-          var items = focusables(modal);
-          var first = items[0];
-          var last = items[items.length - 1];
-          if (e.shiftKey && document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
-          } else if (!e.shiftKey && document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      };
-      document.addEventListener('keydown', onKey, true);
+      // However it closes (close button, Esc through the native cancel event, the backdrop, or the booking app's message),
+      // focus returns to the Book Now button and the dialog is removed so the iframe stops running.
+      dialog.addEventListener('close', function () {
+        if (dialog.parentNode) dialog.parentNode.removeChild(dialog);
+        current = null;
+        if (opener && opener.focus) opener.focus();
+      });
 
-      open = { modal: modal, opener: opener, onKey: onKey, overflow: document.body.style.overflow };
-      document.body.style.overflow = 'hidden';
-      document.body.appendChild(modal);
+      document.body.appendChild(dialog);
+      current = dialog;
+      dialog.showModal();
       closeButton.focus();
     }
 
-    // The booking app asks to close the modal when the customer is done. Only trust the booking site.
+    // The booking app asks to close the dialog when the customer is done. Only trust the booking site.
     window.addEventListener('message', function (e) {
       if (e.origin !== BOOKING_ORIGIN) return;
-      if (e.data && e.data.type === 'bh-booking:close') close();
+      if (e.data && e.data.type === 'bh-booking:close' && current) current.close();
     });
 
     document.addEventListener('click', function (e) {

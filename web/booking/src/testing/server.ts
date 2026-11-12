@@ -45,6 +45,10 @@ export const apiState = {
   enquireOnly: [] as { name: string; firstNight: string; lastNight: string }[],
   boatDetails: {} as Record<string, BoatDetails | null>,
   remaining: 6,
+  /** Drafts readable with GET /api/booking-drafts/{id}; any other id is 404. */
+  drafts: {} as Record<string, { firstName: string; lastName: string; email: string; mobile: string }>,
+  /** The status POST …/release answers with. */
+  releaseStatus: 204,
   calls: [] as { method: string; path: string; body?: unknown }[],
 };
 
@@ -53,6 +57,8 @@ export function resetApi() {
   apiState.enquireOnly = [];
   apiState.boatDetails = {};
   apiState.remaining = 6;
+  apiState.drafts = {};
+  apiState.releaseStatus = 204;
   apiState.calls = [];
 }
 
@@ -107,6 +113,19 @@ export const handlers = [
     await record(request);
     await delay(30);
     return HttpResponse.json({ draftId: 'draft-1' });
+  }),
+  http.get('*/api/booking-drafts/:id', async ({ request, params }) => {
+    await record(request);
+    const draft = apiState.drafts[params.id as string];
+    return draft
+      ? HttpResponse.json(draft)
+      : HttpResponse.json({ title: 'Your booking session has expired. Please start again.', status: 404 }, { status: 404 });
+  }),
+  http.post('*/api/bookings/:id/release', async ({ request }) => {
+    await record(request);
+    return apiState.releaseStatus === 204
+      ? new HttpResponse(null, { status: 204 })
+      : HttpResponse.json({ title: 'Your payment has already been completed.', status: apiState.releaseStatus }, { status: apiState.releaseStatus });
   }),
   http.put('*/api/booking-drafts/:id', async ({ request }) => {
     await record(request);

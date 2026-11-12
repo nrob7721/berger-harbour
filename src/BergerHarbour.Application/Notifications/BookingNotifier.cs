@@ -61,8 +61,8 @@ public sealed class BookingNotifier
         }
 
         var amountDue = schedule.AmountDueNow(booking, clock.UtcNow);
-        var dueAtCreation = schedule.Milestones(booking).Any(m => m.Kind != MilestoneKind.Deposit && m.DueAtCreation && m.ShortfallFor(booking.AmountPaid) > 0);
-        var sent = await SendForBookingAsync(EmailTemplateKey.BookingConfirmed, booking, toStaff: false, amountDue, null, dueAtCreation, ct);
+        var dueAtActivation = schedule.Milestones(booking).Any(m => m.Kind != MilestoneKind.Deposit && m.DueAtActivation && m.ShortfallFor(booking.AmountPaid) > 0);
+        var sent = await SendForBookingAsync(EmailTemplateKey.BookingConfirmed, booking, toStaff: false, amountDue, null, dueAtActivation, ct);
         if (sent)
         {
             booking.RecordNotificationSent(NotificationKeys.BookingConfirmed, clock.UtcNow);
@@ -221,7 +221,7 @@ public sealed class BookingNotifier
     }
 
     private async Task<bool> SendForBookingAsync(
-        EmailTemplateKey key, Booking booking, bool toStaff, decimal amountDue, DateOnly? dueDate, bool balanceDueAtCreation, CancellationToken ct)
+        EmailTemplateKey key, Booking booking, bool toStaff, decimal amountDue, DateOnly? dueDate, bool balanceDueAtActivation, CancellationToken ct)
     {
         var reference = await referenceData.LoadAsync(ct);
         var boat = await boats.GetAsync(booking.BoatId, ct);
@@ -256,7 +256,7 @@ public sealed class BookingNotifier
         values["SecurityBond"] = EmailValue.Text(boat is null ? null : DisplayFormat.Money(boat.SecurityBond));
         values["RequestedAddons"] = AddonList(booking.AddonLines.Select(l => (l.AddonId, (string?)l.NameSnapshot, l.Quantity, l.UnitPrice)), reference,
             booking.PeriodType);
-        values["PaymentSchedule"] = ScheduleList(booking, amountDue, balanceDueAtCreation, link);
+        values["PaymentSchedule"] = ScheduleList(booking, amountDue, balanceDueAtActivation, link);
         if (key == EmailTemplateKey.StaffNewOnlineBooking && booking.CustomerId is { } customerId && booking.ActivatedAt is { } anchor)
         {
             var result = frequentFloaters.Evaluate(anchor, await bookings.ListByCustomerAsync(customerId, ct), booking.Id);
@@ -327,7 +327,7 @@ public sealed class BookingNotifier
             "<ul>" + string.Concat(ordered.Select(o => $"<li>{WebUtility.HtmlEncode(o)}</li>")) + "</ul>");
     }
 
-    private EmailValue ScheduleList(Booking booking, decimal amountDue, bool balanceDueAtCreation, string link)
+    private EmailValue ScheduleList(Booking booking, decimal amountDue, bool balanceDueAtActivation, string link)
     {
         var items = schedule.Milestones(booking)
             .Select(m =>
@@ -340,7 +340,7 @@ public sealed class BookingNotifier
             .ToList();
         var html = "<ul>" + string.Concat(items.Select(i => $"<li>{WebUtility.HtmlEncode(i)}</li>")) + "</ul>";
         var plain = string.Join("; ", items);
-        if (balanceDueAtCreation && amountDue > 0)
+        if (balanceDueAtActivation && amountDue > 0)
         {
             var notice = $"The balance of {DisplayFormat.Money(amountDue)} is now due. Please pay it using your payment link: ";
             html += $"<p><strong>{WebUtility.HtmlEncode(notice)}</strong><a href=\"{WebUtility.HtmlEncode(link)}\">{WebUtility.HtmlEncode(link)}</a></p>";

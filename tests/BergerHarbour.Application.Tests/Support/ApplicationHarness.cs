@@ -5,6 +5,7 @@ using BergerHarbour.Application.BookingDrafts.Dtos;
 using BergerHarbour.Application.Bookings;
 using BergerHarbour.Application.Bookings.Dtos;
 using BergerHarbour.Application.Bookings.Validation;
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Application.Notifications;
 using BergerHarbour.Application.Payments;
 using BergerHarbour.Application.Seed;
@@ -151,7 +152,7 @@ public sealed class ApplicationHarness
     public CreateStaffBookingRequest StaffRequest(
         string start, string end, string slug = "pacific-blue", PeriodType type = PeriodType.Custom, string email = "john@example.com",
         string lastName = "Smith", bool standby = false, decimal hire = 4000, IReadOnlyList<StaffAddonLineInput>? lines = null,
-        string? customerComments = null, int adults = 2, string? address = null, string? checkIn = "11:00", string? checkOut = "08:00") =>
+        string? customerComments = null, int adults = 2, AddressDto? address = null, string? checkIn = "11:00", string? checkOut = "08:00") =>
         new(Boat(slug).Id.Value, type, D(start), D(end), adults, 0, checkIn, checkOut, standby, null, customerComments, hire, email, "John", lastName,
             "+61412000111", null, address, lines ?? []);
 

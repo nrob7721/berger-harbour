@@ -330,6 +330,43 @@
       }
     },
     "/api/booking-drafts/{draftId}": {
+      "get": {
+        "tags": [
+          "BookingDrafts"
+        ],
+        "parameters": [
+          {
+            "name": "draftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftDetailsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftDetailsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "put": {
         "tags": [
           "BookingDrafts"
@@ -774,7 +811,8 @@
         "required": [
           "bookingId",
           "clientSecret",
-          "sessionId"
+          "sessionId",
+          "checkoutExpiresAt"
         ],
         "type": "object",
         "properties": {
@@ -786,6 +824,10 @@
           },
           "sessionId": {
             "type": "string"
+          },
+          "checkoutExpiresAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -849,6 +891,29 @@
         "type": "object",
         "properties": {
           "draftId": {
+            "type": "string"
+          }
+        }
+      },
+      "DraftDetailsResponse": {
+        "required": [
+          "firstName",
+          "lastName",
+          "email",
+          "mobile"
+        ],
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mobile": {
             "type": "string"
           }
         }

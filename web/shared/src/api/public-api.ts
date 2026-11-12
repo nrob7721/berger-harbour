@@ -297,7 +297,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    draftId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DraftDetailsResponse"];
+                        "application/json": components["schemas"]["DraftDetailsResponse"];
+                        "text/json": components["schemas"]["DraftDetailsResponse"];
+                    };
+                };
+            };
+        };
         put: {
             parameters: {
                 query?: never;
@@ -590,6 +613,8 @@ export interface components {
             bookingId: string;
             clientSecret: string;
             sessionId: string;
+            /** Format: date-time */
+            checkoutExpiresAt: string;
         };
         CreateDraftRequest: {
             slug: string;
@@ -608,6 +633,12 @@ export interface components {
         };
         CreateDraftResponse: {
             draftId: string;
+        };
+        DraftDetailsResponse: {
+            firstName: string;
+            lastName: string;
+            email: string;
+            mobile: string;
         };
         /** @enum {unknown} */
         DraftStep: "Details" | "Addons" | "Summary" | "Payment";

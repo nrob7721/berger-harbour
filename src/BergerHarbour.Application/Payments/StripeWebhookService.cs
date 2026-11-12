@@ -1,7 +1,6 @@
 using BergerHarbour.Application.Abstractions;
-using BergerHarbour.Application.Customers;
+using BergerHarbour.Application.Bookings;
 using BergerHarbour.Application.Notifications;
-using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 using Microsoft.Extensions.Logging;
@@ -16,27 +15,20 @@ public sealed class StripeWebhookService
 {
     private readonly IPaymentGateway gateway;
     private readonly IBookingRepository bookings;
-    private readonly IBookingDraftRepository drafts;
     private readonly IBoatScheduleLock scheduleLock;
-    private readonly IBookingReferenceGenerator references;
-    private readonly BookingAvailabilityService availability;
-    private readonly CustomerRegistry customers;
+    private readonly BookingActivator activator;
     private readonly BookingNotifier notifier;
     private readonly IClock clock;
     private readonly ILogger<StripeWebhookService> logger;
 
     public StripeWebhookService(
-        IPaymentGateway gateway, IBookingRepository bookings, IBookingDraftRepository drafts, IBoatScheduleLock scheduleLock,
-        IBookingReferenceGenerator references, BookingAvailabilityService availability, CustomerRegistry customers, BookingNotifier notifier, IClock clock,
-        ILogger<StripeWebhookService> logger)
+        IPaymentGateway gateway, IBookingRepository bookings, IBoatScheduleLock scheduleLock, BookingActivator activator, BookingNotifier notifier,
+        IClock clock, ILogger<StripeWebhookService> logger)
     {
         this.gateway = gateway;
         this.bookings = bookings;
-        this.drafts = drafts;
         this.scheduleLock = scheduleLock;
-        this.references = references;
-        this.availability = availability;
-        this.customers = customers;
+        this.activator = activator;
         this.notifier = notifier;
         this.clock = clock;
         this.logger = logger;
@@ -124,65 +116,54 @@ public sealed class StripeWebhookService
     private async Task HandleDepositAsync(Booking booking, Payment payment, CancellationToken ct)
     {
         var now = clock.UtcNow;
-        var reference = booking.Reference;
-        if (reference is null)
-        {
-            var details = booking.CustomerDetails ?? throw new InvalidOperationException("An online booking has no customer details.");
-            var prefix = BookingReference.PrefixFor(details.LastName, booking.StartDate);
-            reference = BookingReference.Create(prefix, await references.NextSuffixAsync(prefix, ct));
-        }
-
-        var (activated, superseded) = await scheduleLock.RunExclusiveAsync(booking.BoatId, async session =>
+        var reference = await activator.ReferenceForAsync(booking, ct);
+        var (activated, superseded, outcome) = await scheduleLock.RunExclusiveAsync(booking.BoatId, async session =>
         {
             var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("The booking disappeared.");
-            current.RecordPayment(payment, now);
+            var wasActive = current.Status == BookingStatus.Active;
+            var recorded = current.RecordPayment(payment, now);
+            if (wasActive)
+            {
+                // A replay of the deposit that activated it, or a second deposit after staff confirmed the booking.
+                if (recorded)
+                {
+                    session.SaveBooking(current);
+                }
+
+                return (current, (IReadOnlyList<Booking>)[], recorded ? DepositOutcome.AlreadyConfirmed : DepositOutcome.Activated);
+            }
+
             current.AssignReference(reference);
-            var supersededHere = new List<Booking>();
+            IReadOnlyList<Booking> supersededHere = [];
             if (current.Status is BookingStatus.PendingPayment or BookingStatus.Expired)
             {
-                var overlapping = await session.ListOverlappingBookingsAsync(current.Stay);
-                var unavailable = await session.ListOverlappingUnavailabilitiesAsync(current.Stay);
-                if (availability.Check(current.Stay, overlapping, unavailable, now, current.Id).IsAvailable)
-                {
-                    current.ActivateFromDeposit(now);
-                    foreach (var standby in availability.StandbysSupersededBy(current, overlapping))
-                    {
-                        standby.Supersede(now);
-                        session.SaveBooking(standby);
-                        supersededHere.Add(standby);
-                    }
-                }
-                else
+                var attempt = await activator.TryActivateAsync(session, current, now);
+                supersededHere = attempt.Superseded;
+                if (!attempt.Activated)
                 {
                     current.Expire(now);
                 }
             }
 
             session.SaveBooking(current);
-            return (current, supersededHere);
+            return (current, supersededHere, current.Status == BookingStatus.Active ? DepositOutcome.Activated : DepositOutcome.PaidButExpired);
         });
 
-        if (activated.Status != BookingStatus.Active)
+        switch (outcome)
         {
-            logger.LogError(
-                "Paid-but-expired booking {Reference} ({BookingId}): the deposit was paid after the hold lapsed and the dates were taken. " +
-                "Refund the payment in the Stripe dashboard.", activated.Reference?.Value, activated.Id.Value);
-            return;
+            case DepositOutcome.AlreadyConfirmed:
+                logger.LogError(
+                    "Second deposit on booking {Reference} ({BookingId}): staff had already confirmed it while the webhook was delayed. " +
+                    "Refund the payment in the Stripe dashboard.", activated.Reference?.Value, activated.Id.Value);
+                return;
+            case DepositOutcome.PaidButExpired:
+                logger.LogError(
+                    "Paid-but-expired booking {Reference} ({BookingId}): the deposit was paid after the hold lapsed and the dates were taken. " +
+                    "Refund the payment in the Stripe dashboard.", activated.Reference?.Value, activated.Id.Value);
+                return;
         }
 
-        if (activated.CustomerId is null && activated.CreatedBy == BookingCreator.Customer)
-        {
-            var customer = await customers.UpsertFromOnlineAsync(activated.CustomerDetails!, ct);
-            activated.AttachCustomer(customer.Id, clock.UtcNow);
-            await bookings.SaveAsync(activated, ct);
-        }
-
-        if (activated.BookingDraftId is { } draftId && await drafts.GetAsync(draftId, ct) is { IsConverted: false } draft)
-        {
-            draft.MarkConverted(activated.Id, clock.UtcNow);
-            await drafts.SaveAsync(draft, ct);
-        }
-
+        await activator.CompleteAsync(activated, ct);
         var sent = await notifier.SendBookingConfirmedAsync(activated, ct);
         sent |= await notifier.SendStaffNewOnlineBookingAsync(activated, ct);
         if (sent)
@@ -194,5 +175,12 @@ public sealed class StripeWebhookService
         {
             await notifier.SendStandbySupersededAsync(standby, ct);
         }
+    }
+
+    private enum DepositOutcome
+    {
+        Activated,
+        PaidButExpired,
+        AlreadyConfirmed,
     }
 }

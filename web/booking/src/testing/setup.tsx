@@ -26,5 +26,10 @@ afterEach(() => {
   server.resetHandlers();
   resetApi();
   window.sessionStorage.clear();
+  try {
+    window.localStorage.clear();
+  } catch {
+    /* ignore */
+  }
 });
 afterAll(() => server.close());

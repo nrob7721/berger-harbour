@@ -1,3 +1,4 @@
+using System.Globalization;
 using BergerHarbour.Domain.BookingDrafts;
 using BergerHarbour.Domain.Boats;
 using BergerHarbour.Domain.Customers;
@@ -108,6 +109,18 @@ public sealed class Booking : AggregateRoot
 
     /// <summary>A PendingPayment hold that the customer has started paying for.</summary>
     public bool IsHold => Status == BookingStatus.PendingPayment;
+
+    /// <summary>
+    /// The instant payment emails and "already due" are measured from (§7.6): when the booking became Active, or its
+    /// creation while it isn't Active yet.
+    /// </summary>
+    public DateTimeOffset ActivationAnchor => ActivatedAt ?? CreatedDate;
+
+    /// <summary>The online checkout amount, min(deposit, hire price). Also the least a staff confirmation must record.</summary>
+    public decimal CheckoutAmount => PaymentScheduleService.CheckoutAmount(DepositAmount, HirePrice);
+
+    /// <summary>An Expired online hold without payments: the only booking staff may confirm (§7.3).</summary>
+    public bool CanBeConfirmedByStaff => Status == BookingStatus.Expired && payments.Count == 0;
 
     /// <summary>Starts a PendingPayment hold. No customer is created and no reference is assigned yet.</summary>
     public static Booking CreateOnlineHold(BookingId id, OnlineHold hold, DateTimeOffset now)
@@ -258,6 +271,39 @@ public sealed class Booking : AggregateRoot
         ModifiedDate = now;
     }
 
+    /// <summary>Is this a PendingPayment hold whose <see cref="HoldExpiresAt"/> has passed?</summary>
+    public bool IsLapsedHold(DateTimeOffset now) => Status == BookingStatus.PendingPayment && HoldExpiresAt <= now;
+
+    /// <summary>A lapsed hold becomes Expired. Reads apply this without saving; writes save it with their change.</summary>
+    public void ExpireIfLapsed(DateTimeOffset now)
+    {
+        if (IsLapsedHold(now))
+        {
+            Expire(now);
+        }
+    }
+
+    /// <summary>
+    /// Staff confirmation's payment: an Expired hold without payments, and at least the checkout amount. The caller then
+    /// activates the booking (<see cref="ActivateFromDeposit"/>) in the same transaction.
+    /// </summary>
+    public void RecordStaffConfirmation(Payment payment, DateTimeOffset now)
+    {
+        if (!CanBeConfirmedByStaff)
+        {
+            throw new BusinessRuleException(Status == BookingStatus.Expired
+                ? "This booking was paid online after its hold expired. Refund the payment in Stripe."
+                : "Only an expired online booking without payments can be confirmed.");
+        }
+
+        if (payment.Amount < CheckoutAmount)
+        {
+            throw new DomainValidationException("amount", $"To confirm this booking, record at least ${CheckoutAmount.ToString("N2", CultureInfo.InvariantCulture)}.");
+        }
+
+        RecordPayment(payment, now);
+    }
+
     /// <summary>PendingPayment → Expired (hold lapsed, Stripe session expired, or released from the Payment step).</summary>
     public void Expire(DateTimeOffset now)
     {
@@ -332,11 +378,27 @@ public sealed class Booking : AggregateRoot
         ModifiedDate = now;
     }
 
-    /// <summary>Staff edits from the booking dialog. Prices are accepted as typed; totals are derived.</summary>
+    /// <summary>
+    /// Staff edits from the booking dialog. Prices are accepted as typed; totals are derived. Holds (PendingPayment and
+    /// Expired) are read-only.
+    /// </summary>
     public void UpdateByStaff(StaffBookingDetails details, DateTimeOffset now)
     {
+        EnsureEditableByStaff();
         Apply(details);
         ModifiedDate = now;
+    }
+
+    /// <summary>PendingPayment and Expired bookings can't be edited by staff (decision 36).</summary>
+    public void EnsureEditableByStaff()
+    {
+        switch (Status)
+        {
+            case BookingStatus.PendingPayment:
+                throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be edited.");
+            case BookingStatus.Expired:
+                throw new BusinessRuleException("This hold has expired and can't be edited. Record a manual payment to confirm it.");
+        }
     }
 
     private void Apply(StaffBookingDetails details)

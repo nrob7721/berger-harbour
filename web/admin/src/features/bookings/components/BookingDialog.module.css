@@ -253,3 +253,13 @@
 .wide {
   grid-column: 1 / -1;
 }
+
+.holdBanner {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--c-brand-tint);
+  color: var(--c-brand);
+  font-size: 14px;
+  font-weight: 600;
+}

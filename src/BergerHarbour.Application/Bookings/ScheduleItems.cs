@@ -12,7 +12,7 @@ public static class ScheduleItems
         var items = new List<ScheduleItem>();
         foreach (var m in milestones)
         {
-            items.Add(new ScheduleItem(m.Kind, m.Label, m.RequiredCumulative, Math.Max(0m, m.RequiredCumulative - previous), m.DueDate, m.DueAtCreation));
+            items.Add(new ScheduleItem(m.Kind, m.Label, m.RequiredCumulative, Math.Max(0m, m.RequiredCumulative - previous), m.DueDate, m.DueAtActivation));
             previous = Math.Max(previous, m.RequiredCumulative);
         }
 

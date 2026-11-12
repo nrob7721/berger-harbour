@@ -21,12 +21,10 @@ describe('Add-ons step', () => {
     expect(currentState().addons['car-parking']).toBe(6);
   });
 
-  it('uses "available for your dates" without a unit label and hides add-ons with nothing left', async () => {
-    apiState.boatDetails['pacific-blue'] = details('pacific-blue', {
-      addons: details('pacific-blue').addons.map((a) => (a.id === 'car-parking' ? { ...a, capacityUnitLabel: null } : a)),
-    });
+  it('always shows the remaining figure with the unit label', async () => {
     renderWithBooking(<AddonsStep />, filledState);
-    expect(await screen.findByText('6 available for your dates')).toBeInTheDocument();
+    expect(await screen.findByText('6 car spots remaining')).toBeInTheDocument();
+    expect(screen.queryByText(/available for your dates/)).not.toBeInTheDocument();
   });
 
   it('hides a capacity add-on when none remain', async () => {

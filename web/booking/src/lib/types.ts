@@ -11,6 +11,7 @@ export type Quote = PublicSchemas['QuoteResponse'];
 export type QuoteRequest = PublicSchemas['QuoteRequest'];
 export type CreateDraftRequest = PublicSchemas['CreateDraftRequest'];
 export type UpdateDraftRequest = PublicSchemas['UpdateDraftRequest'];
+export type DraftDetails = PublicSchemas['DraftDetailsResponse'];
 export type CreateBookingRequest = PublicSchemas['CreateBookingRequest'];
 export type CreateBookingResponse = PublicSchemas['CreateBookingResponse'];
 export type BookingStatus = PublicSchemas['BookingStatusResponse'];

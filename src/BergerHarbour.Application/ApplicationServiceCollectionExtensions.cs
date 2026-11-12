@@ -38,6 +38,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<CustomerRegistry>();
         services.AddScoped<BookingNotifier>();
         services.AddScoped<OnlineBookingPreparer>();
+        services.AddScoped<BookingActivator>();
 
         // Application services, one per controller.
         services.AddScoped<BoatCatalogueService>();

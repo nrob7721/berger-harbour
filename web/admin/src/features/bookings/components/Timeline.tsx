@@ -1,6 +1,9 @@
 import type { CSSProperties } from 'react';
+import { Button } from '@shared/components/Button/Button';
+import { Spinner } from '@shared/components/Spinner/Spinner';
+import { errorMessage } from '@shared/lib/http';
 import { dayOfMonth, dayOfWeek, formatDate, weekdayShort, type IsoDate } from '@shared/utils/dates';
-import type { Timeline as TimelineData, TimelineBooking } from '@/lib/types';
+import type { Boat, Timeline as TimelineData, TimelineBooking } from '@/lib/types';
 import { assignLanes, barPosition, dayBand, MIN_COLUMN_PX, unavailabilityPosition, type BarPosition, type TimelineRange } from '../utils/timeline';
 import styles from './Timeline.module.css';
 
@@ -15,7 +18,13 @@ const pos = (p: BarPosition): CSSProperties => ({ left: `${p.left}%`, width: `${
 
 export interface TimelineProps {
   range: TimelineRange;
+  /** The rows: every boat, active or not, in list order (`GET /api/boats`). Undefined until they load. */
+  boats: Boat[] | undefined;
+  /** The displayed range's bookings, unavailabilities and blocked periods. Undefined while that range has no data yet. */
   data: TimelineData | undefined;
+  /** Loading the displayed range failed. */
+  error?: unknown;
+  onRetry?: () => void;
   todayIso: IsoDate;
   onOpenBooking: (id: string) => void;
   /** An empty cell of an active boat was clicked. */
@@ -23,7 +32,7 @@ export interface TimelineProps {
 }
 
 /** One row per boat, one column per day. Bars are positioned by time of day and stacked into lanes. */
-export function Timeline({ range, data, todayIso, onOpenBooking, onNewBooking }: TimelineProps) {
+export function Timeline({ range, boats, data, error, onRetry, todayIso, onOpenBooking, onNewBooking }: TimelineProps) {
   const n = range.days.length;
   const columns = { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` };
   const minWidth = range.view === 'month' ? `calc(170px + ${n * MIN_COLUMN_PX}px)` : undefined;
@@ -46,85 +55,121 @@ export function Timeline({ range, data, todayIso, onOpenBooking, onNewBooking }:
           </div>
         </div>
 
-        <div className={styles.row} role="row">
-          <div className={`${styles.name} ${styles.muted}`} role="rowheader">Blocked periods</div>
-          <div className={styles.track} style={{ height: LANE_PX + 8 }}>
-            <div className={styles.cells} style={columns}>
-              {range.days.map((d) => <div key={d} className={`${styles.cell} ${weekend(d) ? styles.weekend : ''}`} />)}
+        <div className={styles.body}>
+          <div className={styles.row} role="row">
+            <div className={`${styles.name} ${styles.muted}`} role="rowheader">Blocked periods</div>
+            <div className={styles.track} style={{ height: LANE_PX + 8 }}>
+              {data && (
+                <>
+                  <div className={styles.cells} style={columns}>
+                    {range.days.map((d) => <div key={d} className={`${styles.cell} ${weekend(d) ? styles.weekend : ''}`} />)}
+                  </div>
+                  {data.blockedPeriods.map((p) => {
+                    const band = dayBand(range, p.firstNight, p.lastNight);
+                    return band && <div key={p.id} className={styles.blocked} style={pos(band)} title={p.name}>{p.name}</div>;
+                  })}
+                  {todayLine}
+                </>
+              )}
             </div>
-            {data?.blockedPeriods.map((p) => {
-              const band = dayBand(range, p.firstNight, p.lastNight);
-              return band && <div key={p.id} className={styles.blocked} style={pos(band)} title={p.name}>{p.name}</div>;
-            })}
-            {todayLine}
           </div>
-        </div>
 
-        {data?.boats.map((boat) => {
-          const bookings = data.bookings.filter((b) => b.boatId === boat.id);
-          const { lanes, count } = assignLanes(bookings);
-          return (
-            <div key={boat.id} className={styles.row} role="row" data-testid={`row-${boat.slug}`}>
-              <div className={`${styles.name} ${boat.isActive ? '' : styles.muted}`} role="rowheader">{boat.name}</div>
-              <div className={styles.track} style={{ height: count * LANE_PX + 8 }}>
-                <div className={styles.cells} style={columns}>
-                  {range.days.map((d) => boat.isActive ? (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`${styles.cell} ${weekend(d) ? styles.weekend : ''}`}
-                      aria-label={`New booking for ${boat.name} on ${formatDate(d)}`}
-                      onClick={() => onNewBooking(boat.id, d)}
-                    />
-                  ) : (
-                    // An inactive boat keeps its row for history, but its empty cells can't start a booking.
-                    <div key={d} className={`${styles.cell} ${styles.static} ${weekend(d) ? styles.weekend : ''}`} data-testid={`cell-${boat.slug}-${d}`} />
-                  ))}
-                </div>
-                {data.blockedPeriods.map((p) => {
-                  const band = dayBand(range, p.firstNight, p.lastNight);
-                  return band && <div key={p.id} className={styles.blockedShade} style={pos(band)} aria-hidden="true" />;
-                })}
-                {data.unavailabilities.filter((u) => u.boatId === boat.id).map((u) => {
-                  const p = unavailabilityPosition(range, u.firstNight, u.lastNight);
-                  return p && (
-                    <div key={u.id} className={styles.unavailable} style={{ ...pos(p), top: 4, height: count * LANE_PX }}
-                      title={`Unavailable ${formatDate(u.firstNight)} – ${formatDate(u.lastNight)}${u.comments ? `: ${u.comments}` : ''}`}>
-                      {u.comments ?? 'Unavailable'}
-                    </div>
-                  );
-                })}
-                {bookings.map((b) => {
-                  const p = barPosition(range, b.startDate, b.checkInTime, b.endDate, b.checkOutTime);
-                  if (!p) return null;
-                  const inactive = b.status === 'Cancelled' || b.status === 'Expired' || b.status === 'Superseded';
-                  const cls = [
-                    styles.bar,
-                    styles[STATUS_CLASS[b.paymentStatus]],
-                    b.status === 'PendingPayment' ? styles.pending : '',
-                    b.isStandby ? styles.standby : '',
-                    inactive ? styles.inactive : '',
-                  ].join(' ');
-                  return (
-                    <button
-                      key={b.id}
-                      type="button"
-                      className={cls}
-                      style={{ ...pos(p), top: 4 + (lanes.get(b.id) ?? 0) * LANE_PX }}
-                      onClick={() => onOpenBooking(b.id)}
-                      title={`${barLabel(b)} — ${formatDate(b.startDate)} to ${formatDate(b.endDate)}${inactive ? ` (${b.status})` : ''}`}
-                      data-testid={`bar-${b.id}`}
-                      data-lane={lanes.get(b.id)}
-                    >
-                      {barLabel(b)}
-                    </button>
-                  );
-                })}
-                {todayLine}
-              </div>
+          {!boats && (
+            // The very first load: the boat-name column waits too.
+            <div className={styles.row} role="row">
+              <div className={`${styles.name} ${styles.loadingName}`} role="rowheader"><Spinner size="large" label="Loading boats" /></div>
+              <div className={styles.track} style={{ height: 240 }} />
             </div>
-          );
-        })}
+          )}
+
+          {boats?.map((boat) => {
+            if (!data) {
+              // The range is loading: the names stay, the cells wait (see the overlay below).
+              return (
+                <div key={boat.id} className={styles.row} role="row" data-testid={`row-${boat.slug}`}>
+                  <div className={`${styles.name} ${boat.isActive ? '' : styles.muted}`} role="rowheader">{boat.name}</div>
+                  <div className={styles.track} style={{ height: LANE_PX + 8 }} />
+                </div>
+              );
+            }
+            const bookings = data.bookings.filter((b) => b.boatId === boat.id);
+            const { lanes, count } = assignLanes(bookings);
+            return (
+              <div key={boat.id} className={styles.row} role="row" data-testid={`row-${boat.slug}`}>
+                <div className={`${styles.name} ${boat.isActive ? '' : styles.muted}`} role="rowheader">{boat.name}</div>
+                <div className={styles.track} style={{ height: count * LANE_PX + 8 }}>
+                  <div className={styles.cells} style={columns}>
+                    {range.days.map((d) => boat.isActive ? (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`${styles.cell} ${weekend(d) ? styles.weekend : ''}`}
+                        aria-label={`New booking for ${boat.name} on ${formatDate(d)}`}
+                        onClick={() => onNewBooking(boat.id, d)}
+                      />
+                    ) : (
+                      // An inactive boat keeps its row for history, but its empty cells can't start a booking.
+                      <div key={d} className={`${styles.cell} ${styles.static} ${weekend(d) ? styles.weekend : ''}`} data-testid={`cell-${boat.slug}-${d}`} />
+                    ))}
+                  </div>
+                  {data.blockedPeriods.map((p) => {
+                    const band = dayBand(range, p.firstNight, p.lastNight);
+                    return band && <div key={p.id} className={styles.blockedShade} style={pos(band)} aria-hidden="true" />;
+                  })}
+                  {data.unavailabilities.filter((u) => u.boatId === boat.id).map((u) => {
+                    const p = unavailabilityPosition(range, u.firstNight, u.lastNight);
+                    return p && (
+                      <div key={u.id} className={styles.unavailable} style={{ ...pos(p), top: 4, height: count * LANE_PX }}
+                        title={`Unavailable ${formatDate(u.firstNight)} – ${formatDate(u.lastNight)}${u.comments ? `: ${u.comments}` : ''}`}>
+                        {u.comments ?? 'Unavailable'}
+                      </div>
+                    );
+                  })}
+                  {bookings.map((b) => {
+                    const p = barPosition(range, b.startDate, b.checkInTime, b.endDate, b.checkOutTime);
+                    if (!p) return null;
+                    const inactive = b.status === 'Cancelled' || b.status === 'Expired' || b.status === 'Superseded';
+                    const cls = [
+                      styles.bar,
+                      styles[STATUS_CLASS[b.paymentStatus]],
+                      b.status === 'PendingPayment' ? styles.pending : '',
+                      b.isStandby ? styles.standby : '',
+                      inactive ? styles.inactive : '',
+                    ].join(' ');
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className={cls}
+                        style={{ ...pos(p), top: 4 + (lanes.get(b.id) ?? 0) * LANE_PX }}
+                        onClick={() => onOpenBooking(b.id)}
+                        title={`${barLabel(b)} — ${formatDate(b.startDate)} to ${formatDate(b.endDate)}${inactive ? ` (${b.status})` : ''}`}
+                        data-testid={`bar-${b.id}`}
+                        data-lane={lanes.get(b.id)}
+                      >
+                        {barLabel(b)}
+                      </button>
+                    );
+                  })}
+                  {todayLine}
+                </div>
+              </div>
+            );
+          })}
+
+          {!data && (
+            <div className={styles.cellOverlay} data-testid="timeline-cells-pending">
+              {error ? (
+                <div className={styles.loadError} role="alert">
+                  <p>{errorMessage(error)}</p>
+                  {onRetry && <Button onClick={onRetry}>Retry</Button>}
+                </div>
+              ) : (
+                <Spinner size="large" label="Loading bookings" />
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -44,4 +44,20 @@ public class BookingDraftServiceTests
         var booking = await h.BookOnlineAsync();
         await Assert.ThrowsAsync<NotFoundException>(() => h.Get<BookingDraftService>().UpdateAsync(booking.BookingDraftId!.Value.Value, request));
     }
+
+    [Fact]
+    public async Task Reading_a_draft_returns_only_its_personal_details()
+    {
+        var id = await h.CreateDraftAsync(email: "Jane@Example.com");
+        var details = await h.Get<BookingDraftService>().GetDetailsAsync(id);
+        Assert.Equal(new DraftDetailsResponse("Jane", "Smith", "jane@example.com", "+61412345678"), details);
+    }
+
+    [Fact]
+    public async Task Reading_an_unknown_or_converted_draft_is_404()
+    {
+        await Assert.ThrowsAsync<NotFoundException>(() => h.Get<BookingDraftService>().GetDetailsAsync("nope"));
+        var booking = await h.BookOnlineAsync();
+        await Assert.ThrowsAsync<NotFoundException>(() => h.Get<BookingDraftService>().GetDetailsAsync(booking.BookingDraftId!.Value.Value));
+    }
 }

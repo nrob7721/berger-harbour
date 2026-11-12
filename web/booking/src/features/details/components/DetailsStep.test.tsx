@@ -51,7 +51,9 @@ describe('Your details', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0].body).toMatchObject({ mobile: '+61412345678', turnstileToken: 'turnstile-ok', email: 'jane@example.com' });
     expect(currentState().draftId).toBe('draft-1');
-    expect(window.sessionStorage.getItem('bh-booking-draft-id')).toBe('draft-1');
+    const saved = window.localStorage.getItem('bh-booking-progress')!;
+    expect(JSON.parse(saved).draftId).toBe('draft-1');
+    for (const personal of ['Jane', 'Smith', 'jane@example.com', '412345678']) expect(saved).not.toContain(personal);
   });
 
   it('keeps what was typed and shows server field errors on failure', async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Controller, FormProvider, useWatch } from 'react-hook-form';
+import { Controller, FormProvider, useFormContext, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -11,13 +11,16 @@ import { Spinner } from '@shared/components/Spinner/Spinner';
 import { useToast } from '@shared/components/Toast/Toast';
 import { applyServerErrors, useAppForm } from '@shared/lib/forms';
 import { ApiError, errorMessage } from '@shared/lib/http';
+import { AUSTRALIA, AUSTRALIAN_STATES, countryOptions } from '@shared/utils/countries';
 import { addDays, formatTimestamp, todayInSydney, type IsoDate } from '@shared/utils/dates';
 import { EMAIL_ERROR, isValidEmail, normaliseEmail } from '@shared/utils/email';
+import { formatMoney } from '@shared/utils/money';
 import { isValidMobile, MOBILE_ERROR } from '@shared/utils/phone';
 import { Badge } from '@/components/Badge/Badge';
 import { useAddons, useBoats } from '@/hooks/useReferenceData';
 import { api, keys } from '@/lib/api';
 import type { BookingDetail, CustomerLookup } from '@/lib/types';
+import { addressSchema, toAddressForm, toAddressRequest, type AddressForm } from '@/utils/address';
 import { changeoverWarnings, defaultEndDate, guestWarnings, newBookingPeriod, PERIOD_TYPES, type LineForm } from '../utils/bookingForm';
 import { AddonLinesSection } from './AddonLinesSection';
 import { PaymentsSection } from './PaymentsSection';
@@ -45,17 +48,18 @@ const schema = z.object({
   lastName: z.string().trim().min(1, 'Last name is required.'),
   mobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
   secondaryMobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
-  address: z.string().refine((v) => v.trim().length <= 500, 'Address must be 500 characters or fewer.'),
+  address: addressSchema,
   addonLines: z.array(z.object({
     id: z.string().nullable(), addonId: z.string(), name: z.string(),
     quantity: z.number({ message: 'Enter a quantity.' }).int().min(1, 'At least 1.'), unitPrice: optionalNumber.refine((v) => v === null || v >= 0, "Can't be negative."),
   })),
 }).refine((v) => !v.startDate || !v.endDate || v.endDate > v.startDate, { path: ['endDate'], message: 'The end date must be after the start date.' });
 
-export type BookingFormValues = z.infer<typeof schema> & { addonLines: LineForm[] };
+export type BookingFormValues = z.infer<typeof schema> & { addonLines: LineForm[]; address: AddressForm };
 
 const FIELDS = ['boatId', 'periodType', 'startDate', 'endDate', 'numberOfAdults', 'numberOfChildren', 'checkInTime', 'checkOutTime', 'hirePrice',
-  'status', 'email', 'firstName', 'lastName', 'mobile', 'secondaryMobile', 'address', 'bookingComments', 'customerComments', 'addonLines'] as const;
+  'status', 'email', 'firstName', 'lastName', 'mobile', 'secondaryMobile', 'address.line1', 'address.line2', 'address.locality', 'address.state',
+  'address.postcode', 'address.country', 'bookingComments', 'customerComments', 'addonLines'] as const;
 
 export interface BookingDialogProps {
   /**
@@ -77,7 +81,8 @@ export function BookingDialog({ bookingId, initial, onClose }: BookingDialogProp
       </Dialog>
     );
   }
-  return <BookingForm key={bookingId ?? 'new'} detail={detail.data ?? null} initial={initial} onClose={onClose} title={title} />;
+  // A confirmed hold reloads as an ordinary Active booking: a new status remounts the form with the new Customer.
+  return <BookingForm key={bookingId ? `${bookingId}:${detail.data?.status}` : 'new'} detail={detail.data ?? null} initial={initial} onClose={onClose} title={title} />;
 }
 
 function defaults(detail: BookingDetail | null, initial: BookingDialogProps['initial']): BookingFormValues {
@@ -90,7 +95,7 @@ function defaults(detail: BookingDetail | null, initial: BookingDialogProps['ini
       isStandby: detail.isStandby, bookingComments: detail.bookingComments ?? '', customerComments: c?.comments ?? '', hirePrice: detail.hirePrice,
       status: detail.status, email: c?.email ?? snapshot?.email ?? '', firstName: c?.firstName ?? snapshot?.firstName ?? '',
       lastName: c?.lastName ?? snapshot?.lastName ?? '', mobile: c?.mobile ?? snapshot?.mobileNumber ?? '', secondaryMobile: c?.secondaryMobile ?? '',
-      address: c?.address ?? '',
+      address: toAddressForm(c?.address),
       addonLines: detail.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
     };
   }
@@ -98,7 +103,7 @@ function defaults(detail: BookingDetail | null, initial: BookingDialogProps['ini
   return {
     boatId: initial?.boatId ?? '', ...period,
     numberOfAdults: 2, numberOfChildren: 0, checkInTime: '11:00', checkOutTime: '08:00', isStandby: false, bookingComments: '', customerComments: '',
-    hirePrice: null, status: 'Active', email: '', firstName: '', lastName: '', mobile: '', secondaryMobile: '', address: '', addonLines: [],
+    hirePrice: null, status: 'Active', email: '', firstName: '', lastName: '', mobile: '', secondaryMobile: '', address: toAddressForm(null), addonLines: [],
   };
 }
 
@@ -121,7 +126,8 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
   const { register, control, setValue, getValues, handleSubmit, setError, formState: { errors, isDirty } } = form;
   const values = useWatch({ control }) as BookingFormValues;
   const boat = boats.data?.find((b) => b.id === values.boatId);
-  const hasCustomer = isNew || !!detail?.customer;
+  /** PendingPayment and Expired holds are read-only (decision 36). */
+  const isHold = detail?.status === 'PendingPayment' || detail?.status === 'Expired';
 
   // The boat <select> is registered before its options load; re-apply the pre-filled boat once they exist.
   useEffect(() => {
@@ -157,7 +163,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
   /** On blur, after the email is validated: an invalid email shows its error and is never looked up. */
   const lookupEmail = async () => {
     const email = normaliseEmail(getValues('email'));
-    if (!isValidEmail(email) || email === lastLookup.current || !hasCustomer) return;
+    if (!isValidEmail(email) || email === lastLookup.current || isHold) return;
     lastLookup.current = email;
     try {
       const found = await api.customerByEmail(email);
@@ -166,7 +172,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       setValue('lastName', found.customer.lastName, { shouldDirty: true });
       setValue('mobile', found.customer.mobile ?? '', { shouldDirty: true });
       setValue('secondaryMobile', found.customer.secondaryMobile ?? '', { shouldDirty: true });
-      setValue('address', found.customer.address ?? '', { shouldDirty: true });
+      setValue('address', toAddressForm(found.customer.address), { shouldDirty: true });
       setValue('customerComments', found.customer.comments ?? '', { shouldDirty: true });
     } catch (e) {
       setLookup(null);
@@ -182,7 +188,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
         numberOfChildren: v.numberOfChildren, checkInTime: v.checkInTime, checkOutTime: v.checkOutTime, isStandby: v.isStandby,
         bookingComments: v.bookingComments || null, customerComments: v.customerComments || null, hirePrice: v.hirePrice,
         email: v.email.trim(), firstName: v.firstName.trim(), lastName: v.lastName.trim(), mobile: v.mobile || null, secondaryMobile: v.secondaryMobile || null,
-        address: v.address.trim() || null,
+        address: toAddressRequest(v.address),
         addonLines: v.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, quantity: l.quantity, unitPrice: l.unitPrice })),
       };
       return isNew ? api.createBooking(common) : api.updateBooking(detail!.id, { ...common, status: v.status, version: detail!.version });
@@ -222,15 +228,16 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
         <>
           {formError && <span className={styles.footerError} role="alert">{formError}</span>}
           <Button onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button variant="primary" onClick={submit} busy={saving} busyLabel={isNew ? 'Creating…' : 'Saving…'}>
+          <Button variant="primary" onClick={submit} busy={saving} busyLabel={isNew ? 'Creating…' : 'Saving…'} disabled={isHold}>
             {isNew ? 'Create booking' : 'Save changes'}
           </Button>
         </>
       }
     >
       <FormProvider {...form}>
+        {detail && isHold && <HoldBanner detail={detail} />}
         <form onSubmit={submit} noValidate>
-          <fieldset className={styles.fieldset} disabled={saving}>
+          <fieldset className={styles.fieldset} disabled={saving || isHold}>
             <div className={styles.grid}>
               <Field label="Boat" htmlFor={ids.boatId} error={errors.boatId?.message}>
                 <select id={ids.boatId} className={inputClass} {...register('boatId')}>
@@ -281,13 +288,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                 </Badge>
               )}
             </h3>
-            {!hasCustomer && (
-              <p className={styles.muted}>
-                Available once the booking is confirmed. The details entered online are shown below.
-              </p>
-            )}
-            {/* The whole customer section (and Customer comments below) is disabled for a booking without a Customer. */}
-            <fieldset className={styles.fieldset} disabled={!hasCustomer || saving} aria-label="Customer">
+            <fieldset className={styles.fieldset} aria-label="Customer">
               <div className={styles.grid}>
                 <Field label="Email" htmlFor={ids.email} error={errors.email?.message}>
                   <input id={ids.email} type="email" className={inputClass} {...register('email', { onBlur: () => void lookupEmail() })} />
@@ -300,18 +301,16 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                 </Field>
                 <Field label="Mobile" htmlFor={ids.mobile} error={errors.mobile?.message}>
                   <Controller control={control} name="mobile" render={({ field }) => (
-                    <MobileInput id={ids.mobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={!hasCustomer || saving} />
+                    <MobileInput id={ids.mobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.mobile} disabled={isHold || saving} />
                   )} />
                 </Field>
                 <Field label="Secondary mobile" htmlFor={ids.secondaryMobile} error={errors.secondaryMobile?.message}>
                   <Controller control={control} name="secondaryMobile" render={({ field }) => (
-                    <MobileInput id={ids.secondaryMobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.secondaryMobile} disabled={!hasCustomer || saving} />
+                    <MobileInput id={ids.secondaryMobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur} invalid={!!errors.secondaryMobile} disabled={isHold || saving} />
                   )} />
                 </Field>
-                <Field className={styles.wide} label="Address" htmlFor={ids.address} error={errors.address?.message}>
-                  <textarea id={ids.address} className={inputClass} rows={3} {...register('address')} />
-                </Field>
               </div>
+              <AddressFields ids={ids} />
             </fieldset>
 
             <div className={styles.grid}>
@@ -333,10 +332,8 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
               <Field label="Booking comments" htmlFor={ids.bookingComments}>
                 <textarea id={ids.bookingComments} className={inputClass} rows={3} {...register('bookingComments')} />
               </Field>
-              {/* Part of the customer section: disabled with it for a booking without a Customer. */}
-              <Field label="Customer comments" htmlFor={ids.customerComments}
-                hint={hasCustomer ? 'Shared by all of this customer\'s bookings.' : 'Available once the booking is confirmed'}>
-                <textarea id={ids.customerComments} className={inputClass} rows={3} disabled={!hasCustomer || saving} {...register('customerComments')} />
+              <Field label="Customer comments" htmlFor={ids.customerComments} hint="Shared by all of this customer's bookings.">
+                <textarea id={ids.customerComments} className={inputClass} rows={3} {...register('customerComments')} />
               </Field>
             </div>
 
@@ -357,6 +354,61 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       </FormProvider>
     </Dialog>
   );
+}
+
+/** The address parts (§12.1). None is required; Australia has a State dropdown and a 4-digit postcode. */
+function AddressFields({ ids }: { ids: Record<(typeof FIELDS)[number], string> }) {
+  const { register, control, setValue, getValues, formState: { errors } } = useFormContext<BookingFormValues>();
+  const country = useWatch({ control, name: 'address.country' });
+  const australian = country === AUSTRALIA;
+  const e = errors.address;
+  const onCountryChange = (next: string) => {
+    // Switching to Australia clears a state that isn't one of its states and territories.
+    if (next === AUSTRALIA && !AUSTRALIAN_STATES.includes(getValues('address.state').trim().toUpperCase()))
+      setValue('address.state', '', { shouldDirty: true });
+  };
+  return (
+    <div className={styles.grid} role="group" aria-label="Address">
+      <Field className={styles.wide} label="Address line 1" htmlFor={ids['address.line1']} error={e?.line1?.message}>
+        <input id={ids['address.line1']} className={inputClass} autoComplete="off" {...register('address.line1')} />
+      </Field>
+      <Field className={styles.wide} label="Address line 2" htmlFor={ids['address.line2']} error={e?.line2?.message}>
+        <input id={ids['address.line2']} className={inputClass} autoComplete="off" {...register('address.line2')} />
+      </Field>
+      <Field label="City/Locality" htmlFor={ids['address.locality']} error={e?.locality?.message}>
+        <input id={ids['address.locality']} className={inputClass} autoComplete="off" {...register('address.locality')} />
+      </Field>
+      <Field label="State" htmlFor={ids['address.state']} error={e?.state?.message}>
+        {australian ? (
+          <select id={ids['address.state']} className={inputClass} {...register('address.state')}>
+            <option value="">—</option>
+            {AUSTRALIAN_STATES.map((st) => <option key={st} value={st}>{st}</option>)}
+          </select>
+        ) : (
+          <input id={ids['address.state']} className={inputClass} autoComplete="off" {...register('address.state')} />
+        )}
+      </Field>
+      <Field label="Postcode" htmlFor={ids['address.postcode']} error={e?.postcode?.message}>
+        <input id={ids['address.postcode']} className={inputClass} autoComplete="off" inputMode={australian ? 'numeric' : undefined}
+          {...register('address.postcode')} />
+      </Field>
+      <Field label="Country" htmlFor={ids['address.country']} error={e?.country?.message}>
+        <select id={ids['address.country']} className={inputClass} {...register('address.country', { onChange: (ev) => onCountryChange(ev.target.value) })}>
+          {countryOptions().map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
+/** Why a hold is read-only, and what staff can do about it (§12.1 Holds). */
+function HoldBanner({ detail }: { detail: BookingDetail }) {
+  let text: string;
+  if (detail.status === 'PendingPayment')
+    text = `Waiting for the customer's online payment. The hold expires at ${formatTimestamp(detail.holdExpiresAt)}.`;
+  else if (detail.payments.length > 0) text = 'Paid online after the hold expired — refund in Stripe.';
+  else text = `This hold expired without payment. Record a manual payment of at least ${formatMoney(detail.checkoutAmount ?? 0)} to confirm the booking.`;
+  return <p className={styles.holdBanner} role="status">{text}</p>;
 }
 
 function StatusBadges({ detail }: { detail: BookingDetail }) {

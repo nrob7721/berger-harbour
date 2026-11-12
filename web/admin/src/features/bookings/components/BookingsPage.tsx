@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
-import { errorMessage } from '@shared/lib/http';
 import { formatDate, todayInSydney, type IsoDate } from '@shared/utils/dates';
+import { useBoats } from '@/hooks/useReferenceData';
 import { api, keys } from '@/lib/api';
 import { rangeFor, step, switchView, today, type TimelineView } from '../utils/timeline';
 import { BookingDialog } from './BookingDialog';
@@ -37,10 +37,12 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
   const [submitted, setSubmitted] = useState('');
   const searchBox = useRef<HTMLDivElement>(null);
 
+  const boats = useBoats();
+  // No placeholder data: a range without data shows the loading state, never another range's bars. A range already loaded shows
+  // from the cache straight away and refreshes in the background; each range has its own key, so only the latest is ever shown.
   const timeline = useQuery({
     queryKey: keys.timeline(range.from, range.to, includeInactive),
     queryFn: () => api.timeline(range.from, range.to, includeInactive),
-    placeholderData: keepPreviousData,
     staleTime: 15_000,
   });
   const search = useQuery({ queryKey: keys.search(submitted), queryFn: () => api.search(submitted), enabled: submitted.length >= 2, staleTime: 0 });
@@ -102,10 +104,12 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
         </div>
       </div>
       <TimelineLegend />
-      {timeline.isError && <p role="alert" className={styles.error}>{errorMessage(timeline.error)}</p>}
       <Timeline
         range={range}
+        boats={boats.data}
         data={timeline.data}
+        error={timeline.data || timeline.isFetching ? null : timeline.error}
+        onRetry={() => void timeline.refetch()}
         todayIso={todayIso}
         onOpenBooking={(id) => setDialog({ bookingId: id })}
         onNewBooking={(boatId, day) => setDialog({ bookingId: null, initial: { boatId, day } })}

@@ -7,7 +7,7 @@ public sealed record PaymentMilestone(
     decimal RequiredCumulative,
     DateTimeOffset DueAt,
     DateOnly DueDate,
-    bool DueAtCreation)
+    bool DueAtActivation)
 {
     public decimal ShortfallFor(decimal amountPaid) => Math.Max(0m, RequiredCumulative - amountPaid);
 }

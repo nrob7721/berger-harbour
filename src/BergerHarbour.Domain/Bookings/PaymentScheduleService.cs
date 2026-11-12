@@ -26,25 +26,25 @@ public sealed class PaymentScheduleService
         blockedPeriods.Any(p => p.UsesExtendedPaymentSchedule && p.Overlaps(stay)) ? PaymentScheduleType.Extended : PaymentScheduleType.Standard;
 
     public IReadOnlyList<PaymentMilestone> Milestones(Booking booking) =>
-        Milestones(booking.PaymentSchedule, booking.StartDate, booking.DepositAmount, booking.TotalPrice, booking.CreatedDate);
+        Milestones(booking.PaymentSchedule, booking.StartDate, booking.DepositAmount, booking.TotalPrice, booking.ActivationAnchor);
 
     public IReadOnlyList<PaymentMilestone> Milestones(
-        PaymentScheduleType schedule, DateOnly startDate, decimal depositAmount, decimal totalPrice, DateTimeOffset createdAt)
+        PaymentScheduleType schedule, DateOnly startDate, decimal depositAmount, decimal totalPrice, DateTimeOffset activatedAt)
     {
         var checkIn = CheckInInstant(startDate);
         var milestones = new List<PaymentMilestone>
         {
-            Milestone(MilestoneKind.Deposit, "Deposit", Math.Min(depositAmount, totalPrice), createdAt, createdAt),
+            Milestone(MilestoneKind.Deposit, "Deposit", Math.Min(depositAmount, totalPrice), activatedAt, activatedAt),
         };
         if (schedule == PaymentScheduleType.Extended)
         {
             milestones.Add(Milestone(MilestoneKind.First, "First instalment (50%)", Math.Round(totalPrice / 2m, 2, MidpointRounding.AwayFromZero),
-                checkIn - options.ExtendedFirstInstalmentBeforeHire, createdAt));
-            milestones.Add(Milestone(MilestoneKind.Final, "Final payment", totalPrice, checkIn - options.ExtendedFinalInstalmentBeforeHire, createdAt));
+                checkIn - options.ExtendedFirstInstalmentBeforeHire, activatedAt));
+            milestones.Add(Milestone(MilestoneKind.Final, "Final payment", totalPrice, checkIn - options.ExtendedFinalInstalmentBeforeHire, activatedAt));
         }
         else
         {
-            milestones.Add(Milestone(MilestoneKind.Balance, "Balance", totalPrice, checkIn - options.BalanceDueBeforeHire, createdAt));
+            milestones.Add(Milestone(MilestoneKind.Balance, "Balance", totalPrice, checkIn - options.BalanceDueBeforeHire, activatedAt));
         }
 
         return milestones;
@@ -72,6 +72,6 @@ public sealed class PaymentScheduleService
         return shortfalls.Count == 0 ? amountOwing : Math.Min(shortfalls.Max(), amountOwing);
     }
 
-    private static PaymentMilestone Milestone(MilestoneKind kind, string label, decimal required, DateTimeOffset due, DateTimeOffset createdAt) =>
-        new(kind, label, required, due, Sydney.DateOf(due), due <= createdAt);
+    private static PaymentMilestone Milestone(MilestoneKind kind, string label, decimal required, DateTimeOffset due, DateTimeOffset activatedAt) =>
+        new(kind, label, required, due, Sydney.DateOf(due), due <= activatedAt);
 }

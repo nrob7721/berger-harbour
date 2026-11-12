@@ -1,3 +1,4 @@
+using BergerHarbour.Domain.Customers;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Customers;
@@ -9,5 +10,5 @@ public sealed record StaffContact(
     EmailAddress Email,
     MobileNumber? Mobile,
     MobileNumber? SecondaryMobile,
-    string? Address,
+    Address? Address,
     string? Comments);

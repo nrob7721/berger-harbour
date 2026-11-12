@@ -20,6 +20,10 @@ public sealed class BookingDraftsController : ControllerBase
     public Task<CreateDraftResponse> Create(CreateDraftRequest request, CancellationToken ct) =>
         service.CreateAsync(request, ApiPaths.ClientIp(HttpContext), ct);
 
+    [HttpGet("{draftId}")]
+    public Task<DraftDetailsResponse> Get(string draftId, CancellationToken ct) =>
+        service.GetDetailsAsync(draftId, ct);
+
     [HttpPut("{draftId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Update(string draftId, UpdateDraftRequest request, CancellationToken ct)

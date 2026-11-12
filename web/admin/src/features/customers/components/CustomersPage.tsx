@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/Layout/Layout';
 import { table } from '@/components/Table/Table';
 import { api, keys } from '@/lib/api';
 import type { Customer } from '@/lib/types';
+import { addressLines } from '@/utils/address';
 import styles from './CustomersPage.module.css';
 
 const PERIOD: Record<string, string> = { Midweek: 'Mid-week', Weekend: 'Weekend', Week: 'Week', LongWeekend: 'Long weekend', Custom: 'Custom' };
@@ -92,7 +93,7 @@ function CustomerDetail({ customer, onOpenBooking }: { customer: Customer; onOpe
       <div>
         <h3 className={styles.label}>Address</h3>
         {customer.address
-          ? <p className={styles.address} data-testid="customer-address">{customer.address}</p>
+          ? <p className={styles.address} data-testid="customer-address">{addressLines(customer.address).join('\n')}</p>
           : <p className={table.muted} data-testid="customer-address">No address</p>}
       </div>
       <form className={styles.comments} onSubmit={submit} noValidate>

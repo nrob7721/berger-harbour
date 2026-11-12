@@ -1,5 +1,6 @@
 using BergerHarbour.Application.Abstractions;
 using BergerHarbour.Application.Bookings.Dtos;
+using BergerHarbour.Application.Customers.Dtos;
 using BergerHarbour.Application.Payments;
 using BergerHarbour.Application.Tests.Support;
 using BergerHarbour.Domain.BookingDrafts;
@@ -49,14 +50,14 @@ public class StripeWebhookServiceTests
         var detail = await h.Staff.GetAsync(first.Id.Value);
         await h.Staff.UpdateAsync(detail.Id, UpdateRequest(detail, r => r with
         {
-            CustomerComments = "VIP", SecondaryMobile = "+61412000999", Address = "1 River Rd",
+            CustomerComments = "VIP", SecondaryMobile = "+61412000999", Address = new AddressDto("1 River Rd", null, null, null, null, "AU"),
         }));
         await h.BookOnlineAsync(start: "2027-03-15", lastName: "Smith-Jones");
         var customer = h.Db.Customers.All.Single();
         Assert.Equal("Smith-Jones", customer.LastName);
         Assert.Equal("VIP", customer.Comments);
         Assert.Equal("+61412000999", customer.SecondaryMobileNumber!.Value);
-        Assert.Equal("1 River Rd", customer.Address);
+        Assert.Equal("1 River Rd", customer.Address!.Line1);
     }
 
     [Fact]
@@ -137,5 +138,50 @@ public class StripeWebhookServiceTests
         var draft = h.Db.Drafts.Get(booking.BookingDraftId!.Value)!;
         Assert.Equal(booking.Id, draft.ConvertedBookingId);
         Assert.Equal(DraftStep.Payment, draft.Contents.LastStepReached);
+    }
+
+    [Fact]
+    public async Task A_late_deposit_activates_an_Expired_booking_whose_dates_are_free()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        await Service.HandleExpiredAsync(new CheckoutSessionExpired(created.SessionId, new BookingId(created.BookingId)));
+        Assert.Equal(BookingStatus.Expired, h.Booking(created.BookingId).Status);
+        await h.PayDepositAsync(created.BookingId);
+        var booking = h.Booking(created.BookingId);
+        Assert.Equal(BookingStatus.Active, booking.Status);
+        Assert.NotNull(booking.CustomerId);
+        Assert.Single(h.EmailsTo(StaffEmail), m => m.Subject.Contains("New online booking", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_deposit_for_a_booking_staff_already_confirmed_is_recorded_and_sends_nothing()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+        await h.Staff.AddManualPaymentAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version));
+        var sent = h.Emails.Sent.Count;
+
+        await h.PayDepositAsync(created.BookingId);
+
+        var booking = h.Booking(created.BookingId);
+        Assert.Equal(BookingStatus.Active, booking.Status);
+        Assert.Equal(2, booking.Payments.Count);
+        Assert.Equal(sent, h.Emails.Sent.Count);
+    }
+
+    [Fact]
+    public async Task Session_expired_expires_a_hold_but_leaves_a_released_or_paid_booking_alone()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        var expired = new CheckoutSessionExpired(created.SessionId, new BookingId(created.BookingId));
+        await Service.HandleExpiredAsync(expired);
+        Assert.Equal(BookingStatus.Expired, h.Booking(created.BookingId).Status);
+        await Service.HandleExpiredAsync(expired);
+        Assert.Equal(BookingStatus.Expired, h.Booking(created.BookingId).Status);
+
+        var paid = await h.BookOnlineAsync(start: "2027-03-15");
+        await Service.HandleExpiredAsync(new CheckoutSessionExpired(paid.StripeCheckoutSessionId!, paid.Id));
+        Assert.Equal(BookingStatus.Active, h.Booking(paid.Id.Value).Status);
     }
 }

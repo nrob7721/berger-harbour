@@ -98,14 +98,23 @@ describe('Booking dialog: customer', () => {
   });
 
   it('pre-fills names, mobiles, address and customer comments from an email lookup and flags a Frequent Floater', async () => {
-    api.lookups['jane@example.com'] = { customer: { ...customer, address: '1 River Rd\nMannum SA 5238' }, frequentFloater: { isFrequentFloater: true, otherBookingCount: 1 } };
+    api.lookups['jane@example.com'] = {
+      customer: { ...customer, address: { line1: '1 River Rd', line2: null, locality: 'Mannum', state: 'SA', postcode: '5238', country: 'AU' } },
+      frequentFloater: { isFrequentFloater: true, otherBookingCount: 1 },
+    };
     renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
     const user = userEvent.setup();
+    await user.type(screen.getByLabelText('First name'), 'Typed');
+    await user.type(screen.getByLabelText('City/Locality'), 'Typed town');
     await user.type(screen.getByLabelText('Email'), 'jane@example.com');
     await user.tab();
-    await waitFor(() => expect(screen.getByLabelText('First name')).toHaveValue('Jane'));
+    await waitFor(() => expect(screen.getByLabelText('First name')).toHaveValue('Jane')); // always replaces what was typed
     expect(screen.getByLabelText('Customer comments')).toHaveValue('Likes the top deck');
-    expect(screen.getByLabelText('Address')).toHaveValue('1 River Rd\nMannum SA 5238');
+    expect(screen.getByLabelText('Address line 1')).toHaveValue('1 River Rd');
+    expect(screen.getByLabelText('City/Locality')).toHaveValue('Mannum');
+    expect(screen.getByLabelText('State')).toHaveValue('SA');
+    expect(screen.getByLabelText('Postcode')).toHaveValue('5238');
+    expect(screen.getByLabelText('Country')).toHaveValue('AU');
     expect(screen.getByText('⭐ Frequent Floater')).toHaveAttribute('title', '1 other booking within a year');
   });
 
@@ -130,16 +139,108 @@ describe('Booking dialog: customer', () => {
     expect(await screen.findByText('Enter a valid mobile number for the selected country.')).toBeInTheDocument();
   });
 
-  it('disables the whole customer section, including address and customer comments, for a booking without a customer', async () => {
-    await openExisting({
-      customer: null, createdBy: 'Customer', status: 'PendingPayment', reference: null,
-      customerDetails: { firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com', mobileNumber: '+61412000111' },
-    });
-    for (const label of ['Email', 'First name', 'Last name', 'Mobile', 'Secondary mobile', 'Address', 'Customer comments'])
+  it('keeps what was typed when the email lookup finds no customer', async () => {
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('First name'), 'Ann');
+    await user.type(screen.getByLabelText('Address line 1'), '9 Jetty Rd');
+    await user.type(screen.getByLabelText('Email'), 'new@example.com');
+    await user.tab();
+    await waitFor(() => expect(api.calls.some((c) => c.path.startsWith('/api/customers/by-email'))).toBe(true));
+    expect(screen.getByLabelText('First name')).toHaveValue('Ann');
+    expect(screen.getByLabelText('Address line 1')).toHaveValue('9 Jetty Rd');
+  });
+});
+
+describe('Booking dialog: address', () => {
+  it('needs no part, defaults to Australia with a State dropdown and a 4-digit postcode, and is free text elsewhere', async () => {
+    const { user } = await openExisting();
+    for (const label of ['Address line 1', 'Address line 2', 'City/Locality', 'Postcode']) expect(screen.getByLabelText(label)).toHaveValue('');
+    expect(screen.getByLabelText('Country')).toHaveValue('AU');
+    const state = screen.getByLabelText('State');
+    expect(state.tagName).toBe('SELECT');
+    expect(within(state).getAllByRole('option').map((o) => o.textContent)).toEqual(['—', 'NSW', 'VIC', 'QLD', 'SA', 'WA', 'TAS', 'NT', 'ACT']);
+    const postcode = screen.getByLabelText('Postcode');
+    await user.type(postcode, '50A');
+    await user.tab();
+    expect(await screen.findByText('Enter a 4-digit postcode.')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Country'), 'NZ');
+    expect(screen.getByLabelText('State').tagName).toBe('INPUT');
+    await user.type(screen.getByLabelText('State'), 'Otago');
+    await user.clear(postcode);
+    await user.type(postcode, '9016');
+    await user.tab();
+    await waitFor(() => expect(screen.queryByText('Enter a 4-digit postcode.')).not.toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText('Country'), 'AU'); // Otago isn't an Australian state: cleared
+    expect(screen.getByLabelText('State')).toHaveValue('');
+  });
+
+  it('shows the stored country of an existing customer', async () => {
+    await openExisting({ customer: { ...customer, address: { line1: '10 Downing St', line2: null, locality: 'London', state: null, postcode: 'SW1A 2AA', country: 'GB' } } });
+    expect(screen.getByLabelText('Country')).toHaveValue('GB');
+    expect(screen.getByLabelText('Postcode')).toHaveValue('SW1A 2AA');
+  });
+});
+
+const onlineHold = {
+  customer: null, createdBy: 'Customer' as const, reference: null, payments: [], amountPaid: 0, paymentStatus: 'Outstanding' as const,
+  customerDetails: { firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com', mobileNumber: '+61412000111' },
+};
+
+describe('Booking dialog: holds', () => {
+  it('a PendingPayment hold is fully read-only with its expiry banner', async () => {
+    await openExisting({ ...onlineHold, status: 'PendingPayment', holdExpiresAt: '2026-10-01T03:40:00Z' });
+    expect(screen.getByText("Waiting for the customer's online payment. The hold expires at 01/10/2026 1:40pm.")).toBeInTheDocument();
+    for (const label of ['Boat', 'Email', 'First name', 'Mobile', 'Address line 1', 'Country', 'Booking comments', 'Customer comments', 'Hire price'])
       expect(screen.getByLabelText(label)).toBeDisabled();
-    expect(screen.getByLabelText('Booking comments')).toBeEnabled();
-    expect(screen.getByText('Available once the booking is confirmed')).toBeInTheDocument();
+    for (const name of ['Save changes', 'Add manual payment', 'Send payment link', 'Recalculate from rates'])
+      expect(screen.getByRole('button', { name })).toBeDisabled();
+    expect(screen.getByLabelText('Email')).toHaveValue('ann@example.com');
     expect(screen.getByText(/Ann Lee · ann@example.com/)).toBeInTheDocument();
+  });
+
+  it('an Expired hold allows only a manual payment of at least the checkout amount, then reloads as an editable Active booking', async () => {
+    const { user } = await openExisting({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+    expect(screen.getByText('This hold expired without payment. Record a manual payment of at least $1,000.00 to confirm the booking.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Send payment link' })).toBeDisabled();
+    expect(screen.getByLabelText('First name')).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
+    expect(within(dialog).getByText('To confirm this booking, record at least $1,000.00.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue(1000);
+
+    let paid: unknown;
+    server.use(http.post('*/api/bookings/:id/payments', async ({ request }) => {
+      paid = await request.json();
+      return HttpResponse.json(detail({ reference: 'LEE-2610120', createdBy: 'Customer', customer: { ...customer, firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com' } }));
+    }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save payment' }));
+    expect(await screen.findByText('Booking LEE-2610120 confirmed.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('First name')).toBeEnabled());
+    expect(screen.getByLabelText('First name')).toHaveValue('Ann');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+    expect(paid).toMatchObject({ amount: 1000, version: 4 });
+  });
+
+  it('a confirming payment below the checkout amount is refused in the dialog', async () => {
+    const { user } = await openExisting({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+    await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
+    fireEvent.change(within(dialog).getByLabelText('Amount'), { target: { value: '500' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save payment' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('To confirm this booking, record at least $1,000.00.');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('a paid-but-expired booking keeps Add manual payment disabled', async () => {
+    await openExisting({
+      ...onlineHold, status: 'Expired', reference: 'LEE-2610120', checkoutAmount: 1000, amountPaid: 1000,
+      payments: [{ id: 'p', amount: 1000, method: 'Stripe', paidAt: '2026-10-01T03:00:00Z', note: null, recordedBy: 'Customer' }],
+    });
+    expect(screen.getByText('Paid online after the hold expired — refund in Stripe.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeDisabled();
   });
 });
 
@@ -173,23 +274,25 @@ describe('Booking dialog: saving', () => {
     const email = screen.getByLabelText('Email');
     await user.clear(email);
     await user.type(email, 'jane@gmail.c0m');
-    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'a'.repeat(501) } });
+    fireEvent.change(screen.getByLabelText('Postcode'), { target: { value: '50' } });
     const button = screen.getByRole('button', { name: 'Save changes' });
     expect(button).toBeEnabled();
     await user.click(button);
     expect(await screen.findByText('First name is required.')).toBeInTheDocument();
     expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
-    expect(screen.getByText('Address must be 500 characters or fewer.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a 4-digit postcode.')).toBeInTheDocument();
     expect(email).toHaveFocus();
     expect(writes()).toHaveLength(0);
   });
 
   it('sends the address with the booking', async () => {
     const { onClose, user } = await openExisting();
-    await user.type(screen.getByLabelText('Address'), '  2 Wharf St  ');
+    await user.type(screen.getByLabelText('City/Locality'), '  Mannum  ');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(writes()[0].body).toMatchObject({ address: '2 Wharf St' });
+    expect(writes()[0].body).toMatchObject({
+      address: { line1: null, line2: null, locality: 'Mannum', state: null, postcode: null, country: 'AU' },
+    });
   });
 
   it('locks the form and shows progress while saving, then closes on success', async () => {

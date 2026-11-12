@@ -1,7 +1,6 @@
 import type { AdminSchemas } from '@shared/api';
 
 export type Timeline = AdminSchemas['TimelineResponse'];
-export type TimelineBoat = AdminSchemas['TimelineBoat'];
 export type TimelineBooking = AdminSchemas['TimelineBooking'];
 export type TimelineUnavailability = AdminSchemas['TimelineUnavailability'];
 export type TimelineBlockedPeriod = AdminSchemas['TimelineBlockedPeriod'];
@@ -14,6 +13,7 @@ export type AdminQuoteRequest = AdminSchemas['AdminQuoteRequest'];
 export type AdminQuote = AdminSchemas['AdminQuoteResponse'];
 export type ManualPaymentRequest = AdminSchemas['ManualPaymentRequest'];
 export type Customer = AdminSchemas['AdminCustomer'];
+export type Address = AdminSchemas['AddressDto'];
 export type CustomerLookup = AdminSchemas['CustomerLookupResponse'];
 export type CustomerBooking = AdminSchemas['CustomerBookingItem'];
 export type Boat = AdminSchemas['AdminBoat'];
