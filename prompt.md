@@ -1078,7 +1078,7 @@ Sections:
   - Composite indexes go in `firestore.indexes.json` (e.g. bookings by `boatId` + `status` + `startDate`; bookings by `status` + `startDate` (fleet availability); bookings by `addonIds` (array-contains) + `status` + `startDate`; bookings by `customerId` + `status` + `startDate` (Frequent Floater); unavailabilities by `boatId` + `firstNight`; bookingDrafts by `email` + `lastActivityAt`).
 - **Logging and alerts:**
   - Structured logging to Cloud Logging. Never log card data or full tokens.
-  - Log-based alert policies email the staff alert address on: webhook processing errors, job failures, paid-but-expired bookings, and deposits paid on a booking staff had already confirmed (§8.3).
+  - Log-based alert policies email the staff alert address on: webhook processing errors, job failures, paid-but-expired bookings, and deposits paid on a booking staff had already confirmed (§8.3). Each error log message starts with a stable token the alert filters match on: `WEBHOOK_FAILED:`, `JOB_FAILED:`, `PAID_BUT_EXPIRED:`, `DUPLICATE_DEPOSIT:`.
 - **CI/CD (GitHub Actions):**
   - On PR: build (with the §7.9 analyzer rules as errors), unit and architecture tests, integration tests against the Firestore emulator, web typecheck/lint/build.
   - On `main`: build and push both containers **once** (tagged with the commit SHA) → deploy both Cloud Run services to **dev** → build the frontends with dev's keys and deploy the dev Pages projects.
