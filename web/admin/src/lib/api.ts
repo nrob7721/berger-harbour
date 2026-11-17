@@ -15,7 +15,7 @@ export const api = {
   createBooking: (body: CreateBookingRequest) => http.post<SaveResponse>('/api/bookings', body),
   updateBooking: (bookingId: string, body: UpdateBookingRequest) => http.put<SaveResponse>(`/api/bookings/${id(bookingId)}`, body),
   quote: (body: AdminQuoteRequest) => http.post<AdminQuote>('/api/bookings/quote', body),
-  addPayment: (bookingId: string, body: ManualPaymentRequest) => http.post<BookingDetail>(`/api/bookings/${id(bookingId)}/payments`, body),
+  confirmBooking: (bookingId: string, body: ManualPaymentRequest) => http.post<BookingDetail>(`/api/bookings/${id(bookingId)}/confirmation`, body),
   sendPaymentLink: (bookingId: string) => http.post<void>(`/api/bookings/${id(bookingId)}/send-payment-link`),
   addonRemaining: (addonId: string, startDate: string, endDate: string, excludeBookingId?: string) =>
     http.get<{ remaining: number }>(`/api/addons/${id(addonId)}/availability${query({ startDate, endDate, excludeBookingId })}`),

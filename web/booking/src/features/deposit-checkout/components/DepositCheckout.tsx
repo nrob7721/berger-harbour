@@ -6,7 +6,7 @@ import { formatMoney } from '@shared/utils/money';
 import { EmbeddedCheckout } from '@/components/EmbeddedCheckout/EmbeddedCheckout';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { api, keys } from '@/lib/api';
-import { useBooking } from '@/lib/booking-state';
+import { isAfter, periodTypeOfState, useBooking, type Step } from '@/lib/booking-state';
 import styles from './DepositCheckout.module.css';
 
 /** The Payment step's entry: creates the hold and the Checkout session, then moves to Payment. */
@@ -16,7 +16,7 @@ export function PayButton({ amount, termsAccepted }: { amount: number; termsAcce
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({
     mutationFn: () => api.createBooking({
-      draftId: state.draftId!, slug: state.selectedSlug!, periodType: state.periodType, startDate: state.period!.start,
+      draftId: state.draftId!, slug: state.selectedSlug!, periodType: periodTypeOfState(state), startDate: state.period!.start,
       numberOfAdults: state.adults, numberOfChildren: state.children, firstName: state.details!.firstName, lastName: state.details!.lastName,
       email: state.details!.email, mobile: state.details!.mobile,
       addons: Object.entries(state.addons).map(([addonId, quantity]) => ({ addonId, quantity })),
@@ -64,7 +64,10 @@ function useMinutesLeft(expiresAt: string | undefined): number | null {
   return expiresAt ? minutesLeft(expiresAt, now) : null;
 }
 
-/** Embedded Checkout for the deposit, with the hold countdown. Back releases the hold. */
+/**
+ * Embedded Checkout for the deposit, with the hold countdown. Leaving it, with Back or an earlier progress step, releases the
+ * hold first.
+ */
 export function PaymentStep() {
   const { state, dispatch } = useBooking();
   const hold = state.hold;
@@ -75,28 +78,34 @@ export function PaymentStep() {
   }, [hold, state.details, dispatch]);
 
   const release = useMutation({
-    mutationFn: () => api.release(hold!.bookingId, state.draftId!),
-    onSuccess: () => {
+    mutationFn: (_to: Step) => api.release(hold!.bookingId, state.draftId!),
+    onSuccess: (_, to) => {
       dispatch({ type: 'hold', hold: null });
-      dispatch({ type: 'goto', step: 'summary' });
+      dispatch({ type: 'goto', step: to });
     },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) complete(); // the payment completed meanwhile
+      else dispatch({ type: 'jumpCancelled' });
     },
   });
+
+  // An earlier progress step was clicked: it does what Back does, then opens that step.
+  useEffect(() => {
+    if (state.jumpTarget && !isAfter(state.jumpTarget, 'payment') && hold && !release.isPending) release.mutate(state.jumpTarget);
+  }, [state.jumpTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!hold) return null;
   return (
     <StepLayout
       title="Payment"
       error={release.isError && !(release.error instanceof ApiError && release.error.status === 409) ? errorMessage(release.error) : null}
-      back={!timedOut && <Button onClick={() => release.mutate()} busy={release.isPending} busyLabel="Going back…">Back</Button>}
+      back={!timedOut && <Button onClick={() => release.mutate('summary')} busy={release.isPending} busyLabel="Going back…">Back</Button>}
     >
       {timedOut ? (
         // Checkout has closed: paying again creates a new hold.
         <div className={styles.timedOut} role="alert">
           <p>Your dates are no longer held. Go back to try again.</p>
-          <Button variant="primary" onClick={() => release.mutate()} busy={release.isPending} busyLabel="Going back…">Back</Button>
+          <Button variant="primary" onClick={() => release.mutate('summary')} busy={release.isPending} busyLabel="Going back…">Back</Button>
         </div>
       ) : (
         <>

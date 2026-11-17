@@ -128,6 +128,61 @@ describe('Timeline loading', () => {
   });
 });
 
+describe('Timeline refresh button', () => {
+  it('shows its spinner and "Refreshing…" while any fetch runs, and its icon otherwise', async () => {
+    renderAdmin(<BookingsPage todayIso="2026-10-21" />);
+    expect(await screen.findByRole('button', { name: 'Refreshing…' })).toBeDisabled(); // the first load
+    const refresh = await screen.findByRole('button', { name: 'Refresh' });
+    expect(refresh).toBeEnabled();
+    expect(refresh.querySelector('svg')).not.toBeNull();
+  });
+
+  it('refetches the boats and the displayed range when clicked', async () => {
+    renderAdmin(<BookingsPage todayIso="2026-10-21" />);
+    const user = userEvent.setup();
+    const refresh = await screen.findByRole('button', { name: 'Refresh' });
+    const count = (path: string) => api.calls.filter((c) => c.method === 'GET' && c.path.startsWith(path)).length;
+    const [boatsBefore, rangeBefore] = [count('/api/boats'), count('/api/bookings?')];
+    let release!: () => void;
+    server.use(http.get('*/api/bookings', async ({ request }) => {
+      api.calls.push({ method: 'GET', path: new URL(request.url).pathname + new URL(request.url).search });
+      await new Promise<void>((resolve) => { release = resolve; });
+      return HttpResponse.json(emptyTimeline);
+    }));
+    await user.click(refresh);
+    const busy = await screen.findByRole('button', { name: 'Refreshing…' });
+    expect(busy).toBeDisabled();
+    expect(busy.querySelector('svg')).toBeNull(); // the spinner replaces the icon
+    await waitFor(() => expect(count('/api/boats')).toBe(boatsBefore + 1));
+    expect(count('/api/bookings?')).toBe(rangeBefore + 1);
+    release();
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled();
+  });
+
+  it('shows its spinner while an already loaded range refreshes in the background, without the large spinner', async () => {
+    let gate: Promise<void> | null = null;
+    let open!: () => void;
+    server.use(http.get('*/api/bookings', async () => {
+      if (gate) await gate;
+      return HttpResponse.json(emptyTimeline);
+    }));
+    renderAdmin(<BookingsPage todayIso="2026-10-21" />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Refresh' });
+    await user.click(screen.getByRole('button', { name: 'Next ›' }));
+    await screen.findByRole('button', { name: 'Refresh' });
+    await user.click(screen.getByRole('button', { name: 'Refresh' })); // refetches November and marks October stale
+    await screen.findByRole('button', { name: 'Refresh' });
+
+    gate = new Promise<void>((resolve) => { open = resolve; });
+    await user.click(screen.getByRole('button', { name: '‹ Prev' })); // October: from the cache, refreshing in the background
+    expect(await screen.findByRole('button', { name: 'Refreshing…' })).toBeDisabled();
+    expect(screen.queryByRole('status', { name: 'Loading bookings' })).not.toBeInTheDocument();
+    open();
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled();
+  });
+});
+
 describe('Bookings page', () => {
   it.each([
     ['2026-10-15', 'Midweek', '2026-10-12', '2026-10-16'], // Thu → the Mid-week of that week

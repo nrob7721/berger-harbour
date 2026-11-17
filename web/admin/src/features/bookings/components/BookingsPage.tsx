@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { formatDate, todayInSydney, type IsoDate } from '@shared/utils/dates';
 import { useBoats } from '@/hooks/useReferenceData';
@@ -27,6 +27,16 @@ function writeView(view: TimelineView) {
   }
 }
 
+/** The refresh icon: a circular arrow. */
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+      <path d="M20 4v7h-7" />
+    </svg>
+  );
+}
+
 type DialogState = { bookingId: string | null; initial?: { boatId?: string; day?: IsoDate } } | null;
 
 export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDate }) {
@@ -45,6 +55,15 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
     queryFn: () => api.timeline(range.from, range.to, includeInactive),
     staleTime: 15_000,
   });
+  const queryClient = useQueryClient();
+  // The refresh button shows whenever the boats or the displayed range are fetching, by a click or in the background (§12.1).
+  const refreshing = boats.isFetching || timeline.isFetching;
+  const refresh = () => {
+    // Other loaded ranges are marked stale, so they refetch when shown again; the displayed range and the boats refetch now.
+    void queryClient.invalidateQueries({ queryKey: keys.timelineRoot, refetchType: 'none' });
+    void timeline.refetch();
+    void boats.refetch();
+  };
   const search = useQuery({ queryKey: keys.search(submitted), queryFn: () => api.search(submitted), enabled: submitted.length >= 2, staleTime: 0 });
 
   useEffect(() => {
@@ -67,6 +86,9 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
         <div className={styles.group}>
           <Button onClick={() => setRange((r) => step(r, -1))}>‹ Prev</Button>
           <Button onClick={() => setRange(today(range.view, todayIso))}>Today</Button>
+          <Button iconOnly aria-label="Refresh" busy={refreshing} busyLabel="Refreshing…" onClick={refresh} title="Refresh">
+            <RefreshIcon />
+          </Button>
           <div className={styles.segmented} role="group" aria-label="View">
             {(['week', 'month'] as const).map((v) => (
               <button key={v} type="button" aria-pressed={range.view === v} className={range.view === v ? styles.on : ''} onClick={() => setView(v)}>

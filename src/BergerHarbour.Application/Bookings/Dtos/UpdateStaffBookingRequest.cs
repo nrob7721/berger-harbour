@@ -26,4 +26,5 @@ public sealed record UpdateStaffBookingRequest(
     string? SecondaryMobile,
     AddressDto? Address,
     IReadOnlyList<StaffAddonLineInput>? AddonLines,
+    IReadOnlyList<StaffPaymentInput> Payments,
     int Version);

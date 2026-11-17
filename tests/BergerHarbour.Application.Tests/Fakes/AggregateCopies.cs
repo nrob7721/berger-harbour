@@ -16,7 +16,8 @@ public static class AggregateCopies
 
     public static Booking Copy(Booking b) => Booking.Rehydrate(new BookingState(b.Id, b.Reference, b.CreatedBy, b.IsStandby, b.Status, b.ActivatedAt,
         b.CustomerId, b.CustomerDetails, b.BookingDraftId, b.BoatId, b.PeriodType, b.Stay, b.NumberOfAdults, b.NumberOfChildren, b.CheckInTime,
-        b.CheckOutTime, b.BookingComments, b.HirePrice, b.DepositAmount, b.PaymentSchedule, b.AddonLines.ToList(), b.Payments.ToList(), b.HoldExpiresAt,
+        b.CheckOutTime, b.BookingComments, b.HirePrice, b.DepositAmount, b.PaymentSchedule, b.AddonLines.ToList(), b.Payments.ToList(),
+        b.RemovedStripePaymentIntentIds.ToList(), b.HoldExpiresAt,
         b.StripeCheckoutSessionId, b.RoomingWarningAcceptance, b.TermsAcceptedAt, b.PaymentLinkTokenHash, b.SentNotifications.ToList(), b.CreatedDate,
         b.ModifiedDate, b.Version));
 

@@ -1,41 +1,34 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { Turnstile } from '@marsidev/react-turnstile';
 import { Button } from '@shared/components/Button/Button';
 import { Field, inputClass } from '@shared/components/Field/Field';
 import { MobileInput } from '@shared/components/MobileInput/MobileInput';
 import { applyServerErrors, useAppForm } from '@shared/lib/forms';
 import { ApiError, errorMessage } from '@shared/lib/http';
-import { EMAIL_ERROR, isValidEmail } from '@shared/utils/email';
-import { isValidMobile, MOBILE_ERROR } from '@shared/utils/phone';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { env } from '@/config/env';
 import { api } from '@/lib/api';
-import { useBooking, type ContactDetails } from '@/lib/booking-state';
+import { isAfter, periodTypeOfState, useBooking, type BookingState, type ContactDetails } from '@/lib/booking-state';
 import { draftBody } from '@/lib/draft';
+import { detailsSchema as schema, SESSION_EXPIRED } from '../utils/details';
 import styles from './DetailsStep.module.css';
-
-const schema = z.object({
-  firstName: z.string().trim().min(1, 'First name is required.').max(100),
-  lastName: z.string().trim().min(1, 'Last name is required.').max(100),
-  email: z.string().trim().min(1, 'Email is required.').refine(isValidEmail, EMAIL_ERROR),
-  mobile: z.string().min(1, 'Mobile is required.').refine((v) => isValidMobile(v), MOBILE_ERROR),
-});
 
 type Form = z.infer<typeof schema>;
 const FIELDS = ['firstName', 'lastName', 'email', 'mobile'] as const;
 
-export function DetailsStep() {
+/** Your details. `onContinued` gets what Continue changed, so a progress-step jump can carry on from it. */
+export function DetailsStep({ onContinued }: { onContinued: (changes: Partial<BookingState>) => void }) {
   const { state, dispatch } = useBooking();
   const ids = { first: useId(), last: useId(), email: useId(), mobile: useId() };
   const [token, setToken] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const needsTurnstile = !state.draftId;
   // Each field is validated when it loses focus (§6.1).
-  const { register, handleSubmit, control, setError, formState: { errors } } = useAppForm<Form>({
+  const { register, handleSubmit, control, setError, trigger, formState: { errors } } = useAppForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: state.details ?? { firstName: '', lastName: '', email: '', mobile: '' },
   });
@@ -48,7 +41,7 @@ export function DetailsStep() {
         return state.draftId;
       }
       const { draftId } = await api.createDraft({
-        slug: state.selectedSlug!, periodType: state.periodType, startDate: state.period!.start, numberOfAdults: state.adults,
+        slug: state.selectedSlug!, periodType: periodTypeOfState(state), startDate: state.period!.start, numberOfAdults: state.adults,
         numberOfChildren: state.children, ...details, turnstileToken: token,
       });
       return draftId;
@@ -56,12 +49,13 @@ export function DetailsStep() {
     onSuccess: (draftId, details) => {
       dispatch({ type: 'details', details });
       dispatch({ type: 'draft', draftId });
-      dispatch({ type: 'goto', step: 'addons' });
+      onContinued({ details, draftId });
     },
     onError: (e) => {
+      dispatch({ type: 'jumpCancelled' });
       if (e instanceof ApiError && e.status === 404 && state.draftId) {
         dispatch({ type: 'draftLost' });
-        setFormError('Your session expired. Please complete the security check and continue again.');
+        setFormError(SESSION_EXPIRED);
         return;
       }
       const unmatched = applyServerErrors(e, setError, FIELDS);
@@ -73,12 +67,28 @@ export function DetailsStep() {
   const submit = handleSubmit((values) => {
     setFormError(null);
     save.mutate({ firstName: values.firstName.trim(), lastName: values.lastName.trim(), email: values.email.trim(), mobile: values.mobile });
-  });
+  }, () => dispatch({ type: 'jumpCancelled' }));
+
+  // A forward jump stopped here on invalid details: show their errors.
+  useEffect(() => {
+    if (state.showErrors) void trigger();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A later progress step was clicked: run this step's Continue first (decision 41).
+  useEffect(() => {
+    if (!state.jumpTarget || !isAfter(state.jumpTarget, 'details') || save.isPending) return;
+    if (needsTurnstile && !token) {
+      dispatch({ type: 'jumpCancelled' });
+      setFormError('Please complete the security check, then continue.');
+      return;
+    }
+    void submit();
+  }, [state.jumpTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <StepLayout
       title="Your details"
-      error={formError}
+      error={formError ?? state.notice}
       back={<Button onClick={() => dispatch({ type: 'goto', step: 'dates' })} disabled={save.isPending}>Back</Button>}
       action={
         <Button variant="primary" onClick={submit} busy={save.isPending} busyLabel="Saving…" disabled={needsTurnstile && !token}>

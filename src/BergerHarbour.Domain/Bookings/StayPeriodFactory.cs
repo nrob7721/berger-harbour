@@ -8,11 +8,13 @@ public sealed class StayPeriodFactory
     public const string InvalidShape = "Those dates don't match the selected period.";
 
     /// <summary>
-    /// The period of that type containing the clicked day: Mid-week Mon–Fri (clicking Fri gives the Mon→Fri ending that
-    /// day), Weekend Fri→Mon (clicking Mon gives the weekend ending that day), Week starting on the clicked Mon or Fri.
-    /// Null when the day isn't clickable in that mode.
+    /// The period of the type of stay containing the clicked day: Mid-week Mon–Fri (clicking Fri gives the Mon→Fri ending
+    /// that day), Weekend Fri→Mon (clicking Mon gives the weekend ending that day). Week is two types of stay, Week (Fri–Fri)
+    /// and Week (Mon–Mon): <paramref name="weekStart"/> gives the weekday the week starts on, and every day selects the week
+    /// whose nights contain it, so the start can be earlier than the clicked day. Null when the day isn't clickable in that
+    /// type of stay, or a Week has no Friday or Monday start.
     /// </summary>
-    public StayRange? ForClickedDay(PeriodType periodType, DateOnly day) => periodType switch
+    public StayRange? ForClickedDay(PeriodType periodType, DateOnly day, DayOfWeek? weekStart = null) => periodType switch
     {
         PeriodType.Midweek when day.DayOfWeek is >= DayOfWeek.Monday and <= DayOfWeek.Friday =>
             Range(day.AddDays(-((int)day.DayOfWeek - 1)), 4),
@@ -20,7 +22,8 @@ public sealed class StayPeriodFactory
         PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Saturday => Range(day.AddDays(-1), 3),
         PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Sunday => Range(day.AddDays(-2), 3),
         PeriodType.Weekend when day.DayOfWeek is DayOfWeek.Monday => Range(day.AddDays(-3), 3),
-        PeriodType.Week when day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Friday => Range(day, 7),
+        PeriodType.Week when weekStart is DayOfWeek.Monday or DayOfWeek.Friday =>
+            Range(day.AddDays(-(((int)day.DayOfWeek - (int)weekStart.Value + 7) % 7)), 7),
         _ => null,
     };
 

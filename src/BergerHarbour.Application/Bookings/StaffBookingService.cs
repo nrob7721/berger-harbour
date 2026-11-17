@@ -14,7 +14,10 @@ using BergerHarbour.Domain.Unavailabilities;
 
 namespace BergerHarbour.Application.Bookings;
 
-/// <summary>Staff bookings: timeline, search, the booking dialog, manual payments and payment links (admin <c>BookingsController</c>).</summary>
+/// <summary>
+/// Staff bookings: timeline, search, the booking dialog (including its payments), staff confirmation and payment links
+/// (admin <c>BookingsController</c>).
+/// </summary>
 public sealed class StaffBookingService
 {
     private readonly IBookingRepository bookings;
@@ -131,12 +134,14 @@ public sealed class StaffBookingService
     }
 
     /// <summary>
-    /// A staff booking: Active immediately with its reference. The customer is matched or created by email. Email #1 is sent
-    /// unless it is a stand-by, and overlapping stand-bys are superseded.
+    /// A staff booking: Active immediately with its reference. The customer is matched or created by email. Its manual
+    /// payments are recorded with it, dated today, and send no #5. Email #1 is sent unless it is a stand-by, and overlapping
+    /// stand-bys are superseded.
     /// </summary>
     public async Task<BookingSaveResponse> CreateAsync(CreateStaffBookingRequest request, CancellationToken ct = default)
     {
         var reference = await referenceData.LoadAsync(ct);
+        var now = clock.UtcNow;
         var errors = new ValidationErrors();
         var boat = await BookableBoatAsync(request.BoatId, null, errors, ct);
         var bookingRequest = new BookingRequest(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
@@ -144,6 +149,7 @@ public sealed class StaffBookingService
         var input = Validate(bookingRequest, boat, reference, request.CheckInTime, request.CheckOutTime, request.HirePrice, request.AddonLines, [], errors);
         var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address,
             request.CustomerComments, errors);
+        var addedPayments = NewPayments(request.Payments, now, now, errors);
         errors.ThrowIfAny();
 
         var details = new StaffBookingDetails(boat!.Id, request.PeriodType, input.Stay, request.NumberOfAdults, request.NumberOfChildren, input.CheckIn,
@@ -154,10 +160,10 @@ public sealed class StaffBookingService
         var prefix = BookingReference.PrefixFor(customer.LastName, input.Stay.Start);
         var bookingReference = BookingReference.Create(prefix, await references.NextSuffixAsync(prefix, ct));
         var id = BookingId.New();
-        var now = clock.UtcNow;
         var (booking, superseded) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
             var created = Booking.CreateByStaff(id, bookingReference, customer.Id, details, boat.EffectiveDeposit(reference.Settings), links.HashFor(id), now);
+            created.ChangePaymentsByStaff([], addedPayments, now);
             var overlapping = await session.ListOverlappingBookingsAsync(created.Stay);
             availability.EnsureAvailable(created.Stay, overlapping, await session.ListOverlappingUnavailabilitiesAsync(created.Stay), now, created.Id);
             var supersededHere = Supersede(created, overlapping, session, now);
@@ -169,7 +175,11 @@ public sealed class StaffBookingService
         return new BookingSaveResponse(await DetailAsync(booking, ct), await WarningsAsync(boat, booking, reference, ct));
     }
 
-    /// <summary>Saves every field of the booking dialog, including the full add-on line list and the customer's details.</summary>
+    /// <summary>
+    /// Saves every field of the booking dialog, including the full add-on line and payment lists and the customer's details.
+    /// Each payment added to an Active non-stand-by booking sends one #5. Changing a Superseded booking's boat or dates
+    /// reactivates it as a stand-by (§7.3).
+    /// </summary>
     public async Task<BookingSaveResponse> UpdateAsync(string id, UpdateStaffBookingRequest request, CancellationToken ct = default)
     {
         var booking = await LoadAsync(id, ct);
@@ -177,6 +187,7 @@ public sealed class StaffBookingService
         booking.EnsureEditableByStaff();
 
         var reference = await referenceData.LoadAsync(ct);
+        var now = clock.UtcNow;
         var errors = new ValidationErrors();
         var boat = await BookableBoatAsync(request.BoatId, booking.BoatId, errors, ct);
         var bookingRequest = new BookingRequest(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
@@ -190,21 +201,29 @@ public sealed class StaffBookingService
             errors.Add("status", $"A {booking.Status} booking's status can't be changed.");
         }
 
+        if (booking.Status == BookingStatus.Superseded && !request.IsStandby)
+        {
+            errors.Add("isStandby", "A superseded booking stays a stand-by. Change its boat or dates to reactivate it.");
+        }
+
+        var keptPayments = (request.Payments ?? []).Select(p => p.Id).OfType<string>().ToHashSet();
+        var addedPayments = NewPayments(request.Payments, booking.CreatedDate, now, errors);
         errors.ThrowIfAny();
         var scheduleType = input.Stay == booking.Stay ? booking.PaymentSchedule : schedule.ScheduleFor(input.Stay, reference.BlockedPeriods);
         var details = new StaffBookingDetails(boat!.Id, request.PeriodType, input.Stay, request.NumberOfAdults, request.NumberOfChildren, input.CheckIn,
             input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, scheduleType, input.Lines);
-        var now = clock.UtcNow;
         var (saved, superseded) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
             var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
             current.EnsureVersion(request.Version);
             current.ExpireIfLapsed(now);
-            current.UpdateByStaff(details, now);
-            if (current.Status is BookingStatus.Active or BookingStatus.Cancelled)
+            var reactivated = current.UpdateByStaff(details, now);
+            if (!reactivated && current.Status is BookingStatus.Active or BookingStatus.Cancelled)
             {
                 current.ChangeStatusByStaff(request.Status, now);
             }
+
+            current.ChangePaymentsByStaff(keptPayments, addedPayments, now);
 
             IReadOnlyList<Booking> supersededHere = [];
             if (current.Status == BookingStatus.Active)
@@ -229,40 +248,29 @@ public sealed class StaffBookingService
         }
 
         await AfterSaveAsync(saved, superseded, ct);
+        foreach (var payment in addedPayments)
+        {
+            await notifier.SendPaymentReceivedAsync(saved, payment, ct);
+        }
+
         return new BookingSaveResponse(await DetailAsync(saved, ct), await WarningsAsync(boat, saved, reference, ct));
     }
 
     /// <summary>
-    /// A manual payment. On an Active booking it is recorded and #5 is sent. On an Expired booking without payments it is
-    /// staff confirmation (§7.3). Every other booking rejects it.
+    /// Staff confirmation (§7.3): a manual payment of at least the checkout amount on an Expired booking without payments.
+    /// Every other booking rejects it.
     /// </summary>
-    public async Task<AdminBookingDetail> AddManualPaymentAsync(string id, ManualPaymentRequest request, CancellationToken ct = default)
+    public async Task<AdminBookingDetail> ConfirmAsync(string id, ManualPaymentRequest request, CancellationToken ct = default)
     {
         var booking = await LoadAsync(id, ct);
         booking.EnsureVersion(request.Version);
-        var now = clock.UtcNow;
-        var paidAt = request.Date == Sydney.DateOf(now) ? now : Sydney.InstantOf(request.Date, new TimeOnly(12, 0));
-        var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
-        if (note?.Length > 500)
+        if (booking.Status == BookingStatus.PendingPayment)
         {
-            throw new DomainValidationException("note", "The note must be 500 characters or fewer.");
+            throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be confirmed yet.");
         }
 
-        var payment = new Payment(Guid.NewGuid().ToString("N"), request.Amount, PaymentMethod.Manual, null, paidAt, note, BookingCreator.SystemUser);
-        switch (booking.Status)
-        {
-            case BookingStatus.Active:
-                booking.RecordPayment(payment, now);
-                await bookings.SaveAsync(booking, ct);
-                await notifier.SendPaymentReceivedAsync(booking, payment, ct);
-                return await DetailAsync(booking, ct);
-            case BookingStatus.Expired:
-                return await ConfirmAsync(booking, request.Version, payment, ct);
-            case BookingStatus.PendingPayment:
-                throw new BusinessRuleException("This booking is waiting for the customer's online payment. Manual payments can't be recorded yet.");
-            default:
-                throw new BusinessRuleException("Manual payments can only be recorded on Active bookings.");
-        }
+        var payment = Payment.Manual(request.Amount, request.Date, request.Note, clock.UtcNow);
+        return await ConfirmAsync(booking, request.Version, payment, ct);
     }
 
     /// <summary>Sends #4 now for the amount due now. Manual sends are not deduplicated.</summary>
@@ -320,6 +328,33 @@ public sealed class StaffBookingService
         await activator.CompleteAsync(confirmed, ct);
         await AfterSaveAsync(confirmed, superseded, ct);
         return await DetailAsync(confirmed, ct);
+    }
+
+    /// <summary>
+    /// The request's new manual payments (no id), each checked for its amount, note and date rule (§7.3). Their errors are on
+    /// <c>payments</c>.
+    /// </summary>
+    private static IReadOnlyList<Payment> NewPayments(
+        IReadOnlyList<StaffPaymentInput>? inputs, DateTimeOffset bookingCreated, DateTimeOffset now, ValidationErrors errors)
+    {
+        var added = new List<Payment>();
+        foreach (var input in (inputs ?? []).Where(p => p.Id is null))
+        {
+            var rowErrors = new ValidationErrors();
+            var payment = rowErrors.Capture(() => Payment.Manual(input.Amount, input.Date, input.Note, now));
+            rowErrors.Capture(() => Booking.EnsureManualPaymentDate(input.Date, bookingCreated, now));
+            foreach (var message in rowErrors.Messages)
+            {
+                errors.Add("payments", message);
+            }
+
+            if (payment is not null && rowErrors.IsEmpty)
+            {
+                added.Add(payment);
+            }
+        }
+
+        return added;
     }
 
     private static bool Matches(string term, Booking booking, Customer? customer)

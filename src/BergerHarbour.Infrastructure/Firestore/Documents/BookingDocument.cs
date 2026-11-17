@@ -80,6 +80,9 @@ public sealed class BookingDocument : IVersionedDocument
     [FirestoreProperty("payments")]
     public List<PaymentDocument> Payments { get; set; } = [];
 
+    [FirestoreProperty("removedStripePaymentIntentIds")]
+    public List<string> RemovedStripePaymentIntentIds { get; set; } = [];
+
     [FirestoreProperty("holdExpiresAt")]
     public Timestamp? HoldExpiresAt { get; set; }
 
@@ -132,6 +135,7 @@ public sealed class BookingDocument : IVersionedDocument
         AddonLines = b.AddonLines.Select(AddonLineDocument.From).ToList(),
         AddonIds = b.AddonLines.Select(l => l.AddonId.Value).Distinct().ToList(),
         Payments = b.Payments.Select(PaymentDocument.From).ToList(),
+        RemovedStripePaymentIntentIds = b.RemovedStripePaymentIntentIds.ToList(),
         HoldExpiresAt = FirestoreValues.Instant(b.HoldExpiresAt),
         StripeCheckoutSessionId = b.StripeCheckoutSessionId,
         RoomingWarningAcceptance = b.RoomingWarningAcceptance is null ? null : RoomingWarningAcceptanceDocument.From(b.RoomingWarningAcceptance),
@@ -166,6 +170,7 @@ public sealed class BookingDocument : IVersionedDocument
         Enum.Parse<PaymentScheduleType>(PaymentSchedule),
         AddonLines.Select(l => l.ToDomain()).ToList(),
         Payments.Select(p => p.ToDomain()).ToList(),
+        RemovedStripePaymentIntentIds ?? [],
         FirestoreValues.Instant(HoldExpiresAt),
         StripeCheckoutSessionId,
         RoomingWarningAcceptance?.ToDomain(),

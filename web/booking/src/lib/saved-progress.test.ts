@@ -38,6 +38,17 @@ describe('saved progress', () => {
     expect(readSavedProgress()).toBeNull();
   });
 
+  it('discards a version 1 record from before the type of stay', () => {
+    const { typeOfStay: _typeOfStay, ...rest } = toSavedProgress(state);
+    window.localStorage.setItem(SAVED_PROGRESS_KEY, JSON.stringify({ ...rest, version: 1, periodType: 'Week', showSelectedOnly: true }));
+    expect(readSavedProgress()).toBeNull();
+    expect(window.localStorage.getItem(SAVED_PROGRESS_KEY)).toBeNull();
+  });
+
+  it('keeps the type of stay', () => {
+    expect(toSavedProgress({ ...state, typeOfStay: 'WeekMon' })).toMatchObject({ version: 2, typeOfStay: 'WeekMon' });
+  });
+
   it('works without browser storage', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });

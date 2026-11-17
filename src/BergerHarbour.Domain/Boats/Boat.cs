@@ -57,9 +57,19 @@ public sealed partial class Boat : AggregateRoot
     /// <summary>Adult beds + kids beds; drives the rooming warning.</summary>
     public int TotalBeds => (AdultBeds ?? 0) + (KidsBeds ?? 0);
 
-    /// <summary>Sorting used everywhere boats are listed: berth descending, then name.</summary>
-    public static IOrderedEnumerable<Boat> InListOrder(IEnumerable<Boat> boats) =>
-        boats.OrderByDescending(b => b.Berth).ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Boat order, used everywhere boats are listed (§7.3): the Normal season Week rate descending, then name. Boats without
+    /// that rate come after every boat that has one, by name.
+    /// </summary>
+    public static IOrderedEnumerable<Boat> InListOrder(IEnumerable<Boat> boats, IEnumerable<Season> seasons)
+    {
+        var normal = seasons.FirstOrDefault(s => s.IsDefault)?.Id;
+        decimal? Key(Boat b) => normal is { } id ? b.RateFor(id, PeriodType.Week) : null;
+        return boats
+            .OrderBy(b => Key(b) is null)
+            .ThenByDescending(b => Key(b) ?? 0m)
+            .ThenBy(b => b.Name, StringComparer.OrdinalIgnoreCase);
+    }
 
     /// <summary>A new boat, inactive until <see cref="Activate"/> succeeds.</summary>
     public static Boat Create(BoatId id, BoatDetails details, DateTimeOffset now)

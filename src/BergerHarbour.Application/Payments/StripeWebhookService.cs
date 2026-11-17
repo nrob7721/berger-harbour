@@ -72,6 +72,11 @@ public sealed class StripeWebhookService
             return;
         }
 
+        if (booking.RemovedStripePaymentIntentIds.Contains(e.PaymentIntentId))
+        {
+            return; // staff removed this payment (e.g. after refunding it): already processed, nothing changes (§8.3)
+        }
+
         var payment = new Payment(Guid.NewGuid().ToString("N"), e.Amount, PaymentMethod.Stripe, e.PaymentIntentId, e.PaidAt, null, BookingCreator.Customer);
         if (e.Purpose == CheckoutPurpose.Payment)
         {

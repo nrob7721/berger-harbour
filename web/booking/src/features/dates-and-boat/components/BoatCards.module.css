@@ -8,7 +8,7 @@
   position: relative;
   display: flex;
   gap: 12px;
-  padding: 8px 40px 8px 8px;
+  padding: 8px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius);
   background: var(--c-surface);
@@ -25,10 +25,16 @@
   outline-offset: 2px;
 }
 
+/* The selected card is shown as selected as a whole: a strong brand border and tint (no tick-box). */
 .selected {
-  border: 2px solid var(--c-brand);
-  background: var(--c-brand-tint);
-  padding: 7px 39px 7px 7px;
+  border: 3px solid var(--c-brand);
+  background: var(--c-brand-tint-strong);
+  padding: 6px;
+  box-shadow: 0 0 0 1px var(--c-brand);
+}
+
+.selected .name {
+  color: var(--c-brand);
 }
 
 .greyed {
@@ -92,28 +98,6 @@
 .reason {
   font-size: 13px;
   color: var(--c-text-muted);
-}
-
-.tick {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--c-border-strong);
-  border-radius: 3px;
-  background: var(--c-surface);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.selected .tick {
-  background: var(--c-brand);
-  border-color: var(--c-brand);
 }
 
 .separator {

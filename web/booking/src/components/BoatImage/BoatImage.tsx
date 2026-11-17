@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import styles from './BoatImage.module.css';
 
-/** The boat's image from the WordPress site, or a neutral placeholder when it is empty or fails to load. */
+/**
+ * The boat's image from the WordPress site, or a neutral placeholder when it is empty or fails to load. An empty `alt` marks it
+ * decorative (the boat's name is given elsewhere).
+ */
 export function BoatImage({ src, alt, className }: { src: string | null | undefined; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <div className={[styles.placeholder, className].filter(Boolean).join(' ')} role="img" aria-label={`${alt} (no photo)`}>
+      <div className={[styles.placeholder, className].filter(Boolean).join(' ')} role={alt ? 'img' : undefined}
+        aria-label={alt ? `${alt} (no photo)` : undefined} aria-hidden={alt ? undefined : true}>
         <svg viewBox="0 0 48 32" aria-hidden="true" width="48" height="32">
           <path d="M4 22h40l-5 6H9z M12 22v-7h20v7 M16 15v-5h10v5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
         </svg>

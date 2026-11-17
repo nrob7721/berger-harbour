@@ -42,7 +42,7 @@ public class NotificationJobServiceTests
     {
         var booking = await h.BookOnlineAsync(start: "2027-03-08");
         var detail = await h.Staff.GetAsync(booking.Id.Value);
-        await h.Staff.AddManualPaymentAsync(detail.Id, new Application.Bookings.Dtos.ManualPaymentRequest(3060, D("2026-11-09"), null, detail.Version));
+        await h.Staff.UpdateAsync(detail.Id, UpdateRequest(detail, r => r with { Payments = [.. r.Payments, NewPayment(3060, "2026-11-09")] }));
         var sent = h.Emails.Sent.Count;
         h.Clock.UtcNow = CheckIn("2027-03-08") - TimeSpan.FromDays(10);
         await Job.RunAsync();
@@ -168,7 +168,7 @@ public class NotificationJobServiceTests
         var due = CheckIn("2027-02-15") - TimeSpan.FromDays(30);
         h.Clock.UtcNow = due - TimeSpan.FromDays(6);
         var expired = await h.Staff.GetAsync(created.BookingId);
-        await h.Staff.AddManualPaymentAsync(expired.Id, new Application.Bookings.Dtos.ManualPaymentRequest(1000, Sydney.DateOf(h.Clock.UtcNow), null, expired.Version));
+        await h.Staff.ConfirmAsync(expired.Id, new Application.Bookings.Dtos.ManualPaymentRequest(1000, Sydney.DateOf(h.Clock.UtcNow), null, expired.Version));
         await Job.RunAsync();
         Assert.Equal(0, h.CountEmails("Payment due"));
         h.Clock.UtcNow = due;

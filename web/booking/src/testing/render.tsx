@@ -35,7 +35,7 @@ export function renderWithClient(ui: ReactNode, client = testQueryClient()) {
 
 /** A booking that has reached a later step. */
 export const filledState: Partial<BookingState> = {
-  periodType: 'Midweek',
+  typeOfStay: 'Midweek',
   period: { start: '2026-10-12', end: '2026-10-16' },
   adults: 2,
   children: 0,

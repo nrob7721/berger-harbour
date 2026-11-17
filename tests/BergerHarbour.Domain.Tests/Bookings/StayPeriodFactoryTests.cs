@@ -32,16 +32,33 @@ public class StayPeriodFactoryTests
     public void Weekend_click_selects_the_fri_to_mon_containing_it(string clicked, string? start, string? end) =>
         AssertStay(factory.ForClickedDay(PeriodType.Weekend, D(clicked)), start, end);
 
+    // Mon 12/10 … Sun 18/10/2026: in Week (Fri–Fri), Mon–Thu belong to the week from Fri 09/10 and Fri–Sun to the week from Fri 16/10.
+    [Theory]
+    [InlineData("2026-10-12", "2026-10-09", "2026-10-16")]
+    [InlineData("2026-10-13", "2026-10-09", "2026-10-16")]
+    [InlineData("2026-10-14", "2026-10-09", "2026-10-16")]
+    [InlineData("2026-10-15", "2026-10-09", "2026-10-16")]
+    [InlineData("2026-10-16", "2026-10-16", "2026-10-23")]
+    [InlineData("2026-10-17", "2026-10-16", "2026-10-23")]
+    [InlineData("2026-10-18", "2026-10-16", "2026-10-23")]
+    public void Week_fri_to_fri_click_selects_the_week_whose_nights_contain_it(string clicked, string start, string end) =>
+        AssertStay(factory.ForClickedDay(PeriodType.Week, D(clicked), DayOfWeek.Friday), start, end);
+
     [Theory]
     [InlineData("2026-10-12", "2026-10-12", "2026-10-19")]
-    [InlineData("2026-10-16", "2026-10-16", "2026-10-23")]
-    [InlineData("2026-10-13", null, null)]
-    [InlineData("2026-10-14", null, null)]
-    [InlineData("2026-10-15", null, null)]
-    [InlineData("2026-10-17", null, null)]
-    [InlineData("2026-10-18", null, null)]
-    public void Week_click_starts_on_the_clicked_monday_or_friday(string clicked, string? start, string? end) =>
-        AssertStay(factory.ForClickedDay(PeriodType.Week, D(clicked)), start, end);
+    [InlineData("2026-10-13", "2026-10-12", "2026-10-19")]
+    [InlineData("2026-10-15", "2026-10-12", "2026-10-19")]
+    [InlineData("2026-10-16", "2026-10-12", "2026-10-19")]
+    [InlineData("2026-10-18", "2026-10-12", "2026-10-19")]
+    [InlineData("2026-10-19", "2026-10-19", "2026-10-26")]
+    public void Week_mon_to_mon_click_selects_the_week_whose_nights_contain_it(string clicked, string start, string end) =>
+        AssertStay(factory.ForClickedDay(PeriodType.Week, D(clicked), DayOfWeek.Monday), start, end);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(DayOfWeek.Wednesday)]
+    public void A_week_needs_a_friday_or_monday_start(DayOfWeek? weekStart) =>
+        Assert.Null(factory.ForClickedDay(PeriodType.Week, D("2026-10-14"), weekStart));
 
     [Theory]
     [InlineData("2026-10-12", PeriodType.Midweek, "2026-10-12", "2026-10-16")]

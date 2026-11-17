@@ -9,7 +9,7 @@ const jane = { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', 
 function saved(overrides: Partial<SavedProgress> = {}): SavedProgress {
   return {
     ...toSavedProgress(initialState('pacific-blue', {
-      period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue', showSelectedOnly: true, draftId: 'draft-1',
+      period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue', draftId: 'draft-1',
       furthestStep: 'summary',
     })),
     ...overrides,
@@ -47,7 +47,7 @@ describe('resuming saved progress', () => {
     apiState.unavailable['pacific-blue'] = [{ start: '2026-10-13', end: '2026-10-14' }];
     const resumed = await resumeProgress(saved({ draftId: null, furthestStep: 'dates' }), boats);
     expect(resumed).toMatchObject({
-      step: 'dates', period: { start: '2026-10-12' }, selectedSlug: null, showSelectedOnly: false, notice: boatNoLongerAvailable('Pacific Blue'),
+      step: 'dates', period: { start: '2026-10-12' }, selectedSlug: null, notice: boatNoLongerAvailable('Pacific Blue'),
     });
   });
 

@@ -161,9 +161,13 @@ public sealed class ApplicationHarness
         var r = new UpdateStaffBookingRequest(d.BoatId, d.PeriodType, d.StartDate, d.EndDate, d.NumberOfAdults, d.NumberOfChildren, d.CheckInTime,
             d.CheckOutTime, d.IsStandby, d.BookingComments, d.Customer?.Comments, d.HirePrice, d.Status, d.Customer?.Email, d.Customer?.FirstName,
             d.Customer?.LastName, d.Customer?.Mobile, d.Customer?.SecondaryMobile, d.Customer?.Address,
-            d.AddonLines.Select(l => new StaffAddonLineInput(l.Id, l.AddonId, l.Quantity, l.UnitPrice)).ToList(), d.Version);
+            d.AddonLines.Select(l => new StaffAddonLineInput(l.Id, l.AddonId, l.Quantity, l.UnitPrice)).ToList(),
+            d.Payments.Select(p => new StaffPaymentInput(p.Id, p.Amount, Sydney.DateOf(p.PaidAt), p.Note)).ToList(), d.Version);
         return change is null ? r : change(r);
     }
+
+    /// <summary>A new manual payment row for a staff create or update.</summary>
+    public static StaffPaymentInput NewPayment(decimal amount, string date, string? note = null) => new(null, amount, D(date), note);
 
     public IReadOnlyList<EmailMessage> EmailsTo(string address) => Emails.To(address);
 

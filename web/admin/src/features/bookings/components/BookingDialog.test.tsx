@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { api, customer, detail, server } from '@/testing/server';
 import { renderAdmin } from '@/testing/render';
+import { addDays, formatDate, todayInSydney } from '@shared/utils/dates';
 import { BookingDialog } from './BookingDialog';
 
 const writes = () => api.calls.filter((c) => c.method !== 'GET');
@@ -72,14 +73,97 @@ describe('Booking dialog: add-on lines', () => {
   });
 });
 
+const today = todayInSydney();
+
+/** Opens Add manual payment, fills it and presses its Add button. */
+async function addPayment(user: ReturnType<typeof userEvent.setup>, amount: string, note = '', date?: string) {
+  await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
+  fireEvent.change(within(dialog).getByLabelText('Amount'), { target: { value: amount } });
+  if (date) fireEvent.change(within(dialog).getByLabelText('Date'), { target: { value: date } });
+  if (note) await user.type(within(dialog).getByLabelText('Note'), note);
+  await user.click(within(dialog).getByRole('button', { name: 'Add' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add manual payment' })).not.toBeInTheDocument());
+}
+
 describe('Booking dialog: payments', () => {
-  it('disables manual payment and payment link while there are unsaved changes, and notes the schedule', async () => {
+  it('Add manual payment adds a "Not saved" row and sends no request; Paid and Owing follow the rows', async () => {
     const { user } = await openExisting();
-    expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeEnabled();
+    const comments = screen.getByLabelText('Booking comments');
+    await user.type(comments, 'Keep me');
+    const before = writes().length;
+    await addPayment(user, '500', 'Cash');
+    const table = within(screen.getByRole('region', { name: 'Payments' })).getByRole('table');
+    expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Date', 'Amount', 'Method', 'Note', 'Remove']);
+    const row = within(table).getByText('Cash').closest('tr')!;
+    expect(row).toHaveTextContent('Not saved');
+    expect(row).toHaveTextContent('$500.00');
+    expect(screen.getByTestId('breakdown-paid')).toHaveTextContent('$1,500.00');
+    expect(screen.getByTestId('breakdown-owing')).toHaveTextContent('$2,510.00');
+    expect(writes()).toHaveLength(before);
+    expect(comments).toHaveValue('Keep me');
+  });
+
+  it('Remove takes Stripe and manual rows out of the form without a request', async () => {
+    const { user } = await openExisting({
+      payments: [
+        { id: 'p-1', amount: 1000, method: 'Stripe', paidAt: '2026-08-02T02:00:00Z', note: null, recordedBy: 'Customer' },
+        { id: 'p-2', amount: 200, method: 'Manual', paidAt: '2026-08-03T02:00:00Z', note: 'Cash', recordedBy: 'SystemUser' },
+      ],
+    });
+    expect(screen.getByText('Card (Stripe)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove the $1,000.00 payment of 02/08/2026' }));
+    await user.click(screen.getByRole('button', { name: 'Remove the $200.00 payment of 03/08/2026' }));
+    expect(screen.getByText('No payments yet.')).toBeInTheDocument();
+    expect(screen.getByTestId('breakdown-paid')).toHaveTextContent('$0.00');
+    expect(writes()).toHaveLength(0);
+  });
+
+  it('checks the date rule when the date loses focus: not before the booking was created, not in the future', async () => {
+    const { user } = await openExisting(); // created 01/08/2026
+    await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
+    const date = within(dialog).getByLabelText('Date');
+    expect(date).toHaveValue(today);
+    fireEvent.change(date, { target: { value: '2026-07-31' } });
+    fireEvent.blur(date);
+    expect(await within(dialog).findByText("The payment date can't be before the booking was created (01/08/2026).")).toBeInTheDocument();
+    fireEvent.change(date, { target: { value: addDays(today, 1) } });
+    expect(await within(dialog).findByText("The payment date can't be in the future.")).toBeInTheDocument();
+    fireEvent.change(date, { target: { value: '2026-08-01' } });
+    await waitFor(() => expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  it('saves payments only with Save changes, with the rest of the booking', async () => {
+    const { onClose, user } = await openExisting();
+    await addPayment(user, '250', 'Bank transfer');
+    await user.click(screen.getByRole('button', { name: 'Remove the $1,000.00 payment of 02/08/2026' }));
+    expect(writes()).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].body).toMatchObject({ payments: [{ id: null, amount: 250, date: today, note: 'Bank transfer' }] });
+  });
+
+  it('shows the payments section on a new booking, where the only valid date is today', async () => {
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
+    const user = userEvent.setup();
+    expect(screen.getByRole('region', { name: 'Payments' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send payment link' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
+    const date = within(dialog).getByLabelText('Date');
+    fireEvent.change(date, { target: { value: addDays(today, -1) } });
+    fireEvent.blur(date);
+    expect(await within(dialog).findByText(`The payment date can't be before the booking was created (${formatDate(today)}).`)).toBeInTheDocument();
+  });
+
+  it('disables Send payment link while there are unsaved changes, and notes the schedule', async () => {
+    const { user } = await openExisting();
     expect(screen.getByRole('button', { name: 'Send payment link' })).toBeEnabled();
     expect(screen.queryByText('Schedule updates when you save.')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Booking comments'), 'x');
-    expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Send payment link' })).toBeDisabled();
     expect(screen.getByText('Save your changes first')).toBeInTheDocument();
     expect(screen.getByText('Schedule updates when you save.')).toBeInTheDocument();
@@ -137,6 +221,37 @@ describe('Booking dialog: customer', () => {
     await user.type(secondary, '02 9876 5432');
     await user.tab();
     expect(await screen.findByText('Enter a valid mobile number for the selected country.')).toBeInTheDocument();
+  });
+
+  it('shows a spinner and disables the other customer fields and the main button while the lookup runs', async () => {
+    let release!: () => void;
+    server.use(http.get('*/api/customers/by-email', async () => {
+      await new Promise<void>((resolve) => { release = resolve; });
+      return HttpResponse.json({ customer, frequentFloater: { isFrequentFloater: false, otherBookingCount: 0 } });
+    }));
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'jane@example.com');
+    await user.tab();
+    expect(await screen.findByText('Looking up customer…')).toBeInTheDocument();
+    for (const label of ['First name', 'Last name', 'Mobile', 'Secondary mobile', 'Address line 1', 'Country', 'Customer comments'])
+      expect(screen.getByLabelText(label)).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create booking' })).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.queryByText('Looking up customer…')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('First name')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Create booking' })).toBeEnabled();
+  });
+
+  it('shows an error on Secondary mobile when it is the same number as the mobile', async () => {
+    const { user } = await openExisting(); // mobile +61412345678
+    await user.type(screen.getByLabelText('Secondary mobile'), '0412 345 678');
+    await user.tab();
+    expect(await screen.findByText("The secondary mobile can't be the same as the mobile.")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Mobile'));
+    await user.type(screen.getByLabelText('Mobile'), '0412 000 111');
+    await user.tab();
+    await waitFor(() => expect(screen.queryByText("The secondary mobile can't be the same as the mobile.")).not.toBeInTheDocument());
   });
 
   it('keeps what was typed when the email lookup finds no customer', async () => {
@@ -200,47 +315,127 @@ describe('Booking dialog: holds', () => {
     expect(screen.getByText(/Ann Lee · ann@example.com/)).toBeInTheDocument();
   });
 
-  it('an Expired hold allows only a manual payment of at least the checkout amount, then reloads as an editable Active booking', async () => {
-    const { user } = await openExisting({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+  it('an Expired hold takes one manual payment row of at least the checkout amount, confirmed with Confirm booking', async () => {
+    api.booking = detail({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+    renderAdmin(<BookingDialog bookingId="bk-1" onClose={() => {}} />);
+    const user = userEvent.setup();
+    const confirm = await screen.findByRole('button', { name: 'Confirm booking' });
     expect(screen.getByText('This hold expired without payment. Record a manual payment of at least $1,000.00 to confirm the booking.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(confirm).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send payment link' })).toBeDisabled();
     expect(screen.getByLabelText('First name')).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
     expect(within(dialog).getByText('To confirm this booking, record at least $1,000.00.')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Amount')).toHaveValue(1000);
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('Not saved')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeDisabled();
+    expect(confirm).toBeEnabled();
+    expect(writes()).toHaveLength(0);
 
     let paid: unknown;
-    server.use(http.post('*/api/bookings/:id/payments', async ({ request }) => {
+    server.use(http.post('*/api/bookings/:id/confirmation', async ({ request }) => {
       paid = await request.json();
-      return HttpResponse.json(detail({ reference: 'LEE-2610120', createdBy: 'Customer', customer: { ...customer, firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com' } }));
+      const confirmed = detail({ reference: 'LEE-2610120', createdBy: 'Customer', customer: { ...customer, firstName: 'Ann', lastName: 'Lee', email: 'ann@example.com' } });
+      api.booking = confirmed;
+      return HttpResponse.json(confirmed);
     }));
-    await user.click(within(dialog).getByRole('button', { name: 'Save payment' }));
+    await user.click(confirm);
     expect(await screen.findByText('Booking LEE-2610120 confirmed.')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('First name')).toBeEnabled());
     expect(screen.getByLabelText('First name')).toHaveValue('Ann');
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
-    expect(paid).toMatchObject({ amount: 1000, version: 4 });
+    expect(paid).toMatchObject({ amount: 1000, date: today, version: 4 });
   });
 
   it('a confirming payment below the checkout amount is refused in the dialog', async () => {
-    const { user } = await openExisting({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
-    await user.click(screen.getByRole('button', { name: 'Add manual payment' }));
+    api.booking = detail({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+    renderAdmin(<BookingDialog bookingId="bk-1" onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Add manual payment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add manual payment' });
     fireEvent.change(within(dialog).getByLabelText('Amount'), { target: { value: '500' } });
-    await user.click(within(dialog).getByRole('button', { name: 'Save payment' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('To confirm this booking, record at least $1,000.00.');
+    expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
     expect(writes()).toHaveLength(0);
   });
 
-  it('a paid-but-expired booking keeps Add manual payment disabled', async () => {
-    await openExisting({
+  it('a confirmation on taken dates shows the conflicting references and records nothing', async () => {
+    api.booking = detail({ ...onlineHold, status: 'Expired', checkoutAmount: 1000 });
+    renderAdmin(<BookingDialog bookingId="bk-1" onClose={() => {}} />);
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Confirm booking' });
+    await addPayment(user, '1000');
+    server.use(http.post('*/api/bookings/:id/confirmation', () =>
+      HttpResponse.json({ title: 'Those dates are no longer available.', status: 409, conflictingReferences: ['JONES-2610120'] }, { status: 409 })));
+    await user.click(screen.getByRole('button', { name: 'Confirm booking' }));
+    expect(await screen.findByText('Those dates are no longer available. (JONES-2610120) Nothing was recorded.')).toBeInTheDocument();
+  });
+
+  it('a paid-but-expired booking keeps Add manual payment and Remove disabled', async () => {
+    api.booking = detail({
       ...onlineHold, status: 'Expired', reference: 'LEE-2610120', checkoutAmount: 1000, amountPaid: 1000,
       payments: [{ id: 'p', amount: 1000, method: 'Stripe', paidAt: '2026-10-01T03:00:00Z', note: null, recordedBy: 'Customer' }],
     });
-    expect(screen.getByText('Paid online after the hold expired — refund in Stripe.')).toBeInTheDocument();
+    renderAdmin(<BookingDialog bookingId="bk-1" onClose={() => {}} />);
+    expect(await screen.findByText('Paid online after the hold expired — refund in Stripe.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add manual payment' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove the $1,000.00 payment of 01/10/2026' })).toBeDisabled();
+  });
+});
+
+describe('Booking dialog: superseded stand-bys', () => {
+  it('shows the banner, locks Status and Stand-by, and reactivates the booking when its dates change', async () => {
+    const { onClose, user } = await openExisting({ status: 'Superseded', isStandby: true });
+    expect(screen.getByText('This stand-by booking was superseded by another booking. Change its boat or dates to reactivate it as a stand-by booking.'))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText('Stand-by booking')).toBeDisabled();
+    expect(screen.queryByRole('combobox', { name: 'Status' })).not.toBeInTheDocument();
+    expect(screen.getByText('Superseded', { selector: 'div' })).toBeInTheDocument();
+    server.use(http.put('*/api/bookings/:id', async ({ request }) => {
+      api.calls.push({ method: 'PUT', path: '/api/bookings/bk-1', body: await request.json() });
+      return HttpResponse.json({ booking: detail({ status: 'Active', isStandby: true }), warnings: [] });
+    }));
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-19' } });
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.getByText('Booking SMITH-2610120 reactivated as a stand-by.')).toBeInTheDocument();
+    expect(writes()[0].body).toMatchObject({ status: 'Superseded', isStandby: true, startDate: '2026-10-19', endDate: '2026-10-23' });
+  });
+});
+
+describe('Booking dialog: check-in and check-out times', () => {
+  it.each([['930', '09:30'], ['1730', '17:30'], ['9:30', '09:30'], ['23:59', '23:59']])('formats %s as %s when it loses focus', async (typed, shown) => {
+    const { user } = await openExisting();
+    const checkIn = screen.getByLabelText('Check-in time');
+    expect(checkIn).toHaveAttribute('type', 'text');
+    await user.clear(checkIn);
+    await user.type(checkIn, typed);
+    await user.tab();
+    await waitFor(() => expect(checkIn).toHaveValue(shown));
+    expect(screen.queryByText('Enter a 24-hour time, e.g. 14:30.')).not.toBeInTheDocument();
+  });
+
+  it('shows an error for anything else', async () => {
+    const { user } = await openExisting();
+    const checkOut = screen.getByLabelText('Check-out time');
+    await user.clear(checkOut);
+    await user.type(checkOut, '24:00');
+    await user.tab();
+    expect(await screen.findByText('Enter a 24-hour time, e.g. 14:30.')).toBeInTheDocument();
+  });
+
+  it('sends the formatted times', async () => {
+    const { onClose, user } = await openExisting();
+    const checkIn = screen.getByLabelText('Check-in time');
+    await user.clear(checkIn);
+    await user.type(checkIn, '1530');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(writes()[0].body).toMatchObject({ checkInTime: '15:30', checkOutTime: '08:00' });
   });
 });
 

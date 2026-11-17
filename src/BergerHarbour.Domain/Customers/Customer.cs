@@ -7,6 +7,8 @@ public sealed class Customer : AggregateRoot
 {
     public const int MaxCommentsLength = 5000;
 
+    public const string SameSecondaryMobileError = "The secondary mobile can't be the same as the mobile.";
+
     private Customer(CustomerId id, string firstName, string lastName, EmailAddress email, DateTimeOffset createdDate)
     {
         Id = id;
@@ -67,7 +69,19 @@ public sealed class Customer : AggregateRoot
         return customer;
     }
 
-    /// <summary>The same email booked again: the name and mobile take the latest values.</summary>
+    /// <summary>The secondary mobile can't be the same number as the mobile (compared in E.164); only when both are filled (§7.1).</summary>
+    public static void EnsureDistinctMobiles(MobileNumber? mobile, MobileNumber? secondaryMobile)
+    {
+        if (mobile is not null && mobile == secondaryMobile)
+        {
+            throw new DomainValidationException("secondaryMobile", SameSecondaryMobileError);
+        }
+    }
+
+    /// <summary>
+    /// The same email booked again: the name and mobile take the latest values. A secondary mobile equal to the new mobile
+    /// is cleared, so the two never match.
+    /// </summary>
     public void UpdateFromBooking(string? firstName, string? lastName, MobileNumber? mobile, DateTimeOffset now)
     {
         FirstName = RequiredName(firstName, "firstName", "First name is required.");
@@ -75,6 +89,10 @@ public sealed class Customer : AggregateRoot
         if (mobile is not null)
         {
             MobileNumber = mobile;
+            if (SecondaryMobileNumber == mobile)
+            {
+                SecondaryMobileNumber = null;
+            }
         }
 
         ModifiedDate = now;
@@ -89,6 +107,7 @@ public sealed class Customer : AggregateRoot
         var first = errors.Capture(() => RequiredName(firstName, "firstName", "First name is required."));
         var last = errors.Capture(() => RequiredName(lastName, "lastName", "Last name is required."));
         var normalisedComments = errors.Capture(() => NormaliseComments(comments, "customerComments"));
+        errors.Capture(() => EnsureDistinctMobiles(mobile, secondaryMobile));
         errors.ThrowIfAny();
         FirstName = first!;
         LastName = last!;

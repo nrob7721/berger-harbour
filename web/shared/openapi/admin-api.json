@@ -1144,7 +1144,7 @@
         }
       }
     },
-    "/api/bookings/{id}/payments": {
+    "/api/bookings/{id}/confirmation": {
       "post": {
         "tags": [
           "Bookings"
@@ -2692,7 +2692,8 @@
           "mobile",
           "secondaryMobile",
           "address",
-          "addonLines"
+          "addonLines",
+          "payments"
         ],
         "type": "object",
         "properties": {
@@ -2790,6 +2791,15 @@
             ],
             "items": {
               "$ref": "#/components/schemas/StaffAddonLineInput"
+            }
+          },
+          "payments": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StaffPaymentInput"
             }
           }
         }
@@ -3427,6 +3437,37 @@
           }
         }
       },
+      "StaffPaymentInput": {
+        "required": [
+          "id",
+          "amount",
+          "date",
+          "note"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "TimelineBlockedPeriod": {
         "required": [
           "id",
@@ -3650,6 +3691,7 @@
           "secondaryMobile",
           "address",
           "addonLines",
+          "payments",
           "version"
         ],
         "type": "object",
@@ -3760,6 +3802,12 @@
             ],
             "items": {
               "$ref": "#/components/schemas/StaffAddonLineInput"
+            }
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffPaymentInput"
             }
           },
           "version": {

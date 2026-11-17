@@ -16,9 +16,9 @@ public class FirestoreBookingRepositoryTests(EmulatorFixture fx)
     [Fact]
     public async Task A_booking_round_trips_with_every_field()
     {
-        var saved = await fx.Staff().CreateAsync(await fx.StaffRequestAsync("2028-01-10", "2028-01-14", email: "roundtrip@example.com",
-            lines: [new StaffAddonLineInput(null, "ice", 2, 7.5m), new StaffAddonLineInput(null, "welcome-hamper", 1, null)]));
-        await fx.Staff().AddManualPaymentAsync(saved.Booking.Id, new ManualPaymentRequest(1000.55m, D("2026-11-09"), "Cash", saved.Booking.Version));
+        var request = await fx.StaffRequestAsync("2028-01-10", "2028-01-14", email: "roundtrip@example.com",
+            lines: [new StaffAddonLineInput(null, "ice", 2, 7.5m), new StaffAddonLineInput(null, "welcome-hamper", 1, null)]);
+        var saved = await fx.Staff().CreateAsync(request with { Payments = [new StaffPaymentInput(null, 1000.55m, D("2026-11-09"), "Cash")] });
         var loaded = (await Repository.GetAsync(new BookingId(saved.Booking.Id)))!;
         Assert.Equal(saved.Booking.Reference, loaded.Reference!.Value);
         Assert.Equal(D("2028-01-10"), loaded.StartDate);
@@ -29,6 +29,19 @@ public class FirestoreBookingRepositoryTests(EmulatorFixture fx)
         Assert.Equal("Cash", loaded.Payments.Single().Note);
         Assert.Contains(loaded.SentNotifications, n => n.Key == "BookingConfirmed");
         Assert.True(loaded.Version >= 2);
+    }
+
+    [Fact]
+    public async Task Removed_stripe_payment_intent_ids_round_trip()
+    {
+        var saved = await fx.Staff().CreateAsync(await fx.StaffRequestAsync("2028-08-07", "2028-08-11", email: "removed@example.com"));
+        var booking = (await Repository.GetAsync(new BookingId(saved.Booking.Id)))!;
+        booking.RecordPayment(new Payment("s1", 500, PaymentMethod.Stripe, "pi_removed", fx.Clock.UtcNow, null, BookingCreator.Customer), fx.Clock.UtcNow);
+        booking.ChangePaymentsByStaff([], [], fx.Clock.UtcNow);
+        await Repository.SaveAsync(booking);
+        var loaded = (await Repository.GetAsync(new BookingId(saved.Booking.Id)))!;
+        Assert.Empty(loaded.Payments);
+        Assert.Equal(["pi_removed"], loaded.RemovedStripePaymentIntentIds);
     }
 
     [Fact]

@@ -23,4 +23,5 @@ public sealed record CreateStaffBookingRequest(
     string? Mobile,
     string? SecondaryMobile,
     AddressDto? Address,
-    IReadOnlyList<StaffAddonLineInput>? AddonLines);
+    IReadOnlyList<StaffAddonLineInput>? AddonLines,
+    IReadOnlyList<StaffPaymentInput>? Payments = null);

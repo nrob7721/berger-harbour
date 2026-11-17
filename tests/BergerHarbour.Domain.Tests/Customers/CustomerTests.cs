@@ -30,4 +30,25 @@ public class CustomerTests
         Assert.Equal("1 River Rd", c.Address!.Line1);
         Assert.Equal("Likes Misty Blue", c.Comments);
     }
+
+    [Fact]
+    public void The_secondary_mobile_cannot_be_the_same_number_as_the_mobile_compared_in_E164()
+    {
+        var c = Customer.Create(CustomerId.New(), "Jane", "Smith", EmailAddress.Create("jane@example.com"), null, Now);
+        var e = Assert.Throws<DomainValidationException>(() =>
+            c.UpdateByStaff("Jane", "Smith", c.Email, MobileNumber.Create("0412 345 678"), MobileNumber.Create("+61412345678"), null, null, Now));
+        Assert.Equal(Customer.SameSecondaryMobileError, e.Errors.ByField["secondaryMobile"][0]);
+        c.UpdateByStaff("Jane", "Smith", c.Email, null, MobileNumber.Create("+61412345678"), null, null, Now);
+        Assert.Equal("+61412345678", c.SecondaryMobileNumber!.Value);
+    }
+
+    [Fact]
+    public void Booking_again_with_the_stored_secondary_mobile_clears_the_secondary_mobile()
+    {
+        var c = Customer.Create(CustomerId.New(), "Jane", "Smith", EmailAddress.Create("jane@example.com"), MobileNumber.Create("0412000111"), Now);
+        c.UpdateByStaff("Jane", "Smith", c.Email, c.MobileNumber, MobileNumber.Create("0412345678"), null, null, Now);
+        c.UpdateFromBooking("Jane", "Smith", MobileNumber.Create("+61412345678"), Now);
+        Assert.Equal("+61412345678", c.MobileNumber!.Value);
+        Assert.Null(c.SecondaryMobileNumber);
+    }
 }

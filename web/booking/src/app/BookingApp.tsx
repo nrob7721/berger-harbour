@@ -14,6 +14,7 @@ import { resumeProgress } from '@/lib/resume-progress';
 import { clearSavedProgress, readSavedProgress } from '@/lib/saved-progress';
 import type { BoatDetails, BoatsResponse } from '@/lib/types';
 import { Shell } from './Shell';
+import { useAdvance } from './useAdvance';
 import styles from './BookingApp.module.css';
 
 export interface BookingAppProps {
@@ -26,41 +27,38 @@ export interface BookingAppProps {
 export function BookingApp({ requestedSlug, returnedBooking }: BookingAppProps) {
   const fleet = useFleet();
   const requested = useBoatDetails(requestedSlug);
-  const title = requested.data ? `Book ${requested.data.name}` : 'Book a houseboat';
 
-  if (fleet.isLoading || (requestedSlug && requested.isLoading)) return <Skeleton title={requestedSlug ? 'Book a houseboat' : title} />;
+  if (fleet.isLoading || (requestedSlug && requested.isLoading)) return <Skeleton />;
   if (requestedSlug && requested.error instanceof ApiError && requested.error.status === 404) {
     return (
-      <Shell title="Book a houseboat">
+      <Shell>
         <Notice tone="error">Sorry, we couldn't find that boat. Please go back to our website and choose a boat to book.</Notice>
       </Shell>
     );
   }
   if (fleet.isError || !fleet.data) {
     return (
-      <Shell title={title}>
+      <Shell>
         <Notice tone="error">We couldn't load the booking system. Please refresh the page or try again later.</Notice>
       </Shell>
     );
   }
-  return <Flow fleet={fleet.data} requested={requested.data ?? null} requestedSlug={requestedSlug} returnedBooking={returnedBooking} title={title} />;
+  return <Flow fleet={fleet.data} requested={requested.data ?? null} requestedSlug={requestedSlug} returnedBooking={returnedBooking} />;
 }
 
-function Flow({ fleet, requested, requestedSlug, returnedBooking, title }: {
+function Flow({ fleet, requested, requestedSlug, returnedBooking }: {
   fleet: BoatsResponse;
   requested: BoatDetails | null;
   requestedSlug: string | null;
   returnedBooking: BookingAppProps['returnedBooking'];
-  title: string;
 }) {
   const [initial, setInitial] = useState<BookingState | null>(() => (returnedBooking ? fresh() : null));
 
   function fresh(): BookingState {
     const activeRequested = requested?.isActive ? requested.slug : null;
     return initialState(requestedSlug, {
-      // An active requested boat is selected with "Show {Boat}'s availability only" ticked.
+      // An active requested boat is selected, so the calendar starts with its availability only.
       selectedSlug: activeRequested,
-      showSelectedOnly: !!activeRequested,
       ...(returnedBooking ? { step: 'complete' as const, completed: { ...returnedBooking, email: '' } } : {}),
     });
   }
@@ -89,17 +87,17 @@ function Flow({ fleet, requested, requestedSlug, returnedBooking, title }: {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!initial) return <Skeleton title={title} />;
+  if (!initial) return <Skeleton />;
   return (
     <BookingProvider initial={initial}>
-      <Steps fleet={fleet} requested={requested} title={title} />
+      <Steps fleet={fleet} requested={requested} />
     </BookingProvider>
   );
 }
 
-function Skeleton({ title }: { title: string }) {
+function Skeleton() {
   return (
-    <Shell title={title}>
+    <Shell>
       <div className={styles.skeleton} aria-busy="true" aria-label="Loading">
         <div className={styles.bar} />
         <div className={styles.block} />
@@ -109,15 +107,20 @@ function Skeleton({ title }: { title: string }) {
   );
 }
 
-function Steps({ fleet, requested, title }: { fleet: BoatsResponse; requested: BoatDetails | null; title: string }) {
+/** The progress steps and the current step, wired together. */
+export function Steps({ fleet, requested }: { fleet: BoatsResponse; requested: BoatDetails | null }) {
   const { state, dispatch } = useBooking();
+  const advance = useAdvance();
+  const progress = (
+    <StepProgress current={state.step} furthest={state.furthestStep} busy={state.jumpTarget !== null} onSelect={(step) => dispatch({ type: 'jump', step })} />
+  );
   return (
-    <Shell title={title} progress={<StepProgress current={state.step} />}>
+    <Shell progress={progress}>
       {state.step === 'dates' && (
-        <DatesAndBoatStep fleet={fleet.boats} settings={fleet.settings} requestedBoat={requested} onContinue={() => dispatch({ type: 'goto', step: 'details' })} />
+        <DatesAndBoatStep fleet={fleet.boats} settings={fleet.settings} requestedBoat={requested} onContinue={() => void advance('details')} />
       )}
-      {state.step === 'details' && <DetailsStep />}
-      {state.step === 'addons' && <AddonsStep />}
+      {state.step === 'details' && <DetailsStep onContinued={(changes) => void advance('addons', changes)} />}
+      {state.step === 'addons' && <AddonsStep onContinued={() => void advance('summary')} />}
       {state.step === 'summary' && (
         <SummaryStep
           hireTermsUrl={fleet.settings.hireTermsUrl}

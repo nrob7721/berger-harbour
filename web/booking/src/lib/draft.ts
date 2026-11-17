@@ -1,4 +1,4 @@
-import type { BookingState } from './booking-state';
+import { periodTypeOfState, type BookingState } from './booking-state';
 import type { DraftStep, UpdateDraftRequest } from './types';
 
 /** The draft as the booking app currently has it, for PUT /api/booking-drafts/{id}. */
@@ -6,7 +6,7 @@ export function draftBody(state: BookingState, lastStepReached: DraftStep): Upda
   if (!state.details || !state.period || !state.selectedSlug) return null;
   return {
     slug: state.selectedSlug,
-    periodType: state.periodType,
+    periodType: periodTypeOfState(state),
     startDate: state.period.start,
     numberOfAdults: state.adults,
     numberOfChildren: state.children,

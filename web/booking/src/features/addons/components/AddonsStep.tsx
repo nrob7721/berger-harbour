@@ -7,26 +7,27 @@ import { Notice } from '@/components/Notice/Notice';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
 import { api, keys } from '@/lib/api';
-import { useBooking } from '@/lib/booking-state';
+import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
 import { draftBody } from '@/lib/draft';
 import { addonPrice, bookingPrice } from '../utils/bookingPrice';
+import { addonsRemovedNotice, offeredAddons } from '../utils/continue';
 import styles from './AddonsStep.module.css';
 
-export function AddonsStep() {
+/** Add-ons. `onContinued` runs once the draft is updated, so a progress-step jump can carry on from here. */
+export function AddonsStep({ onContinued }: { onContinued: () => void }) {
   const { state, dispatch } = useBooking();
   const boat = useBoatDetails(state.selectedSlug);
-  const period = usePeriodAvailability(state.periodType, state.period);
+  const period = usePeriodAvailability(periodTypeOfState(state), state.period);
   const [removedNotice, setRemovedNotice] = useState<string | null>(null);
   const allowed = boat.data?.addons ?? [];
 
   // Requested add-ons the (newly) selected boat doesn't offer are removed.
   useEffect(() => {
     if (!boat.data) return;
-    const ids = new Set(boat.data.addons.map((a) => a.id));
-    const kept = Object.fromEntries(Object.entries(state.addons).filter(([id]) => ids.has(id)));
+    const kept = offeredAddons(state.addons, boat.data);
     if (Object.keys(kept).length !== Object.keys(state.addons).length) {
       dispatch({ type: 'addons', addons: kept });
-      setRemovedNotice(`Some add-ons you chose aren't offered on ${boat.data.name} and have been removed.`);
+      setRemovedNotice(addonsRemovedNotice(boat.data.name));
     }
   }, [boat.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -63,7 +64,7 @@ export function AddonsStep() {
 
   const visible = allowed.filter((a) => !a.hasCapacity || (remainingFor(a.id) ?? 1) > 0);
   const hire = state.selectedSlug ? period.data?.boats.find((b) => b.slug === state.selectedSlug)?.hirePrice ?? null : null;
-  const price = bookingPrice(hire ?? 0, allowed, state.addons, state.periodType);
+  const price = bookingPrice(hire ?? 0, allowed, state.addons, periodTypeOfState(state));
 
   const setQuantity = (id: string, quantity: number | null) => {
     const next = { ...state.addons };
@@ -74,8 +75,14 @@ export function AddonsStep() {
 
   const save = useMutation({
     mutationFn: () => api.updateDraft(state.draftId!, draftBody(state, 'Summary')!),
-    onSuccess: () => dispatch({ type: 'goto', step: 'summary' }),
+    onSuccess: onContinued,
+    onError: () => dispatch({ type: 'jumpCancelled' }),
   });
+
+  // A later progress step was clicked: run this step's Continue once the capacity figures are in (decision 41).
+  useEffect(() => {
+    if (state.jumpTarget && isAfter(state.jumpTarget, 'addons') && !capacityLoading && !save.isPending) save.mutate();
+  }, [state.jumpTarget, capacityLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <StepLayout
@@ -95,7 +102,7 @@ export function AddonsStep() {
       <ul className={styles.list}>
         {visible.map((a) => {
           const ticked = state.addons[a.id] !== undefined;
-          const p = addonPrice(a, state.periodType);
+          const p = addonPrice(a, periodTypeOfState(state));
           const left = remainingFor(a.id);
           const max = left ?? 99;
           return (

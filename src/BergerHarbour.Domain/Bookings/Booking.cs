@@ -11,6 +11,7 @@ public sealed class Booking : AggregateRoot
 {
     private List<AddonLine> addonLines = [];
     private List<Payment> payments = [];
+    private List<string> removedStripePaymentIntentIds = [];
     private List<SentNotification> sentNotifications = [];
 
     private Booking(BookingId id, BoatId boatId, DateTimeOffset createdDate, string paymentLinkTokenHash)
@@ -68,6 +69,9 @@ public sealed class Booking : AggregateRoot
 
     public IReadOnlyList<Payment> Payments => payments;
 
+    /// <summary>PaymentIntent ids of Stripe payments staff removed. A webhook for one never records it again (§8.3).</summary>
+    public IReadOnlyList<string> RemovedStripePaymentIntentIds => removedStripePaymentIntentIds;
+
     public DateTimeOffset? HoldExpiresAt { get; private set; }
 
     public string? StripeCheckoutSessionId { get; private set; }
@@ -121,6 +125,9 @@ public sealed class Booking : AggregateRoot
 
     /// <summary>An Expired online hold without payments: the only booking staff may confirm (§7.3).</summary>
     public bool CanBeConfirmedByStaff => Status == BookingStatus.Expired && payments.Count == 0;
+
+    /// <summary>Staff add and remove payments on Active, Cancelled and Superseded bookings (§7.3); holds take none.</summary>
+    public bool AcceptsStaffPaymentChanges => Status is BookingStatus.Active or BookingStatus.Cancelled or BookingStatus.Superseded;
 
     /// <summary>Starts a PendingPayment hold. No customer is created and no reference is assigned yet.</summary>
     public static Booking CreateOnlineHold(BookingId id, OnlineHold hold, DateTimeOffset now)
@@ -187,6 +194,7 @@ public sealed class Booking : AggregateRoot
             PaymentSchedule = s.PaymentSchedule,
             addonLines = s.AddonLines.ToList(),
             payments = s.Payments.ToList(),
+            removedStripePaymentIntentIds = s.RemovedStripePaymentIntentIds.ToList(),
             HoldExpiresAt = s.HoldExpiresAt,
             StripeCheckoutSessionId = s.StripeCheckoutSessionId,
             RoomingWarningAcceptance = s.RoomingWarningAcceptance,
@@ -219,7 +227,14 @@ public sealed class Booking : AggregateRoot
         StripeCheckoutSessionId = sessionId;
     }
 
-    /// <summary>Records a payment. Idempotent on the Stripe PaymentIntent id: returns false if it was already recorded.</summary>
+    /// <summary>Has this PaymentIntent been recorded on the booking, or recorded and then removed by staff?</summary>
+    public bool KnowsPaymentIntent(string paymentIntentId) =>
+        payments.Any(p => p.StripePaymentIntentId == paymentIntentId) || removedStripePaymentIntentIds.Contains(paymentIntentId);
+
+    /// <summary>
+    /// Records a payment. Idempotent on the Stripe PaymentIntent id: returns false if it was already recorded, or recorded
+    /// and then removed by staff.
+    /// </summary>
     public bool RecordPayment(Payment payment, DateTimeOffset now)
     {
         if (payment.Amount <= 0)
@@ -227,9 +242,14 @@ public sealed class Booking : AggregateRoot
             throw new DomainValidationException("amount", "The amount must be more than $0.");
         }
 
-        if (payment.StripePaymentIntentId is not null && payments.Any(p => p.StripePaymentIntentId == payment.StripePaymentIntentId))
+        if (payment.StripePaymentIntentId is { } intent && KnowsPaymentIntent(intent))
         {
             return false;
+        }
+
+        if (payment.Method == PaymentMethod.Manual)
+        {
+            EnsureManualPaymentDate(payment, now);
         }
 
         payments.Add(payment);
@@ -345,6 +365,71 @@ public sealed class Booking : AggregateRoot
         ModifiedDate = now;
     }
 
+    /// <summary>
+    /// The staff's payments for the booking (§7.3, §8.2): <paramref name="keptIds"/> are the existing payments that stay,
+    /// unchanged; every other existing payment is removed, and <paramref name="added"/> are new manual payments. A removed
+    /// Stripe payment's PaymentIntent id is remembered. The status never changes. Returns the payments added.
+    /// </summary>
+    public IReadOnlyList<Payment> ChangePaymentsByStaff(IReadOnlyCollection<string> keptIds, IReadOnlyList<Payment> added, DateTimeOffset now)
+    {
+        var removed = payments.Where(p => !keptIds.Contains(p.Id)).ToList();
+        if (removed.Count == 0 && added.Count == 0)
+        {
+            return [];
+        }
+
+        if (!AcceptsStaffPaymentChanges)
+        {
+            throw new BusinessRuleException(Status == BookingStatus.PendingPayment
+                ? "This booking is waiting for the customer's online payment. Its payments can't be changed."
+                : $"A {Status} booking's payments can't be changed.");
+        }
+
+        if (keptIds.Any(id => payments.All(p => p.Id != id)))
+        {
+            throw new DomainValidationException("payments", "A payment refers to a payment that isn't on this booking. Reload the booking.");
+        }
+
+        if (added.Any(p => p.Method != PaymentMethod.Manual))
+        {
+            throw new InvalidOperationException("Staff only add manual payments.");
+        }
+
+        // The date rule applies to every manual payment the booking keeps, not only the new ones.
+        foreach (var payment in payments.Where(p => keptIds.Contains(p.Id)).Concat(added).Where(p => p.Method == PaymentMethod.Manual))
+        {
+            EnsureManualPaymentDate(payment, now);
+        }
+
+        removedStripePaymentIntentIds.AddRange(removed.Select(p => p.StripePaymentIntentId).OfType<string>()
+            .Where(id => !removedStripePaymentIntentIds.Contains(id)));
+        payments = payments.Where(p => keptIds.Contains(p.Id)).Concat(added).ToList();
+        ModifiedDate = now;
+        return added;
+    }
+
+    /// <summary>
+    /// The manual payment date rule (§7.3): on or after the booking's creation date and on or before today, both as Sydney
+    /// dates. Stripe payments are dated by Stripe.
+    /// </summary>
+    public void EnsureManualPaymentDate(Payment payment, DateTimeOffset now) => EnsureManualPaymentDate(payment.Date, CreatedDate, now);
+
+    /// <summary>The manual payment date rule for a booking created at <paramref name="bookingCreated"/>, with its error on <paramref name="field"/>.</summary>
+    public static void EnsureManualPaymentDate(DateOnly date, DateTimeOffset bookingCreated, DateTimeOffset now, string field = "date")
+    {
+        var created = Sydney.DateOf(bookingCreated);
+        if (date < created)
+        {
+            throw new DomainValidationException(field,
+                $"The payment date can't be before the booking was created ({created.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}).");
+        }
+
+        if (date > Sydney.DateOf(now))
+        {
+            throw new DomainValidationException(field, "The payment date can't be in the future.");
+        }
+    }
+
     /// <summary>Applies a status chosen by staff: only Active ↔ Cancelled can be chosen.</summary>
     public void ChangeStatusByStaff(BookingStatus status, DateTimeOffset now)
     {
@@ -380,13 +465,29 @@ public sealed class Booking : AggregateRoot
 
     /// <summary>
     /// Staff edits from the booking dialog. Prices are accepted as typed; totals are derived. Holds (PendingPayment and
-    /// Expired) are read-only.
+    /// Expired) are read-only. A Superseded booking keeps its stand-by flag, and changing its boat or dates
+    /// <b>reactivates</b> it as an Active stand-by (§7.3); the caller checks the new stay is free. Returns whether it was
+    /// reactivated.
     /// </summary>
-    public void UpdateByStaff(StaffBookingDetails details, DateTimeOffset now)
+    public bool UpdateByStaff(StaffBookingDetails details, DateTimeOffset now)
     {
         EnsureEditableByStaff();
+        var wasSuperseded = Status == BookingStatus.Superseded;
+        if (wasSuperseded && !details.IsStandby)
+        {
+            throw new DomainValidationException("isStandby", "A superseded booking stays a stand-by. Change its boat or dates to reactivate it.");
+        }
+
+        var moved = details.BoatId != BoatId || details.Stay != Stay;
         Apply(details);
         ModifiedDate = now;
+        if (wasSuperseded && moved)
+        {
+            Status = BookingStatus.Active;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>PendingPayment and Expired bookings can't be edited by staff (decision 36).</summary>

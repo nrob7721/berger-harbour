@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInOutLine, dayState, requestedBoatReason, selectedLine } from './availability';
+import { availabilityWindow, checkInOutLine, dayState, requestedBoatReason, selectedLine } from './availability';
 import type { FleetAvailability, PeriodAvailability } from '@/lib/types';
 
 const settings = { minimumLeadTimeDays: 30, bookingsOpenUntil: '2027-11-30', today: '2026-08-01', contactPhone: null, contactEmail: null, hireTermsUrl: '' };
@@ -29,8 +29,19 @@ describe('per-period greying', () => {
 
   it('maps clicks on periods overlapping a blocked period to the enquiry pop-up', () => {
     expect(dayState('2026-12-15', true, 'Midweek', availability, ['b'], settings).kind).toBe('available'); // 14/12 → 18/12
-    expect(dayState('2026-12-18', true, 'Week', availability, ['b'], settings).kind).toBe('enquire');
+    expect(dayState('2026-12-18', true, 'WeekFri', availability, ['b'], settings).kind).toBe('enquire');
     expect(dayState('2026-12-16', true, 'Midweek', availability, ['b'], settings)).toEqual({ kind: 'available', period: { start: '2026-12-14', end: '2026-12-18' } });
+  });
+
+  it('makes every day clickable in both Weeks, mapping it to the week whose nights contain it', () => {
+    expect(dayState('2026-10-15', true, 'WeekFri', availability, ['b'], settings)).toEqual({ kind: 'available', period: { start: '2026-10-09', end: '2026-10-16' } });
+    expect(dayState('2026-10-17', true, 'WeekMon', availability, ['b'], settings)).toEqual({ kind: 'available', period: { start: '2026-10-12', end: '2026-10-19' } });
+  });
+
+  it('covers a week either side of the grid, so Week clicks on its first days are known', () => {
+    const grid = [['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'],
+      ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']];
+    expect(availabilityWindow(grid)).toEqual({ from: '2026-09-21', to: '2026-11-09' });
   });
 
   it('never makes adjacent-month cells clickable', () => {

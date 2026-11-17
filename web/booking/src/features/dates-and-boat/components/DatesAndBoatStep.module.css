@@ -56,12 +56,30 @@
 
 .periods {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
+/* Both Week options, side by side in one frame under a "Week" title. */
+.weekFrame {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--radius);
+}
+
+.weekTitle {
+  grid-column: 1 / -1;
+  font-weight: 700;
+  font-size: 14px;
+}
+
 @media (max-width: 520px) {
-  .periods {
+  .periods,
+  .weekFrame {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -119,8 +137,8 @@
 }
 
 .filters {
-  border-top: 1px solid var(--c-border);
-  padding-top: var(--space-4);
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -181,4 +199,40 @@
 .actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* An info line: the custom-dates message and the selected-boat message. */
+.info {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--c-brand);
+  background: var(--c-brand-tint);
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+
+.info a {
+  font-weight: 600;
+}
+
+.linkButton {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--c-brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkButton:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+
+.error {
+  margin: 0;
+  color: var(--c-danger);
+  font-weight: 600;
 }

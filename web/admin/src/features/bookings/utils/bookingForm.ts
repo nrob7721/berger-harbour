@@ -1,4 +1,4 @@
-import { addDays, dayOfWeek, formatDate, formatTime, type IsoDate } from '@shared/utils/dates';
+import { addDays, dayOfWeek, formatDate, formatTime, todayInSydney, type IsoDate } from '@shared/utils/dates';
 import { lineTotal, sum } from '@shared/utils/money';
 import { periodForClick } from '@shared/utils/periods';
 import type { Addon, Boat, PeriodType, TimelineBooking } from '@/lib/types';
@@ -10,6 +10,44 @@ export interface LineForm {
   name: string;
   quantity: number;
   unitPrice: number | null;
+}
+
+/** A payment row in the booking dialog (decision 38). Rows without an id were added in this dialog and aren't saved yet. */
+export interface PaymentForm {
+  id: string | null;
+  amount: number;
+  /** The Sydney date it was paid. */
+  date: IsoDate;
+  note: string;
+  method: 'Stripe' | 'Manual';
+}
+
+export const TIME_ERROR = 'Enter a 24-hour time, e.g. 14:30.';
+
+/**
+ * A typed 24-hour time as `HH:mm`, or null when it isn't one. Accepts `HH:mm`, `H:mm`, `HHmm` and `Hmm` from 00:00 to 23:59
+ * (`9:30` → `09:30`, `1730` → `17:30`, `930` → `09:30`).
+ */
+export function parseTime24(raw: string | null | undefined): string | null {
+  const m = /^(\d{1,2}):?(\d{2})$/.exec((raw ?? '').trim());
+  if (!m) return null;
+  const hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+export const PAYMENT_BEFORE_CREATION = (created: IsoDate) => `The payment date can't be before the booking was created (${formatDate(created)}).`;
+export const PAYMENT_IN_FUTURE = "The payment date can't be in the future.";
+
+/**
+ * The manual payment date rule (§7.3): on or after the booking's creation date and on or before today, both as Sydney dates.
+ * A new booking is created today, so today is the only valid date. Returns the error, or null.
+ */
+export function paymentDateError(date: IsoDate, createdOn: IsoDate, today: IsoDate = todayInSydney()): string | null {
+  if (date < createdOn) return PAYMENT_BEFORE_CREATION(createdOn);
+  if (date > today) return PAYMENT_IN_FUTURE;
+  return null;
 }
 
 /** The end date pre-filled when staff choose a period type; Custom keeps whatever is there. */

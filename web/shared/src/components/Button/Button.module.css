@@ -75,3 +75,21 @@
 .button[aria-busy='true'] {
   opacity: 0.85;
 }
+
+.iconOnly {
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.md.iconOnly {
+  width: 42px;
+}
+
+.sm.iconOnly {
+  width: 30px;
+}
+
+.iconOnly svg {
+  width: 18px;
+  height: 18px;
+}

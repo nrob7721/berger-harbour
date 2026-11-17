@@ -1,5 +1,5 @@
 import { addDays, formatDateWithWeekday, zoneLabel, type IsoDate } from '@shared/utils/dates';
-import { isClickableDay, periodForClick, stayOverlapsNights, staysOverlap, type OnlinePeriodType, type Stay } from '@shared/utils/periods';
+import { isClickableDay, periodForClick, stayOverlapsNights, staysOverlap, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import type { BoatSummary, BookingSettings, FleetAvailability, PeriodAvailability } from '@/lib/types';
 
 export interface Filters {
@@ -25,9 +25,9 @@ export function candidateBoats(fleet: BoatSummary[], f: Filters): BoatSummary[] 
   return fleet.filter((b) => matchesFilters(b, f));
 }
 
-/** The boats the calendar considers: the selected boat when "Show {Boat}'s availability only" is ticked, otherwise all candidates. */
-export function calendarBoats(candidates: BoatSummary[], fleet: BoatSummary[], selectedSlug: string | null, showSelectedOnly: boolean): string[] {
-  if (showSelectedOnly && selectedSlug) return fleet.some((b) => b.slug === selectedSlug) ? [selectedSlug] : [];
+/** The boats the calendar considers: the selected boat while there is one, otherwise all candidate boats. */
+export function calendarBoats(candidates: BoatSummary[], fleet: BoatSummary[], selectedSlug: string | null): string[] {
+  if (selectedSlug) return fleet.some((b) => b.slug === selectedSlug) ? [selectedSlug] : [];
   return candidates.map((b) => b.slug);
 }
 
@@ -69,7 +69,7 @@ export type DayState =
 export function dayState(
   day: IsoDate,
   inMonth: boolean,
-  type: OnlinePeriodType,
+  type: TypeOfStay,
   availability: FleetAvailability | undefined,
   boats: string[],
   settings: BookingSettings,
@@ -136,7 +136,10 @@ export function maxBerth(fleet: BoatSummary[]): number {
   return fleet.reduce((max, b) => Math.max(max, b.berth), 1);
 }
 
-/** The visible month's availability window: the calendar grid plus a week, so week stays starting on its last days are covered. */
+/**
+ * The visible month's availability window: the calendar grid with a week either side, so week stays starting on its last days,
+ * and those a click on its first days maps to (starting up to six days earlier), are covered.
+ */
 export function availabilityWindow(grid: IsoDate[][]): { from: IsoDate; to: IsoDate } {
-  return { from: grid[0][0], to: addDays(grid[grid.length - 1][6], 8) };
+  return { from: addDays(grid[0][0], -7), to: addDays(grid[grid.length - 1][6], 8) };
 }

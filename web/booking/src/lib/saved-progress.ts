@@ -1,21 +1,21 @@
-import type { OnlinePeriodType, Stay } from '@shared/utils/periods';
+import { TYPES_OF_STAY, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import type { BookingState, RoomingAcceptance, Step } from './booking-state';
 
 /**
  * Saved progress (§11.2, decision 37): the step state kept in `localStorage` so a refresh or a later visit resumes the booking.
- * It never holds the first name, last name, email or mobile (they are read back from the draft), nor the terms tick.
+ * It never holds the first name, last name, email or mobile (they are read back from the draft), nor the terms tick. Version 2
+ * (v1.4) keeps the type of stay; an older record is discarded.
  */
 export interface SavedProgress {
-  version: 1;
+  version: 2;
   requestedSlug: string | null;
-  periodType: OnlinePeriodType;
+  typeOfStay: TypeOfStay;
   period: Stay | null;
   adults: number;
   children: number;
   spa: boolean;
   pets: boolean;
   selectedSlug: string | null;
-  showSelectedOnly: boolean;
   rooming: RoomingAcceptance | null;
   addons: Record<string, number>;
   draftId: string | null;
@@ -27,12 +27,11 @@ export interface SavedProgress {
 export const SAVED_PROGRESS_KEY = 'bh-booking-progress';
 
 const STEPS: readonly Step[] = ['dates', 'details', 'addons', 'summary', 'payment', 'complete'];
-const PERIOD_TYPES: readonly OnlinePeriodType[] = ['Midweek', 'Weekend', 'Week'];
 
 export function toSavedProgress(state: BookingState): SavedProgress {
   return {
-    version: 1, requestedSlug: state.requestedSlug, periodType: state.periodType, period: state.period, adults: state.adults,
-    children: state.children, spa: state.spa, pets: state.pets, selectedSlug: state.selectedSlug, showSelectedOnly: state.showSelectedOnly,
+    version: 2, requestedSlug: state.requestedSlug, typeOfStay: state.typeOfStay, period: state.period, adults: state.adults,
+    children: state.children, spa: state.spa, pets: state.pets, selectedSlug: state.selectedSlug,
     rooming: state.rooming, addons: state.addons, draftId: state.draftId, furthestStep: state.furthestStep,
     hold: state.step === 'payment' && state.hold ? { bookingId: state.hold.bookingId, sessionId: state.hold.sessionId } : null,
   };
@@ -49,12 +48,11 @@ function isSavedProgress(v: unknown): v is SavedProgress {
   const period = p.period as Record<string, unknown> | null;
   const hold = p.hold as Record<string, unknown> | null;
   const rooming = p.rooming as Record<string, unknown> | null;
-  return p.version === 1
+  return p.version === 2
     && isNullableText(p.requestedSlug) && isNullableText(p.selectedSlug) && isNullableText(p.draftId)
-    && PERIOD_TYPES.includes(p.periodType as OnlinePeriodType)
+    && TYPES_OF_STAY.includes(p.typeOfStay as TypeOfStay)
     && (period === null || (typeof period === 'object' && isText(period.start) && isText(period.end)))
     && isCount(p.adults) && isCount(p.children) && typeof p.spa === 'boolean' && typeof p.pets === 'boolean'
-    && typeof p.showSelectedOnly === 'boolean'
     && (rooming === null || (typeof rooming === 'object' && isText(rooming.slug) && isCount(rooming.adults) && isCount(rooming.children)
       && typeof rooming.text === 'string'))
     && typeof p.addons === 'object' && p.addons !== null && Object.values(p.addons).every(isCount)

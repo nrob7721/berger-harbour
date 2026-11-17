@@ -4,18 +4,18 @@ import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
 import { addDays, addMonths, monthGrid, startOfMonth, type IsoDate } from '@shared/utils/dates';
 import { formatMoney } from '@shared/utils/money';
-import { PERIOD_LABELS, type OnlinePeriodType, type Stay } from '@shared/utils/periods';
+import { TYPE_OF_STAY_LABELS, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import { Notice } from '@/components/Notice/Notice';
 import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
 import { keys } from '@/lib/api';
-import { useBooking } from '@/lib/booking-state';
+import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
 import type { BoatDetails, BoatSummary, BookingSettings } from '@/lib/types';
 import { useFleetAvailability } from '../api/queries';
 import {
   availabilityWindow, blockedPeriodFor, calendarBoats, candidateBoats, checkInOutLine, maxBerth, requestedBoatReason,
   selectedBoatEligible, selectedLine, type CardBoat,
 } from '../utils/availability';
-import { roomingWarningText } from '../utils/rooming';
+import { CHOOSE_DATES_AND_BOAT, datesContinue } from '../utils/continue';
 import { BoatCards } from './BoatCards';
 import { Calendar } from './Calendar';
 import styles from './DatesAndBoatStep.module.css';
@@ -27,7 +27,9 @@ export interface DatesAndBoatStepProps {
   onContinue: () => void;
 }
 
-const PERIOD_TYPES: OnlinePeriodType[] = ['Midweek', 'Weekend', 'Week'];
+/** The type of stay radios: Mid-week and Weekend, then both Weeks inside a Week frame (§11.2). */
+const SINGLE_TYPES: TypeOfStay[] = ['Midweek', 'Weekend'];
+const WEEK_TYPES: TypeOfStay[] = ['WeekFri', 'WeekMon'];
 
 export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }: DatesAndBoatStepProps) {
   const { state, dispatch } = useBooking();
@@ -38,6 +40,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const [month, setMonth] = useState<IsoDate>(startOfMonth(state.period?.start ?? (earliest > settings.today ? earliest : settings.today)));
   const [enquire, setEnquire] = useState<string | null>(null);
   const [rooming, setRooming] = useState<string | null>(null);
+  const [continueError, setContinueError] = useState<string | null>(null);
 
   // Coming back after the Payment step (or a 409) fetches availability again.
   useEffect(() => {
@@ -50,11 +53,11 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const grid = monthGrid(month);
   const range = availabilityWindow(grid);
   const availability = useFleetAvailability(range.from, range.to);
-  const periodResult = usePeriodAvailability(state.periodType, state.period);
+  const periodResult = usePeriodAvailability(periodTypeOfState(state), state.period);
   const selectedDetails = useBoatDetails(state.selectedSlug);
 
   const candidates = candidateBoats(fleet, filters);
-  const boatsForCalendar = calendarBoats(candidates, fleet, state.selectedSlug, state.showSelectedOnly);
+  const boatsForCalendar = calendarBoats(candidates, fleet, state.selectedSlug);
 
   // Keep the selection valid: a boat that no longer fits the period, guests or features is deselected (the period is kept).
   useEffect(() => {
@@ -92,16 +95,21 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   };
 
   const continueClicked = () => {
-    const details = selectedDetails.data;
-    if (!details || !state.period) return;
-    const total = state.adults + state.children;
-    const accepted = state.rooming && state.rooming.slug === details.slug && state.rooming.adults === state.adults && state.rooming.children === state.children;
-    if (total > details.adultBeds + details.kidsBeds && !accepted) {
-      setRooming(roomingWarningText(details, total));
+    const check = datesContinue(state, selectedDetails.data);
+    if (check.kind === 'ok') {
+      setContinueError(null);
+      onContinue();
       return;
     }
-    onContinue();
+    dispatch({ type: 'jumpCancelled' });
+    if (check.kind === 'rooming') setRooming(check.text);
+    else setContinueError(CHOOSE_DATES_AND_BOAT);
   };
+
+  // A later progress step was clicked: run this step's Continue first (decision 41). It waits for the selected boat's details.
+  useEffect(() => {
+    if (state.jumpTarget && isAfter(state.jumpTarget, 'dates') && !(state.selectedSlug && selectedDetails.isLoading)) continueClicked();
+  }, [state.jumpTarget, selectedDetails.isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const acceptRooming = () => {
     if (!rooming || !state.selectedSlug) return;
@@ -110,7 +118,17 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
     onContinue();
   };
 
-  const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : ''].filter(Boolean).join(' ');
+  const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : 'No boat selected.']
+    .filter(Boolean).join(' ');
+  const deselect = () => dispatch({ type: 'selectBoat', slug: null });
+  const typeRadio = (t: TypeOfStay) => (
+    <label key={t} className={`${styles.period} ${state.typeOfStay === t ? styles.periodChecked : ''}`}>
+      <input type="radio" name="typeOfStay" value={t} checked={state.typeOfStay === t} onChange={() => dispatch({ type: 'typeOfStay', typeOfStay: t })} />
+      <span>
+        <strong>{TYPE_OF_STAY_LABELS[t].name}</strong> <span className={styles.muted}>({TYPE_OF_STAY_LABELS[t].days})</span>
+      </span>
+    </label>
+  );
 
   return (
     <section className={styles.step} aria-labelledby="dates-heading">
@@ -118,51 +136,6 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
       {state.notice && <Notice tone="warning">{state.notice}</Notice>}
       <div className={styles.columns}>
         <div className={styles.left}>
-          <fieldset className={styles.fieldset}>
-            <legend className={styles.label}>Type of stay</legend>
-            <div className={styles.periods}>
-              {PERIOD_TYPES.map((t) => (
-                <label key={t} className={`${styles.period} ${state.periodType === t ? styles.periodChecked : ''}`}>
-                  <input type="radio" name="periodType" value={t} checked={state.periodType === t} onChange={() => dispatch({ type: 'periodType', periodType: t })} />
-                  <span>
-                    <strong>{PERIOD_LABELS[t].name}</strong> <span className={styles.muted}>({PERIOD_LABELS[t].days})</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <p className={styles.times} data-testid="check-in-line">{checkInOutLine(state.period, month)}</p>
-
-          <Calendar
-            month={month}
-            canGoBack={month > startOfMonth(settings.today)}
-            canGoForward={month < startOfMonth(settings.bookingsOpenUntil)}
-            onMonthChange={(d) => setMonth(addMonths(month, d))}
-            periodType={state.periodType}
-            period={state.period}
-            availability={availability.data}
-            loading={availability.isLoading}
-            boats={boatsForCalendar}
-            settings={settings}
-            onSelect={selectPeriod}
-            onEnquire={showEnquire}
-          />
-          {availability.isError && <Notice tone="error">We couldn't load availability. Please try again.</Notice>}
-
-          {state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
-          <div className="visually-hidden" aria-live="polite" data-testid="live-region">{announce}</div>
-
-          <label className={styles.check}>
-            <input
-              type="checkbox"
-              checked={state.showSelectedOnly}
-              disabled={!state.selectedSlug}
-              onChange={(e) => dispatch({ type: 'showSelectedOnly', value: e.target.checked })}
-            />
-            {selectedBoat ? `Show ${selectedBoat.name}'s availability only` : "Show the selected boat's availability only"}
-          </label>
-
           <div className={styles.filters}>
             <h3 className={styles.subheading}>Guests and features</h3>
             <div className={styles.guestRow}>
@@ -189,6 +162,50 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             </div>
           </div>
 
+          <fieldset className={styles.fieldset}>
+            <legend className={styles.label}>Type of stay</legend>
+            <div className={styles.periods}>
+              {SINGLE_TYPES.map(typeRadio)}
+              <div className={styles.weekFrame} role="group" aria-label="Week">
+                <span className={styles.weekTitle}>Week</span>
+                {WEEK_TYPES.map(typeRadio)}
+              </div>
+            </div>
+          </fieldset>
+          {settings.contactPhone && (
+            <p className={styles.info} data-testid="custom-dates">
+              For custom date periods, call <a href={`tel:${settings.contactPhone.replace(/\s+/g, '')}`}>{settings.contactPhone}</a> to arrange.
+            </p>
+          )}
+
+          <p className={styles.times} data-testid="check-in-line">{checkInOutLine(state.period, month)}</p>
+
+          <Calendar
+            month={month}
+            canGoBack={month > startOfMonth(settings.today)}
+            canGoForward={month < startOfMonth(settings.bookingsOpenUntil)}
+            onMonthChange={(d) => setMonth(addMonths(month, d))}
+            typeOfStay={state.typeOfStay}
+            period={state.period}
+            availability={availability.data}
+            loading={availability.isLoading}
+            boats={boatsForCalendar}
+            settings={settings}
+            onSelect={selectPeriod}
+            onEnquire={showEnquire}
+          />
+          {availability.isError && <Notice tone="error">We couldn't load availability. Please try again.</Notice>}
+
+          {state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
+          <div className="visually-hidden" aria-live="polite" data-testid="live-region">{announce}</div>
+
+          {selectedBoat && (
+            <p className={styles.info} data-testid="selected-boat-message">
+              Currently showing availability for {selectedBoat.name}.{' '}
+              <button type="button" className={styles.linkButton} onClick={deselect}>Click here</button> to see all availability.
+            </p>
+          )}
+
           <div className={styles.rate} data-testid="base-hire-rate">
             <div>
               <div className={styles.rateLabel}>Base hire rate</div>
@@ -199,6 +216,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             </div>
           </div>
 
+          {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
           <div className={styles.actions}>
             <Button variant="primary" onClick={continueClicked} disabled={!state.period || !state.selectedSlug || !selectedDetails.data}>
               Continue
@@ -215,7 +233,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             emptyMessage={emptyMessage}
             selectedSlug={state.selectedSlug}
             prices={state.period ? prices : {}}
-            onSelect={(slug) => dispatch({ type: 'selectBoat', slug })}
+            onToggle={(slug) => dispatch({ type: 'selectBoat', slug: slug === state.selectedSlug ? null : slug })}
           />
         </div>
       </div>

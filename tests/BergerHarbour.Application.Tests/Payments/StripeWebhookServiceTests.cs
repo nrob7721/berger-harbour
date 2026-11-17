@@ -159,7 +159,7 @@ public class StripeWebhookServiceTests
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
         var expired = await h.Staff.GetAsync(created.BookingId);
-        await h.Staff.AddManualPaymentAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version));
+        await h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version));
         var sent = h.Emails.Sent.Count;
 
         await h.PayDepositAsync(created.BookingId);

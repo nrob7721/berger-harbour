@@ -22,11 +22,11 @@ public sealed class BoatService
         this.clock = clock;
     }
 
-    /// <summary>Every boat, berth desc then name.</summary>
+    /// <summary>Every boat, in boat order (§7.3).</summary>
     public async Task<IReadOnlyList<AdminBoat>> ListAsync(CancellationToken ct = default)
     {
         var allSeasons = await seasons.ListAsync(ct);
-        return Boat.InListOrder(await boats.ListAsync(ct)).Select(b => ToDto(b, allSeasons)).ToList();
+        return Boat.InListOrder(await boats.ListAsync(ct), allSeasons).Select(b => ToDto(b, allSeasons)).ToList();
     }
 
     public async Task<AdminBoat> GetAsync(string id, CancellationToken ct = default) =>

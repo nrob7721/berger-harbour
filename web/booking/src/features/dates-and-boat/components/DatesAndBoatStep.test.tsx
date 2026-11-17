@@ -24,10 +24,9 @@ async function goToOctober(user = userEvent.setup()) {
 const day = (iso: string) => screen.getByTestId(`day-${iso}`);
 
 describe('Dates & boat: calendar', () => {
-  it('selects the whole period and highlights non-clickable inner days with the selection colour', async () => {
-    renderStep({ periodType: 'Week' });
+  it('selects the whole period and highlights its inner days with the selection colour', async () => {
+    renderStep({ typeOfStay: 'WeekMon' });
     const user = await goToOctober();
-    expect(day('2026-10-13')).toHaveAttribute('aria-disabled', 'true'); // Tuesday isn't clickable in Week mode
     await user.click(day('2026-10-12'));
     expect(currentState().period).toEqual({ start: '2026-10-12', end: '2026-10-19' });
     expect(day('2026-10-12')).toHaveClass('in');
@@ -41,7 +40,7 @@ describe('Dates & boat: calendar', () => {
   });
 
   it('shows adjacent-month days muted, not clickable, and with the muted selection colour', async () => {
-    renderStep({ periodType: 'Week' });
+    renderStep({ typeOfStay: 'WeekMon' });
     const user = await goToOctober();
     const leading = day('2026-09-28');
     expect(leading).toHaveClass('adjacent');
@@ -63,6 +62,27 @@ describe('Dates & boat: calendar', () => {
     expect(currentState().period).toEqual({ start: '2026-10-09', end: '2026-10-12' });
   });
 
+  it('makes every day clickable in Week (Fri–Fri), selecting the week whose nights contain it', async () => {
+    renderStep({ typeOfStay: 'WeekFri' });
+    const user = await goToOctober();
+    for (const d of ['2026-10-13', '2026-10-14', '2026-10-17', '2026-10-18']) expect(day(d)).not.toHaveAttribute('aria-disabled');
+    await user.click(day('2026-10-15')); // Thursday → Fri 09/10 → Fri 16/10, starting before the clicked day
+    expect(currentState().period).toEqual({ start: '2026-10-09', end: '2026-10-16' });
+    await user.click(day('2026-10-16')); // a Friday starts on that Friday
+    expect(currentState().period).toEqual({ start: '2026-10-16', end: '2026-10-23' });
+  });
+
+  it('makes every day clickable in Week (Mon–Mon), and switching between the two Weeks clears the period', async () => {
+    renderStep({ typeOfStay: 'WeekMon', selectedSlug: 'pacific-blue' });
+    const user = await goToOctober();
+    await user.click(day('2026-10-17')); // Saturday → Mon 12/10 → Mon 19/10
+    expect(currentState().period).toEqual({ start: '2026-10-12', end: '2026-10-19' });
+    await user.click(screen.getByRole('radio', { name: 'Week (Fri–Fri)' }));
+    expect(currentState().period).toBeNull();
+    expect(currentState().typeOfStay).toBe('WeekFri');
+    expect(currentState().selectedSlug).toBe('pacific-blue');
+  });
+
   it('shows the enquiry pop-up for periods overlapping a blocked period', async () => {
     apiState.enquireOnly = [{ name: 'Christmas / New Year 2026–27', firstNight: '2026-12-20', lastNight: '2027-01-05' }];
     renderStep();
@@ -72,8 +92,8 @@ describe('Dates & boat: calendar', () => {
     await waitFor(() => expect(day('2026-12-22')).toHaveClass('enquire'));
     await user.click(day('2026-12-18')); // Mon 14 → Fri 18 is fine
     expect(currentState().period).toEqual({ start: '2026-12-14', end: '2026-12-18' });
-    await user.click(screen.getByRole('radio', { name: /Mon–Mon/ }));
-    await user.click(day('2026-12-18')); // Fri 18 → Fri 25 overlaps Christmas
+    await user.click(screen.getByRole('radio', { name: 'Week (Mon–Mon)' }));
+    await user.click(day('2026-12-18')); // Fri 18 → Mon 14 → Mon 21 overlaps Christmas
     expect(await screen.findByText('Bookings over Christmas / New Year 2026–27 must be made by phone or email: 02 4455 6677 / info@berger.test.')).toBeVisible();
     expect(currentState().period).toBeNull();
   });
@@ -87,14 +107,25 @@ describe('Dates & boat: calendar', () => {
   });
 });
 
-describe('Dates & boat: calendar boats and the checkbox', () => {
-  it('greys a period when no candidate is free (unticked) or the selected boat is busy (ticked)', async () => {
+describe('Dates & boat: calendar boats and the selected boat', () => {
+  it('shows only the selected boat\'s availability, and every candidate\'s once "Click here" deselects it', async () => {
     apiState.unavailable = { kalinda: [{ start: '2026-10-12', end: '2026-10-16' }] };
-    renderStep({ selectedSlug: 'kalinda', showSelectedOnly: true }, details('kalinda'));
+    renderStep({ selectedSlug: 'kalinda' }, details('kalinda'));
     const user = await goToOctober();
     expect(day('2026-10-13')).toHaveAttribute('aria-disabled', 'true');
-    await user.click(screen.getByRole('checkbox', { name: "Show Kalinda's availability only" }));
+    const message = screen.getByTestId('selected-boat-message');
+    expect(message).toHaveTextContent('Currently showing availability for Kalinda. Click here to see all availability.');
+    await user.click(within(message).getByRole('button', { name: 'Click here' }));
+    expect(currentState().selectedSlug).toBeNull();
     expect(day('2026-10-13')).not.toHaveAttribute('aria-disabled');
+    expect(screen.queryByTestId('selected-boat-message')).not.toBeInTheDocument();
+  });
+
+  it('"Click here" keeps the period', async () => {
+    renderStep({ selectedSlug: 'kalinda', period: { start: '2026-10-12', end: '2026-10-16' } }, details('kalinda'));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Click here' }));
+    expect(currentState().selectedSlug).toBeNull();
+    expect(currentState().period).toEqual({ start: '2026-10-12', end: '2026-10-16' });
   });
 
   it('applies guest, Spa and Pet filters to the candidates the calendar uses', async () => {
@@ -106,35 +137,28 @@ describe('Dates & boat: calendar boats and the checkbox', () => {
     expect(day('2026-10-13')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('is unticked and disabled without a selected boat, enabled when one is selected, and unchanged by selecting another card', async () => {
+  it('hides the selected-boat message while no boat is selected, and follows the card selected', async () => {
     renderStep();
-    const box = screen.getByRole('checkbox', { name: "Show the selected boat's availability only" });
-    expect(box).toBeDisabled();
-    expect(box).not.toBeChecked();
+    expect(screen.queryByTestId('selected-boat-message')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /availability only/ })).not.toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByTestId('boat-kalinda'));
-    const enabled = screen.getByRole('checkbox', { name: "Show Kalinda's availability only" });
-    expect(enabled).toBeEnabled();
-    expect(enabled).not.toBeChecked();
-    await user.click(enabled);
+    expect(screen.getByTestId('selected-boat-message')).toHaveTextContent('Currently showing availability for Kalinda.');
     await user.click(screen.getByTestId('boat-misty-blue'));
-    expect(screen.getByRole('checkbox', { name: "Show Misty Blue's availability only" })).toBeChecked();
+    expect(screen.getByTestId('selected-boat-message')).toHaveTextContent('Currently showing availability for Misty Blue.');
   });
 
-  it('starts ticked for an active requested boat', () => {
-    renderStep({ selectedSlug: 'kalinda', showSelectedOnly: true, requestedSlug: 'kalinda' }, details('kalinda'));
-    expect(screen.getByRole('checkbox', { name: "Show Kalinda's availability only" })).toBeChecked();
-    expect(screen.getByTestId('boat-kalinda')).toHaveAttribute('aria-checked', 'true');
+  it('starts with an active requested boat selected, showing its availability only', () => {
+    renderStep({ selectedSlug: 'kalinda', requestedSlug: 'kalinda' }, details('kalinda'));
+    expect(screen.getByTestId('selected-boat-message')).toHaveTextContent('Kalinda');
+    expect(screen.getByTestId('boat-kalinda')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('deselects the boat when the period makes it ineligible, keeping the period and unticking the checkbox', async () => {
+  it('deselects the selected boat when the period makes it ineligible, keeping the period', async () => {
     apiState.unavailable = { kalinda: [{ start: '2026-10-12', end: '2026-10-16' }] };
-    renderStep({ selectedSlug: 'kalinda', showSelectedOnly: false }, details('kalinda'));
-    const user = await goToOctober();
-    await user.click(day('2026-10-14'));
+    renderStep({ selectedSlug: 'kalinda', period: { start: '2026-10-12', end: '2026-10-16' } }, details('kalinda'));
     await waitFor(() => expect(currentState().selectedSlug).toBeNull());
     expect(currentState().period).toEqual({ start: '2026-10-12', end: '2026-10-16' });
-    expect(currentState().showSelectedOnly).toBe(false);
   });
 
   it('deselects the boat when guests or features make it ineligible, without clearing the period', async () => {
@@ -143,6 +167,30 @@ describe('Dates & boat: calendar boats and the checkbox', () => {
     await user.selectOptions(screen.getByLabelText('Adults'), '3');
     await waitFor(() => expect(currentState().selectedSlug).toBeNull());
     expect(currentState().period).not.toBeNull();
+  });
+});
+
+describe('Dates & boat: layout', () => {
+  it('puts the filters above the type of stay, with both Weeks in a Week frame', () => {
+    renderStep();
+    const adults = screen.getByLabelText('Adults');
+    const midweek = screen.getByRole('radio', { name: 'Mid-week (Mon–Fri)' });
+    expect(adults.compareDocumentPosition(midweek) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const week = screen.getByRole('group', { name: 'Week' });
+    expect(within(week).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['WeekFri', 'WeekMon']);
+    expect(midweek).toBeChecked();
+  });
+
+  it('shows the custom-dates message with the contact phone as a tel: link', () => {
+    renderStep();
+    const message = screen.getByTestId('custom-dates');
+    expect(message).toHaveTextContent('For custom date periods, call 02 4455 6677 to arrange.');
+    expect(within(message).getByRole('link', { name: '02 4455 6677' })).toHaveAttribute('href', 'tel:0244556677');
+  });
+
+  it('hides the custom-dates message without a contact phone', () => {
+    renderWithBooking(<DatesAndBoatStep fleet={boats} settings={{ ...settings, contactPhone: null }} requestedBoat={null} onContinue={vi.fn()} />);
+    expect(screen.queryByTestId('custom-dates')).not.toBeInTheDocument();
   });
 });
 
@@ -164,7 +212,7 @@ describe('Dates & boat: filters', () => {
 describe('Dates & boat: boat cards', () => {
   it('always lists the requested boat first, then the others under a separator', () => {
     renderStep({}, details('misty-blue'));
-    const cards = screen.getAllByRole('radio').filter((c) => c.dataset.slug);
+    const cards = screen.getAllByRole('button').filter((c) => c.dataset.slug);
     expect(cards.map((c) => c.dataset.slug)).toEqual(['misty-blue', 'kalinda', 'pacific-blue', 'runaway-bear']);
     expect(screen.getByText('Other boats available')).toBeInTheDocument();
     expect(cards[0]).toHaveTextContent('Misty Blue9 berthPet friendly');
@@ -206,15 +254,30 @@ describe('Dates & boat: boat cards', () => {
     expect(await screen.findByText('No boats match your filters for these dates.')).toBeInTheDocument();
   });
 
-  it('selects cards with the keyboard and announces the boat', async () => {
+  it('are toggle buttons with at most one pressed, and clicking the selected card again deselects it', async () => {
+    renderStep();
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('boat-kalinda'));
+    expect(screen.getByTestId('boat-kalinda')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByTestId('boat-misty-blue'));
+    expect(screen.getAllByRole('button', { pressed: true })).toEqual([screen.getByTestId('boat-misty-blue')]);
+    await user.click(screen.getByTestId('boat-misty-blue'));
+    expect(currentState().selectedSlug).toBeNull();
+    expect(screen.queryAllByRole('button', { pressed: true })).toHaveLength(0);
+    expect(screen.getByTestId('live-region')).toHaveTextContent('No boat selected.');
+  });
+
+  it('are operated with Tab and Enter/Space, and announce the boat', async () => {
     renderStep();
     const user = userEvent.setup();
     screen.getByTestId('boat-kalinda').focus();
-    await user.keyboard('{ArrowDown}');
+    await user.tab();
     expect(screen.getByTestId('boat-pacific-blue')).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(currentState().selectedSlug).toBe('pacific-blue');
     expect(screen.getByTestId('live-region')).toHaveTextContent('Selected boat: Pacific Blue.');
+    await user.keyboard(' ');
+    expect(currentState().selectedSlug).toBeNull();
   });
 });
 

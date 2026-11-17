@@ -8,7 +8,7 @@ import { formatMoney } from '@shared/utils/money';
 import { PERIOD_LABELS } from '@shared/utils/periods';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { api } from '@/lib/api';
-import { useBooking } from '@/lib/booking-state';
+import { periodTypeOfState, useBooking } from '@/lib/booking-state';
 import type { Quote } from '@/lib/types';
 import { checkInRow, checkOutRow } from '../utils/rows';
 import styles from './SummaryStep.module.css';
@@ -24,9 +24,9 @@ export function SummaryStep({ hireTermsUrl, renderPay }: SummaryStepProps) {
   const [terms, setTerms] = useState(false);
   const addons = Object.entries(state.addons).map(([addonId, quantity]) => ({ addonId, quantity }));
   const quote = useQuery({
-    queryKey: ['quote', state.selectedSlug, state.periodType, state.period?.start, state.adults, state.children, JSON.stringify(addons)],
+    queryKey: ['quote', state.selectedSlug, state.typeOfStay, state.period?.start, state.adults, state.children, JSON.stringify(addons)],
     queryFn: () => api.quote(state.selectedSlug!, {
-      periodType: state.periodType, startDate: state.period!.start, numberOfAdults: state.adults, numberOfChildren: state.children, addons,
+      periodType: periodTypeOfState(state), startDate: state.period!.start, numberOfAdults: state.adults, numberOfChildren: state.children, addons,
     }),
     staleTime: 0,
     retry: false,

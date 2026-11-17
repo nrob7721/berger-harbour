@@ -152,7 +152,10 @@ public class StaffBookingServiceTests
     public async Task Manual_payments_and_payment_links()
     {
         var saved = await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19"));
-        var paid = await h.Staff.AddManualPaymentAsync(saved.Booking.Id, new ManualPaymentRequest(1000, D("2026-11-09"), "Bank transfer", saved.Booking.Version));
+        var paid = (await h.Staff.UpdateAsync(saved.Booking.Id, UpdateRequest(saved.Booking, r => r with
+        {
+            Payments = [NewPayment(1000, "2026-11-09", "Bank transfer")],
+        }))).Booking;
         Assert.Equal(PaymentStatus.DepositPaid, paid.PaymentStatus);
         Assert.Equal(1, h.CountEmails("Payment received"));
         await h.Staff.SendPaymentLinkAsync(saved.Booking.Id);
@@ -210,7 +213,7 @@ public class StaffBookingServiceTests
         Assert.Equal(h.Booking(created.BookingId).HoldExpiresAt, detail.HoldExpiresAt);
         await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.UpdateAsync(detail.Id, UpdateRequest(detail)));
         await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            h.Staff.AddManualPaymentAsync(detail.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, detail.Version)));
+            h.Staff.ConfirmAsync(detail.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, detail.Version)));
         await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.SendPaymentLinkAsync(detail.Id));
 
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
@@ -228,7 +231,7 @@ public class StaffBookingServiceTests
         var expired = await h.Staff.GetAsync(created.BookingId);
         h.Emails.Sent.Clear();
 
-        var confirmed = await h.Staff.AddManualPaymentAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-12"), "Phoned in", expired.Version));
+        var confirmed = await h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-12"), "Phoned in", expired.Version));
 
         Assert.Equal(BookingStatus.Active, confirmed.Status);
         Assert.Equal("SMITH-2703080", confirmed.Reference);
@@ -252,7 +255,7 @@ public class StaffBookingServiceTests
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
         var expired = await h.Staff.GetAsync(created.BookingId);
         var e = await Assert.ThrowsAsync<DomainValidationException>(() =>
-            h.Staff.AddManualPaymentAsync(expired.Id, new ManualPaymentRequest(999.99m, D("2026-11-09"), null, expired.Version)));
+            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(999.99m, D("2026-11-09"), null, expired.Version)));
         Assert.Equal("To confirm this booking, record at least $1,000.00.", e.Errors.ByField["amount"][0]);
         var stored = h.Booking(created.BookingId);
         Assert.Empty(stored.Payments);
@@ -268,7 +271,7 @@ public class StaffBookingServiceTests
         var other = await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12", email: "other@example.com", lastName: "Jones"));
         var expired = await h.Staff.GetAsync(created.BookingId);
         var e = await Assert.ThrowsAsync<ConflictException>(() =>
-            h.Staff.AddManualPaymentAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version)));
+            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version)));
         Assert.Equal([other.Booking.Reference!], e.ConflictingReferences);
         var stored = h.Booking(created.BookingId);
         Assert.Empty(stored.Payments);
@@ -286,7 +289,19 @@ public class StaffBookingServiceTests
         var paidButExpired = await h.Staff.GetAsync(created.BookingId);
         Assert.Equal(BookingStatus.Expired, paidButExpired.Status);
         await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            h.Staff.AddManualPaymentAsync(paidButExpired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, paidButExpired.Version)));
+            h.Staff.ConfirmAsync(paidButExpired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, paidButExpired.Version)));
         Assert.Single(h.Booking(created.BookingId).Payments);
+    }
+
+    [Fact]
+    public async Task A_secondary_mobile_equal_to_the_mobile_is_rejected_on_create_and_update()
+    {
+        var create = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19") with { Mobile = "0412 000 111", SecondaryMobile = "+61412000111" }));
+        Assert.Equal("The secondary mobile can't be the same as the mobile.", create.Errors.ByField["secondaryMobile"][0]);
+        var saved = await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19"));
+        var update = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            h.Staff.UpdateAsync(saved.Booking.Id, UpdateRequest(saved.Booking, r => r with { SecondaryMobile = saved.Booking.Customer!.Mobile })));
+        Assert.True(update.Errors.Has("secondaryMobile"));
     }
 }

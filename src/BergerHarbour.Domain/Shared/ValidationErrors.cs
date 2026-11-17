@@ -46,6 +46,19 @@ public sealed class ValidationErrors
     }
 
     /// <summary>Runs <paramref name="action"/> and records its field error instead of throwing.</summary>
+    public void Capture(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (DomainValidationException e)
+        {
+            AddRange(e.Errors);
+        }
+    }
+
+    /// <summary>Runs <paramref name="action"/> and records its field error instead of throwing; returns default on error.</summary>
     public T? Capture<T>(Func<T> action)
     {
         try

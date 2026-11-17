@@ -29,6 +29,7 @@ public sealed record BookingState(
     PaymentScheduleType PaymentSchedule,
     IReadOnlyList<AddonLine> AddonLines,
     IReadOnlyList<Payment> Payments,
+    IReadOnlyList<string> RemovedStripePaymentIntentIds,
     DateTimeOffset? HoldExpiresAt,
     string? StripeCheckoutSessionId,
     RoomingWarningAcceptance? RoomingWarningAcceptance,

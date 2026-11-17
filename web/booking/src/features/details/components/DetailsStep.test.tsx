@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { apiState, server } from '@/testing/server';
 import { currentState, renderWithBooking } from '@/testing/render';
-import { DetailsStep } from './DetailsStep';
+import { DetailsStepInApp } from '@/testing/steps';
 
 const base = { period: { start: '2026-10-12', end: '2026-10-16' }, selectedSlug: 'pacific-blue', adults: 2, children: 0 } as const;
 
@@ -17,7 +17,7 @@ async function fill(user: ReturnType<typeof userEvent.setup>, mobile = '0412 345
 
 describe('Your details', () => {
   it('rejects a landline with the mobile message', async () => {
-    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null });
     const user = userEvent.setup();
     await fill(user, '02 9876 5432');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
@@ -35,7 +35,7 @@ describe('Your details', () => {
       await gate;
       return HttpResponse.json({ draftId: 'draft-1' });
     }));
-    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null });
     const user = userEvent.setup();
     await fill(user);
     const button = screen.getByRole('button', { name: 'Continue' });
@@ -61,7 +61,7 @@ describe('Your details', () => {
       await delay(10);
       return HttpResponse.json({ title: 'Enter a valid email address.', status: 400, errors: { email: ['That email looks wrong.'] } }, { status: 400 });
     }));
-    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null });
     const user = userEvent.setup();
     await fill(user);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
@@ -72,7 +72,7 @@ describe('Your details', () => {
   });
 
   it('validates each field when it loses focus and clears the error once fixed', async () => {
-    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null });
     const user = userEvent.setup();
     const email = screen.getByLabelText('Email');
     await user.type(email, 'jane@gmail');
@@ -93,7 +93,7 @@ describe('Your details', () => {
   });
 
   it('re-validates an entered mobile when the country changes', async () => {
-    renderWithBooking(<DetailsStep />, { ...base, draftId: null });
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null });
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Mobile'), '0412 345 678');
     await user.click(screen.getByRole('button', { name: /Country code/ }));
@@ -103,7 +103,7 @@ describe('Your details', () => {
   });
 
   it('pressing Continue with invalid fields focuses the first one', async () => {
-    renderWithBooking(<DetailsStep />, {
+    renderWithBooking(<DetailsStepInApp />, {
       ...base, draftId: 'draft-9', details: { firstName: 'Jane', lastName: '', email: 'jane@gmail', mobile: '+61412345678' },
     });
     const user = userEvent.setup();
@@ -117,7 +117,7 @@ describe('Your details', () => {
   });
 
   it('updates an existing draft instead of creating one', async () => {
-    renderWithBooking(<DetailsStep />, {
+    renderWithBooking(<DetailsStepInApp />, {
       ...base, draftId: 'draft-9', details: { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678' },
     });
     const user = userEvent.setup();

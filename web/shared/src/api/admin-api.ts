@@ -834,7 +834,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/bookings/{id}/payments": {
+    "/api/bookings/{id}/confirmation": {
         parameters: {
             query?: never;
             header?: never;
@@ -1639,6 +1639,7 @@ export interface components {
             secondaryMobile: null | string;
             address: null | components["schemas"]["AddressDto"];
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
+            payments: null | components["schemas"]["StaffPaymentInput"][];
         };
         CustomerBookingItem: {
             id: string;
@@ -1807,6 +1808,14 @@ export interface components {
             /** Format: double */
             unitPrice: null | number;
         };
+        StaffPaymentInput: {
+            id: null | string;
+            /** Format: double */
+            amount: number;
+            /** Format: date */
+            date: string;
+            note: null | string;
+        };
         TimelineBlockedPeriod: {
             id: string;
             name: string;
@@ -1887,6 +1896,7 @@ export interface components {
             secondaryMobile: null | string;
             address: null | components["schemas"]["AddressDto"];
             addonLines: null | components["schemas"]["StaffAddonLineInput"][];
+            payments: components["schemas"]["StaffPaymentInput"][];
             /** Format: int32 */
             version: number;
         };

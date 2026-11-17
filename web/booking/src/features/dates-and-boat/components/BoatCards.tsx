@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import { formatMoney } from '@shared/utils/money';
 import { BoatImage } from '@/components/BoatImage/BoatImage';
 import type { CardBoat } from '../utils/availability';
@@ -12,26 +12,19 @@ export interface BoatCardsProps {
   emptyMessage: string | null;
   selectedSlug: string | null;
   prices: Record<string, number | null | undefined>;
-  onSelect: (slug: string) => void;
+  /** A card was clicked: it selects that boat, or deselects it when it was the selected one. */
+  onToggle: (slug: string) => void;
 }
 
-/** A single-select radio group of boat cards. The requested boat is always first. */
-export function BoatCards({ requested, requestedReason, others, emptyMessage, selectedSlug, prices, onSelect }: BoatCardsProps) {
-  const group = useRef<HTMLDivElement>(null);
-  const cards = [...(requested ? [{ boat: requested, reason: requestedReason }] : []), ...others.map((boat) => ({ boat, reason: null }))];
-  const enabled = cards.filter((c) => !c.reason).map((c) => c.boat.slug);
-  const focusable = selectedSlug && enabled.includes(selectedSlug) ? selectedSlug : enabled[0];
-
+/**
+ * The boat cards: toggle buttons, at most one pressed (§11.2). Clicking the selected card again deselects it. The requested
+ * boat is always first.
+ */
+export function BoatCards({ requested, requestedReason, others, emptyMessage, selectedSlug, prices, onToggle }: BoatCardsProps) {
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>, slug: string) => {
-    const delta = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
-    if (delta) {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      const i = enabled.indexOf(slug);
-      const next = enabled[(i + delta + enabled.length) % enabled.length];
-      group.current?.querySelector<HTMLElement>(`[data-slug="${next}"]`)?.focus();
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onSelect(slug);
+      onToggle(slug);
     }
   };
 
@@ -43,15 +36,17 @@ export function BoatCards({ requested, requestedReason, others, emptyMessage, se
         key={boat.slug}
         data-slug={boat.slug}
         data-testid={`boat-${boat.slug}`}
-        role="radio"
-        aria-checked={selected}
+        role="button"
+        aria-pressed={selected}
         aria-disabled={reason ? true : undefined}
-        tabIndex={!reason && boat.slug === focusable ? 0 : -1}
+        aria-label={boat.name}
+        aria-describedby={reason ? `${boat.slug}-reason` : undefined}
+        tabIndex={reason ? -1 : 0}
         className={[styles.card, selected ? styles.selected : '', reason ? styles.greyed : ''].join(' ')}
-        onClick={() => !reason && onSelect(boat.slug)}
+        onClick={() => !reason && onToggle(boat.slug)}
         onKeyDown={(e) => !reason && onKeyDown(e, boat.slug)}
       >
-        <BoatImage src={boat.imageUrl} alt={boat.name} className={styles.image} />
+        <BoatImage src={boat.imageUrl} alt="" className={styles.image} />
         <div className={styles.info}>
           <div className={styles.name}>{boat.name}</div>
           <div className={styles.berth}>{boat.berth} berth</div>
@@ -62,17 +57,14 @@ export function BoatCards({ requested, requestedReason, others, emptyMessage, se
             </div>
           )}
           {price !== undefined && price !== null && !reason && <div className={styles.price}>{formatMoney(price)}</div>}
-          {reason && <div className={styles.reason}>{reason}</div>}
+          {reason && <div className={styles.reason} id={`${boat.slug}-reason`}>{reason}</div>}
         </div>
-        <span className={styles.tick} aria-hidden="true">
-          {selected ? '✓' : ''}
-        </span>
       </div>
     );
   };
 
   return (
-    <div ref={group} className={styles.cards} role="radiogroup" aria-label="Boats">
+    <div className={styles.cards} role="group" aria-label="Boats">
       {requested && card(requested, requestedReason)}
       {requested && <div className={styles.separator}><span>Other boats available</span></div>}
       {others.map((b) => card(b, null))}

@@ -21,11 +21,12 @@ public sealed class BoatCatalogueService
         this.clock = clock;
     }
 
-    /// <summary>Every active house boat (berth desc, then name) and the booking settings. Also the warm-up call.</summary>
+    /// <summary>Every active house boat (in boat order, §7.3) and the booking settings. Also the warm-up call.</summary>
     public async Task<PublicBoatsResponse> ListAsync(CancellationToken ct = default)
     {
-        var settings = await referenceData.SettingsAsync(ct);
-        var active = Boat.InListOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House))
+        var reference = await referenceData.LoadAsync(ct);
+        var settings = reference.Settings;
+        var active = Boat.InListOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House), reference.Seasons)
             .Select(b => new PublicBoatSummary(b.Slug, b.Name, b.ImageUrl, b.Berth, b.HasSpa, b.IsPetFriendly))
             .ToList();
         return new PublicBoatsResponse(active, new PublicBookingSettings(settings.MinimumLeadTimeDays, settings.BookingsOpenUntil,

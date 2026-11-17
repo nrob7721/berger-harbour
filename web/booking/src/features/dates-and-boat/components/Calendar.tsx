@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { addDays, dayOfMonth, formatDateWithWeekday, isSameMonth, monthGrid, monthTitle, type IsoDate } from '@shared/utils/dates';
-import type { OnlinePeriodType, Stay } from '@shared/utils/periods';
+import type { Stay, TypeOfStay } from '@shared/utils/periods';
 import type { BookingSettings, FleetAvailability } from '@/lib/types';
 import { dayState, selectionMark, type DayState } from '../utils/availability';
 import styles from './Calendar.module.css';
@@ -10,7 +10,7 @@ export interface CalendarProps {
   canGoBack: boolean;
   canGoForward: boolean;
   onMonthChange: (delta: 1 | -1) => void;
-  periodType: OnlinePeriodType;
+  typeOfStay: TypeOfStay;
   period: Stay | null;
   availability: FleetAvailability | undefined;
   loading: boolean;
@@ -24,11 +24,11 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /** A classic Monday-first month calendar. Arrow keys move between days, Enter or Space selects. */
 export function Calendar(props: CalendarProps) {
-  const { month, period, periodType, availability, boats, settings, loading } = props;
+  const { month, period, typeOfStay, availability, boats, settings, loading } = props;
   const grid = monthGrid(month);
   const states = new Map<IsoDate, DayState>();
   for (const week of grid)
-    for (const day of week) states.set(day, dayState(day, isSameMonth(day, month), periodType, availability, boats, settings));
+    for (const day of week) states.set(day, dayState(day, isSameMonth(day, month), typeOfStay, availability, boats, settings));
 
   const firstOfMonth = grid.flat().find((d) => isSameMonth(d, month))!;
   const [focusDay, setFocusDay] = useState<IsoDate>(period && isSameMonth(period.start, month) ? period.start : firstOfMonth);

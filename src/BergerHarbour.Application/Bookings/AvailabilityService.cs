@@ -50,8 +50,8 @@ public sealed class AvailabilityService
         }
 
         var now = clock.UtcNow;
-        var fleet = await ActiveHouseBoatsAsync(ct);
         var reference = await referenceData.LoadAsync(ct);
+        var fleet = await ActiveHouseBoatsAsync(reference, ct);
         var blocking = (await bookings.ListOverlappingAsync(start, end, ct)).Where(b => b.BlocksAvailability(now)).ToList();
         var unavailable = await unavailabilities.ListInRangeAsync(start, end, ct);
         var boatRanges = fleet.Select(boat => new BoatAvailability(
@@ -81,7 +81,7 @@ public sealed class AvailabilityService
         var check = stayPolicy.Check(type, start, reference.Settings, reference.BlockedPeriods, Sydney.DateOf(now));
         check.Errors.ThrowIfAny();
         var stay = check.Stay!.Value;
-        var fleet = await ActiveHouseBoatsAsync(ct);
+        var fleet = await ActiveHouseBoatsAsync(reference, ct);
         var overlapping = await bookings.ListOverlappingAsync(stay.Start, stay.End, ct);
         var unavailable = await unavailabilities.ListInRangeAsync(stay.Start, stay.End, ct);
         var result = fleet.Select(boat => new PeriodBoatAvailability(
@@ -92,6 +92,6 @@ public sealed class AvailabilityService
         return new PeriodAvailabilityResponse(type, stay.Start, stay.End, result);
     }
 
-    private async Task<IReadOnlyList<Boat>> ActiveHouseBoatsAsync(CancellationToken ct) =>
-        Boat.InListOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House)).ToList();
+    private async Task<IReadOnlyList<Boat>> ActiveHouseBoatsAsync(ReferenceData reference, CancellationToken ct) =>
+        Boat.InListOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House), reference.Seasons).ToList();
 }

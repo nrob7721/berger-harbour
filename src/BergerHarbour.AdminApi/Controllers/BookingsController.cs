@@ -36,9 +36,9 @@ public sealed class BookingsController : ControllerBase
     [HttpPost("quote")]
     public Task<AdminQuoteResponse> Quote(AdminQuoteRequest request, CancellationToken ct) => service.QuoteAsync(request, ct);
 
-    [HttpPost("{id}/payments")]
-    public Task<AdminBookingDetail> AddPayment(string id, ManualPaymentRequest request, CancellationToken ct) =>
-        service.AddManualPaymentAsync(id, request, ct);
+    [HttpPost("{id}/confirmation")]
+    public Task<AdminBookingDetail> Confirm(string id, ManualPaymentRequest request, CancellationToken ct) =>
+        service.ConfirmAsync(id, request, ct);
 
     [HttpPost("{id}/send-payment-link")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

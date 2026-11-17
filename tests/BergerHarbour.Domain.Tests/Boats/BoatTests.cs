@@ -91,11 +91,17 @@ public class BoatTests
     }
 
     [Fact]
-    public void Boats_are_listed_by_berth_descending_then_name()
+    public void Boats_are_listed_by_normal_season_week_rate_descending_then_name_and_boats_without_it_last()
     {
-        var a = Boat.Create(BoatId.New(), Details() with { Name = "Ocean Spirit" }, Now);
-        var b = Boat.Create(BoatId.New(), Details() with { Name = "Kalinda" }, Now);
-        var c = Boat.Create(BoatId.New(), Details(berth: 2, adultBeds: 1, kidsBeds: 0) with { Name = "Runaway Bear" }, Now);
-        Assert.Equal(["Kalinda", "Ocean Spirit", "Runaway Bear"], Boat.InListOrder([c, a, b]).Select(x => x.Name));
+        static List<BoatRate> Week(decimal price, SeasonId? season = null) => [new(season ?? Normal.Id, PeriodType.Week, price)];
+        var peak = new SeasonId("peak");
+        var a = Boat.Create(BoatId.New(), Details() with { Name = "Ocean Spirit", Rates = Week(5000) }, Now);
+        var b = Boat.Create(BoatId.New(), Details() with { Name = "Kalinda", Rates = Week(5000) }, Now);
+        var c = Boat.Create(BoatId.New(), Details(berth: 2, adultBeds: 1, kidsBeds: 0) with { Name = "Runaway Bear", Rates = Week(9000) }, Now);
+        var d = Boat.Create(BoatId.New(), Details() with { Name = "Bluebird", Rates = Week(9999, peak) }, Now);
+        var e = Boat.Create(BoatId.New(), Details() with { Name = "Albatross", Rates = [] }, Now);
+        Assert.Equal(
+            ["Runaway Bear", "Kalinda", "Ocean Spirit", "Albatross", "Bluebird"],
+            Boat.InListOrder([e, d, c, a, b], [Normal, Season.Rehydrate(peak, "Peak", false, [], 1)]).Select(x => x.Name));
     }
 }
