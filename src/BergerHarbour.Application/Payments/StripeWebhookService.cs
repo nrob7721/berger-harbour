@@ -13,6 +13,11 @@ namespace BergerHarbour.Application.Payments;
 /// </summary>
 public sealed class StripeWebhookService
 {
+    // Log message prefixes the log-based alerts match on (setup checklist 2.7). Start any new alertable log message with one.
+    private const string WebhookFailed = "WEBHOOK_FAILED:";
+    private const string PaidButExpired = "PAID_BUT_EXPIRED:";
+    private const string DuplicateDeposit = "DUPLICATE_DEPOSIT:";
+
     private readonly IPaymentGateway gateway;
     private readonly IBookingRepository bookings;
     private readonly IBoatScheduleLock scheduleLock;
@@ -37,14 +42,24 @@ public sealed class StripeWebhookService
     /// <summary>Verifies and handles a raw webhook. Throws <see cref="InvalidWebhookException"/> on a bad signature.</summary>
     public async Task HandleAsync(string payload, string? signature, CancellationToken ct = default)
     {
-        switch (gateway.ParseWebhookEvent(payload, signature))
+        var webhookEvent = gateway.ParseWebhookEvent(payload, signature);
+        try
         {
-            case CheckoutSessionCompleted completed:
-                await HandleCompletedAsync(completed, ct);
-                break;
-            case CheckoutSessionExpired expired:
-                await HandleExpiredAsync(expired, ct);
-                break;
+            switch (webhookEvent)
+            {
+                case CheckoutSessionCompleted completed:
+                    await HandleCompletedAsync(completed, ct);
+                    break;
+                case CheckoutSessionExpired expired:
+                    await HandleExpiredAsync(expired, ct);
+                    break;
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Rethrown so the webhook returns non-2xx and Stripe retries; the log feeds the webhook-failed alert.
+            logger.LogError(e, WebhookFailed + " processing a Stripe {EventType} webhook failed. Stripe will retry.", webhookEvent?.GetType().Name);
+            throw;
         }
     }
 
@@ -53,7 +68,7 @@ public sealed class StripeWebhookService
         var booking = await bookings.GetAsync(e.BookingId, ct);
         if (booking is null)
         {
-            logger.LogError("Stripe checkout {SessionId} completed for unknown booking {BookingId}.", e.SessionId, e.BookingId.Value);
+            logger.LogError(WebhookFailed + " Stripe checkout {SessionId} completed for unknown booking {BookingId}.", e.SessionId, e.BookingId.Value);
             return;
         }
 
@@ -153,12 +168,12 @@ public sealed class StripeWebhookService
         {
             case DepositOutcome.AlreadyConfirmed:
                 logger.LogError(
-                    "Second deposit on booking {Reference} ({BookingId}): staff had already confirmed it while the webhook was delayed. " +
+                    DuplicateDeposit + " Second deposit on booking {Reference} ({BookingId}): staff had already confirmed it while the webhook was delayed. " +
                     "Refund the payment in the Stripe dashboard.", activated.Reference?.Value, activated.Id.Value);
                 return;
             case DepositOutcome.PaidButExpired:
                 logger.LogError(
-                    "Paid-but-expired booking {Reference} ({BookingId}): the deposit was paid after the hold lapsed and the dates were taken. " +
+                    PaidButExpired + " Paid-but-expired booking {Reference} ({BookingId}): the deposit was paid after the hold lapsed and the dates were taken. " +
                     "Refund the payment in the Stripe dashboard.", activated.Reference?.Value, activated.Id.Value);
                 return;
         }

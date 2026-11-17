@@ -16,6 +16,9 @@ namespace BergerHarbour.Application.Notifications;
 /// </summary>
 public sealed class NotificationJobService
 {
+    // Log message prefix the job-failed log alert matches on (setup checklist 2.7). Start any new alertable job log message with it.
+    private const string JobFailed = "JOB_FAILED:";
+
     private readonly IBookingRepository bookings;
     private readonly IBookingDraftRepository drafts;
     private readonly ICustomerRepository customers;
@@ -51,7 +54,7 @@ public sealed class NotificationJobService
         var result = new NotificationJobResult(expired, sent, reported, deleted, failures);
         if (failures > 0)
         {
-            logger.LogError("process-notifications finished with {Failures} failures: {@Result}", failures, result);
+            logger.LogError(JobFailed + " process-notifications finished with {Failures} failures: {@Result}", failures, result);
         }
         else
         {
@@ -111,7 +114,7 @@ public sealed class NotificationJobService
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 failures++;
-                logger.LogError(e, "process-notifications failed for booking {BookingId}.", booking.Id.Value);
+                logger.LogError(e, JobFailed + " process-notifications failed for booking {BookingId}.", booking.Id.Value);
             }
         }
 
@@ -187,7 +190,7 @@ public sealed class NotificationJobService
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 failures++;
-                logger.LogError(e, "process-notifications failed for booking draft {DraftId}.", draft.Id.Value);
+                logger.LogError(e, JobFailed + " process-notifications failed for booking draft {DraftId}.", draft.Id.Value);
             }
         }
 

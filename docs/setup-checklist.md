@@ -35,49 +35,52 @@ The booking address, CORS origin, sender name and subject prefix are already set
 ## 2. Google Cloud
 
 ### 2.1 Project and APIs
-- [ ] Create the project (see the table) and link the billing account.
-- [ ] Enable these APIs: Cloud Run, Artifact Registry, Firestore, Secret Manager, Cloud Scheduler, IAM Credentials, Security Token Service, Cloud Logging, Cloud Monitoring.
-- [ ] Create **Firestore** in **Native mode**, location `australia-southeast1`.
-- [ ] Deploy the indexes: `firebase deploy --only firestore:indexes --project <project id>` (from the repository root).
+- [X] Create the project (see the table) and link the billing account.
+- [X] Enable these APIs: Cloud Run, Artifact Registry, Firestore, Secret Manager, Cloud Scheduler, IAM Credentials, Security Token Service, Cloud Logging, Cloud Monitoring.
+- [X] Create **Firestore** in **Native mode**, location `australia-southeast1`.
+- [X] Deploy the indexes: `firebase deploy --only firestore:indexes --project <project id>` (from the repository root).
 
 ### 2.2 Artifact Registry (once, in the prod project)
-- [ ] In the **prod** project create a Docker repository in `australia-southeast1` (e.g. `berger`). Both environments use it.
+- [X] In the **prod** project create a Docker repository in `australia-southeast1` (e.g. `berger`). Both environments use it.
 
 ### 2.3 Service accounts
-- [ ] `public-api` — roles: **Cloud Datastore User**.
-- [ ] `admin-api` — roles: **Cloud Datastore User**.
-- [ ] `scheduler` — no roles (it only identifies the Scheduler job to admin-api).
-- [ ] `github-deploy` — roles in this project: **Cloud Run Admin**, **Service Account User** (on `public-api` and `admin-api`), **Artifact Registry Reader** on the prod repository. **(dev only)** also **Artifact Registry Writer** on the prod repository — and nothing else in prod.
-- [ ] Give the Cloud Run service agent of the **dev** project (`service-<dev project number>@serverless-robot-prod.iam.gserviceaccount.com`) **Artifact Registry Reader** on the prod repository so dev can pull the images.
+- [X] `public-api` — roles: **Cloud Datastore User**.
+- [X] `admin-api` — roles: **Cloud Datastore User**.
+- [X] `scheduler` — no roles (it only identifies the Scheduler job to admin-api).
+- [X] `github-deploy` — roles in this project: **Cloud Run Admin**, **Service Account User** (on `public-api` and `admin-api`), **Artifact Registry Reader** on the prod repository. **(dev only)** also **Artifact Registry Writer** on the prod repository — and nothing else in prod.
+- [X] Give the Cloud Run service agent of the **dev** project (`service-<dev project number>@serverless-robot-prod.iam.gserviceaccount.com`) **Artifact Registry Reader** on the prod repository so dev can pull the images.
 
 ### 2.4 Secret Manager
 Create each secret (exact names — the deploy refers to them):
 - [ ] `stripe-secret-key` — Stripe secret key (`sk_test_…` in dev, `sk_live_…` in prod).
 - [ ] `stripe-webhook-secret` — the webhook signing secret from step 3 (`whsec_…`).
-- [ ] `gmail-app-password` — the Google app password from step 4.
+- [X] `gmail-app-password` — the Google app password from step 4.
 - [ ] `turnstile-secret` — the Turnstile widget's secret key from step 5.
-- [ ] `edge-proxy-secret-public` — a long random string (e.g. `openssl rand -base64 48`). Also goes into the booking Pages project (step 5).
-- [ ] `edge-proxy-secret-admin` — another long random string. Also goes into the admin Pages project.
-- [ ] `payment-link-secret` — another long random string (at least 32 characters). **Never change it** once bookings exist: it makes the payment links in emails.
-- [ ] `admin-allowed-emails` — staff emails allowed into the admin app, comma-separated (e.g. `info@bergerhouseboats.com.au`).
-- [ ] Grant **Secret Manager Secret Accessor**: `public-api` on the first six and `payment-link-secret`; `admin-api` on `gmail-app-password`, `edge-proxy-secret-admin`, `payment-link-secret`, `admin-allowed-emails`.
+- [X] `edge-proxy-secret-public` — a long random string (e.g. `openssl rand -base64 48`). Also goes into the booking Pages project (step 5).
+- [X] `edge-proxy-secret-admin` — another long random string. Also goes into the admin Pages project.
+- [X] `payment-link-secret` — another long random string (at least 32 characters). **Never change it** once bookings exist: it makes the payment links in emails.
+- [X] `admin-allowed-emails` — staff emails allowed into the admin app, comma-separated (e.g. `info@bergerhouseboats.com.au`).
+- [X] Grant **Secret Manager Secret Accessor**: `public-api` on the first five and `payment-link-secret`; `admin-api` on `gmail-app-password`, `edge-proxy-secret-admin`, `payment-link-secret`, `admin-allowed-emails`.
 
 ### 2.5 Workload Identity Federation (GitHub, no JSON keys)
-- [ ] Create a workload identity pool `github` and an OIDC provider `github` with issuer `https://token.actions.githubusercontent.com`, attribute mapping `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.environment=assertion.environment`.
-- [ ] Attribute condition — dev: `assertion.repository == "<owner>/<repo>"`; **prod**: `assertion.repository == "<owner>/<repo>" && assertion.environment == "production"`.
-- [ ] Allow the pool to impersonate `github-deploy` (**Workload Identity User** for `principalSet://iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/github/attribute.repository/<owner>/<repo>`).
+- [X] Create a workload identity pool `github` and an OIDC provider `github` with issuer `https://token.actions.githubusercontent.com`, attribute mapping `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.environment=assertion.environment`.
+- [X] Attribute condition — dev: `assertion.repository == "<owner>/<repo>"`; **prod**: `assertion.repository == "<owner>/<repo>" && assertion.environment == "production"`.
+- [X] Allow the pool to impersonate `github-deploy` (**Workload Identity User** for `principalSet://iam.googleapis.com/projects/<number>/locations/global/workloadIdentityPools/github/attribute.repository/<owner>/<repo>`).
 
 ### 2.6 First deploy, then Cloud Scheduler
-- [ ] Do step 2.8 (GitHub Environments) and run the deploy (push to `main` for dev; publish a release for prod, see step 8). Note the `admin-api` service URL (`https://admin-api-….a.run.app`) and the `public-api` URL.
-- [ ] Set the GitHub variable `ADMIN_API_URL` to the admin-api URL (it is the Scheduler token audience) and redeploy.
-- [ ] Create a Cloud Scheduler job in `australia-southeast1`: name `process-notifications`, frequency `0 * * * *` (hourly), time zone `Australia/Sydney`, target **HTTP POST** `<admin-api URL>/api/jobs/process-notifications`, auth header **Add OIDC token**, service account `scheduler@…`, audience `<admin-api URL>`.
+- [X] Do step 2.8 (GitHub Environments) and run the deploy (push to `main` for dev; publish a release for prod, see step 8). Note the `admin-api` service URL (`https://admin-api-….a.run.app`) and the `public-api` URL.
+- [x] Set the GitHub variable `ADMIN_API_URL` to the admin-api URL (it is the Scheduler token audience) and redeploy.
+- [X] Create a Cloud Scheduler job in `australia-southeast1`: name `process-notifications`, frequency `0 * * * *` (hourly), time zone `Australia/Sydney`, target **HTTP POST** `<admin-api URL>/api/jobs/process-notifications`, auth header **Add OIDC token**, service account `scheduler@…`, audience `<admin-api URL>`.
 - [ ] Run the job once by hand and check it returns 200 in Cloud Run logs.
 
 ### 2.7 Log-based alerts
-Create an email notification channel to the staff alert address, then three log-based alert policies (Logging → Logs Explorer → Create alert) on `resource.type="cloud_run_revision"` and:
-- [ ] Paid but expired (refund by hand): `jsonPayload.Message:"PAID_BUT_EXPIRED"` (public-api).
-- [ ] Webhook processing errors: `jsonPayload.Message:"WEBHOOK_FAILED"` (public-api).
-- [ ] Job failures: `jsonPayload.Message:"JOB_FAILED"` (admin-api), plus `httpRequest.status>=500` on admin-api `/api/jobs`.
+Create an email notification channel to the staff alert address, then four log-based alert policies (Logging → Logs Explorer → run the query → **Actions → Create log alert**, or Monitoring → Alerting → Create policy → **Log match**) on `resource.type="cloud_run_revision"` and:
+- [ ] Paid but expired (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"PAID_BUT_EXPIRED"`.
+- [ ] Duplicate deposit, staff had already confirmed the booking (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"DUPLICATE_DEPOSIT"`.
+- [ ] Webhook processing errors (Stripe retries, but check it recovered): `resource.labels.service_name="public-api" AND jsonPayload.Message:"WEBHOOK_FAILED"`.
+- [ ] Job failures: `resource.labels.service_name="admin-api" AND (jsonPayload.Message:"JOB_FAILED" OR (httpRequest.status>=500 AND httpRequest.requestUrl:"/api/jobs"))`.
+
+The log messages start with these tokens (`PAID_BUT_EXPIRED:`, `DUPLICATE_DEPOSIT:`, `WEBHOOK_FAILED:`, `JOB_FAILED:`), so keep them if you reword a message.
 
 ### 2.8 GitHub Environments
 In GitHub → Settings → Environments create `dev` and `production` (production: add **required reviewers**). Set these **variables** in each (same names, different values):
@@ -115,30 +118,30 @@ In GitHub → Settings → Environments create `dev` and `production` (productio
 
 ## 4. Gmail SMTP
 
-- [ ] Sign in as `info@bergerhouseboats.com.au` (a Google Workspace user). Turn on **2-Step Verification**.
-- [ ] Create an **app password** (Google Account → Security → App passwords), name it "Booking system", and store it in the `gmail-app-password` secret. (Both environments may use the same mailbox; dev emails get the `[DEV] ` prefix.)
-- [ ] At the existing DNS host check `bergerhouseboats.com.au` has: SPF `v=spf1 include:_spf.google.com ~all`, a Google DKIM record (Workspace admin → Apps → Gmail → Authenticate email), and a DMARC record (e.g. `v=DMARC1; p=none; rua=mailto:info@bergerhouseboats.com.au`). Add any that are missing.
+- [X] Sign in as `info@bergerhouseboats.com.au` (a Google Workspace user). Turn on **2-Step Verification**.
+- [X] Create an **app password** (Google Account → Security → App passwords), name it "Booking system", and store it in the `gmail-app-password` secret. (Both environments may use the same mailbox; dev emails get the `[DEV] ` prefix.)
+- [X] At the existing DNS host check `bergerhouseboats.com.au` has: SPF `v=spf1 include:_spf.google.com ~all`, a Google DKIM record (Workspace admin → Apps → Gmail → Authenticate email), and a DMARC record (e.g. `v=DMARC1; p=none; rua=mailto:info@bergerhouseboats.com.au`). Add any that are missing.
 
 ## 5. Cloudflare
 
 ### 5.1 Pages projects
-- [ ] Create `berger-booking` and `berger-admin` (dev: `berger-booking-dev`, `berger-admin-dev`) as **Direct Upload** Pages projects (the GitHub workflow uploads them).
-- [ ] In each project → Settings → **Variables and secrets** (Production):
+- [X] Create `berger-booking` and `berger-admin` (dev: `berger-booking-dev`, `berger-admin-dev`) as **Direct Upload** Pages projects (the GitHub workflow uploads them).
+- [X] In each project → Settings → **Variables and secrets** (Production):
   - booking: `API_ORIGIN` = public-api Cloud Run URL; `EDGE_PROXY_SECRET` (encrypted) = the `edge-proxy-secret-public` value.
   - admin: `API_ORIGIN` = admin-api Cloud Run URL; `EDGE_PROXY_SECRET` (encrypted) = the `edge-proxy-secret-admin` value.
 - [ ] The `_headers` files are deployed with the apps (booking: CSP allowing Stripe and Turnstile and framing only by the WordPress site; admin: no framing).
 - [ ] The admin app has **no custom domain**: it is served at `https://berger-admin.pages.dev`.
 
 ### 5.2 Access (admin app only)
-- [ ] Zero Trust → Settings → Authentication: add **Google Workspace** as a login method (domain `bergerhouseboats.com.au`).
-- [ ] In `berger-admin` → Settings → **Enable access policy**. Then in Zero Trust → Access → Applications edit that application so it covers the production address `berger-admin.pages.dev` (not only the preview wildcard).
-- [ ] Policy: **Allow**, *Include* → Emails → the staff emails; *Require* → Country → **Australia**.
-- [ ] Copy the application's **AUD tag** into `CF_ACCESS_AUD` and the team domain into `CF_ACCESS_TEAM_DOMAIN`.
+- [X] Zero Trust → Settings → Authentication: add **Google Workspace** as a login method (domain `bergerhouseboats.com.au`).
+- [X] In `berger-admin` → Settings → **Enable access policy**/**Restrict previews** (General → Preview access). Then in Zero Trust → Access → Applications edit that application so it covers the production address `berger-admin.pages.dev` (not only the preview wildcard).
+- [X] Policy: **Allow**, *Include* → Emails → the staff emails; *Require* → Country → **Australia**.
+- [X] Copy the application's **AUD tag** into `CF_ACCESS_AUD` and the team domain into `CF_ACCESS_TEAM_DOMAIN`.
 - [ ] Dev: a separate Access application on `berger-admin-dev.pages.dev`, set up the same way.
 - [ ] Customers are never put behind Access.
 
 ### 5.3 Turnstile
-- [ ] Add a Turnstile widget (Managed) for the hostname in the table. Copy the site key into `TURNSTILE_SITE_KEY` and the secret into `turnstile-secret`.
+- [X] Add a Turnstile widget (Managed) for the hostname in the table. Copy the site key into `TURNSTILE_SITE_KEY` and the secret into `turnstile-secret`.
 
 No Cloudflare rate-limiting rules are needed (the public API limits requests per IP itself).
 
