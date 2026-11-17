@@ -71,14 +71,14 @@ Create each secret (exact names — the deploy refers to them):
 - [X] Do step 2.8 (GitHub Environments) and run the deploy (push to `main` for dev; publish a release for prod, see step 8). Note the `admin-api` service URL (`https://admin-api-….a.run.app`) and the `public-api` URL.
 - [x] Set the GitHub variable `ADMIN_API_URL` to the admin-api URL (it is the Scheduler token audience) and redeploy.
 - [X] Create a Cloud Scheduler job in `australia-southeast1`: name `process-notifications`, frequency `0 * * * *` (hourly), time zone `Australia/Sydney`, target **HTTP POST** `<admin-api URL>/api/jobs/process-notifications`, auth header **Add OIDC token**, service account `scheduler@…`, audience `<admin-api URL>`.
-- [ ] Run the job once by hand and check it returns 200 in Cloud Run logs.
+- [X] Run the job once by hand and check it returns 200 in Cloud Run logs.
 
 ### 2.7 Log-based alerts
 Create an email notification channel to the staff alert address, then four log-based alert policies (Logging → Logs Explorer → run the query → **Actions → Create log alert**, or Monitoring → Alerting → Create policy → **Log match**) on `resource.type="cloud_run_revision"` and:
-- [ ] Paid but expired (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"PAID_BUT_EXPIRED"`.
-- [ ] Duplicate deposit, staff had already confirmed the booking (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"DUPLICATE_DEPOSIT"`.
-- [ ] Webhook processing errors (Stripe retries, but check it recovered): `resource.labels.service_name="public-api" AND jsonPayload.Message:"WEBHOOK_FAILED"`.
-- [ ] Job failures: `resource.labels.service_name="admin-api" AND (jsonPayload.Message:"JOB_FAILED" OR (httpRequest.status>=500 AND httpRequest.requestUrl:"/api/jobs"))`.
+- [X] Paid but expired (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"PAID_BUT_EXPIRED"`.
+- [X] Duplicate deposit, staff had already confirmed the booking (refund by hand): `resource.labels.service_name="public-api" AND jsonPayload.Message:"DUPLICATE_DEPOSIT"`.
+- [X] Webhook processing errors (Stripe retries, but check it recovered): `resource.labels.service_name="public-api" AND jsonPayload.Message:"WEBHOOK_FAILED"`.
+- [X] Job failures: `resource.labels.service_name="admin-api" AND (jsonPayload.Message:"JOB_FAILED" OR (httpRequest.status>=500 AND httpRequest.requestUrl:"/api/jobs"))`.
 
 The log messages start with these tokens (`PAID_BUT_EXPIRED:`, `DUPLICATE_DEPOSIT:`, `WEBHOOK_FAILED:`, `JOB_FAILED:`), so keep them if you reword a message.
 
@@ -105,7 +105,7 @@ In GitHub → Settings → Environments create `dev` and `production` (productio
 | `PAGES_BOOKING_PROJECT` | `berger-booking-dev` / `berger-booking` |
 | `PAGES_ADMIN_PROJECT` | `berger-admin-dev` / `berger-admin` |
 
-- [ ] And this **secret**: `CLOUDFLARE_API_TOKEN` — a Cloudflare API token with **Cloudflare Pages: Edit**.
+- [X] And this **secret**: `CLOUDFLARE_API_TOKEN` — a Cloudflare API token with **Cloudflare Pages: Edit**.
 
 ## 3. Stripe
 
