@@ -46,9 +46,9 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | **Same-day changeover** | Allowed. A booking ending Monday 8am and another starting Monday 11am do not overlap. |
 | **Blocked period** | A staff-defined date range (Christmas/New Year, Easter, long weekends, …) that customers cannot book online. Any online stay that overlaps it shows a "please call or email us" message. Defined by inclusive `FirstNight` and `LastNight`. |
 | **Unavailability** | A staff-defined range when a specific boat cannot be hired (maintenance, etc.). Defined by inclusive `FirstNight` and `LastNight`. |
-| **Stand-by booking** | A "store credit" style booking (e.g. a customer with credit waiting for a date). It **never blocks availability**, is **never shown to customers**, **sends no emails**, and is **superseded** when an Active non-stand-by booking overlaps it. |
+| **Stand-by booking** | A "store credit" style booking (e.g. a customer with credit waiting for a date). It **never blocks availability**, is **never shown to customers**, **sends no emails**, and is **superseded** when an Active non-stand-by booking overlaps it. Staff **reactivate** a superseded stand-by by moving it to another boat or other dates; it becomes an Active stand-by again (§7.3). |
 | **Hold** | A `PendingPayment` booking created when a customer starts checkout. It blocks the dates until payment completes, the hold expires, or the customer goes back from the Payment step. It has no booking reference until it is paid or confirmed by staff. An expired hold can be **confirmed by staff** with a manual payment (§7.3). |
-| **Staff confirmation** | Staff recording a manual payment of at least the checkout amount on an `Expired` hold. The booking becomes Active exactly as if the deposit had been paid online (§7.3). |
+| **Staff confirmation** | Staff recording a manual payment of at least the checkout amount on an `Expired` hold, with the booking dialog's **Confirm booking** button. The booking becomes Active exactly as if the deposit had been paid online (§7.3). |
 | **Booking draft** | The details a customer has entered in the online booking app (from the "Your details" step onwards) before paying. It is **not** a customer record. If it is not converted into an Active booking, staff are alerted so they can follow up (email #10). |
 | **Saved progress** | The booking app's step state, kept in the browser's `localStorage` so a refresh or a later visit resumes the booking. It never holds the customer's personal details; those are reloaded from the booking draft (§11.2). |
 | **Address** | A customer's postal address in parts: Address line 1, Address line 2, City/Locality, State, Postcode and Country. Every part is optional (§7.3). |
@@ -57,12 +57,14 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | **Capacity-limited add-on** | An add-on with a `Capacity` shared across **all boats and bookings** (e.g. Car parking: 11 spots in total). Usage is counted per night (§7.5). |
 | **Guests** | Every booking records `NumberOfAdults` (≥ 1) and `NumberOfChildren` (≥ 0, children are under 12). "Guests" means the total of both. |
 | **Requested boat** | The boat named by the booking app's `?boat=<slug>` parameter, i.e. the boat whose "Book Now" button the customer clicked. Optional: the app also works without one. |
-| **Selected boat** | The boat the customer has chosen to book on the "Dates & boat" step (§11.2). It starts as the requested boat when that boat is active, and may be none. |
+| **Selected boat** | The boat the customer has chosen to book on the "Dates & boat" step (§11.2). While a boat is selected, the calendar shows only that boat's availability. It starts as the requested boat when that boat is active, and may be none. |
+| **Type of stay** | The booking app's choice of period: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, **Week (Fri–Fri)** or **Week (Mon–Mon)**. Both Week options are the `Week` period type; the choice between them only sets the weekday the week starts on (§11.2). |
+| **Boat order** | The order boats are listed in everywhere: the boat's **Normal season Week rate**, highest first, then name (§7.3). |
 | **Candidate boats** | Active `House` boats that match the customer's current filters on the "Dates & boat" step: guests (adults + children ≤ `Berth`), Spa and Pet friendly. |
 | **Berth** | The number of people a boat sleeps (industry term, e.g. "a 12 berth houseboat"). Online, adults + children must not exceed it. |
 | **Booking reference** | `LASTNAME-YYMMDDX`, e.g. `SMITH-2701150` (§7.3). |
 | **Frequent Floater** | A customer who makes a booking while they have at least one other booking starting within a year either side of it (§7.8). Staff decide the perk; the system only flags it. |
-| **Mobile** | Every customer phone number is a mobile number: **Mobile** (primary) and **Secondary mobile**. Landlines are not accepted (§7.1). |
+| **Mobile** | Every customer phone number is a mobile number: **Mobile** (primary) and **Secondary mobile**. Landlines are not accepted, and the secondary mobile can't be the same number as the mobile (§7.1). |
 
 **Overlap rules.** Every overlap check in the system compares **nights**:
 - Booking vs booking: `a.Start < b.End && b.Start < a.End`.
@@ -83,7 +85,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 4. Balances are paid through payment links in emails. These lead to our own pay page, which creates a Stripe Checkout session for the amount currently due.
 5. Payment provider: **Stripe**, using **Embedded Checkout**, because the booking app runs inside an iframe and Stripe's hosted Checkout cannot be framed.
 6. Online bookings cover exactly one Midweek, Weekend or Week period. There are no consecutive or multi-period online bookings.
-7. Calendar click rule: in the selected mode, a click selects **the period of that type that contains the clicked day**. In Week mode, only Mondays and Fridays are clickable, and the clicked day is the start.
+7. Calendar click rule: in the selected type of stay, a click selects **the period of that type that contains the clicked day**. Week is offered as two types of stay, **Week (Fri–Fri)** and **Week (Mon–Mon)**, so every day is clickable in either and selects the week whose nights contain it.
 8. Long weekends, Christmas/New Year and Easter are all **blocked periods**, entered yearly by staff in Settings. Only Christmas/New Year uses the extended payment schedule.
 9. Overdue balances are **never auto-cancelled**. The customer is reminded, staff are alerted, and staff decide.
 10. **Emails the system sends** (exactly these):
@@ -111,13 +113,13 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 21. Add-ons may have a **capacity shared across all boats**, counted on the busiest night of the stay. Online it is a hard limit, checked without a lock. Staff only get a warning.
 22. Abandoned online bookings are reported to staff (#10). They are never stored as customers.
 23. Payment emails (#4 and #7) whose trigger time had already passed when the booking became Active are **never sent**.
-24. The booking app's first step, **"Dates & boat"**, searches the whole fleet. The customer picks the period, guests and filters, and chooses one of the candidate boats. The requested boat is **always** listed first. A checkbox "Show {Boat}'s availability only" limits the calendar to the selected boat; otherwise the calendar offers every period at least one candidate boat is free for.
+24. The booking app's first step, **"Dates & boat"**, searches the whole fleet. The customer picks the period, guests and filters, and chooses one of the candidate boats. The requested boat is **always** listed first. While a boat is selected, the calendar shows only that boat's availability; with none selected, it offers every period at least one candidate boat is free for. Clicking the selected boat's card again deselects it.
 25. Boats have an optional **image URL** (an image on the WordPress site, shown on the booking app's boat cards), and **Spa** and **Pet friendly** flags that customers can filter by.
 26. **Booking references** are `LASTNAME-YYMMDDX` (§7.3). They are assigned when an online booking's deposit is paid or a staff booking is created, and never change afterwards.
 27. Customers have separate **first name** and **last name** fields everywhere.
 28. **Frequent Floaters** (repeat customers) are flagged to staff. The perk is decided by staff, never by the system (§7.8).
-29. Every customer phone number must be a **mobile** number.
-30. **Nothing is saved until the user saves.** A form, including the add-on lines of a booking, is saved only by its main button. While any backend request runs, the button that started it is disabled and shows progress (§6.1).
+29. Every customer phone number must be a **mobile** number, and the secondary mobile can't be the same number as the mobile.
+30. **Nothing is saved until the user saves.** A form, including the add-on lines and payments of a booking, is saved only by its main button. While any backend request runs, the button that started it is disabled and shows progress (§6.1).
 31. Customers can go **back from the Payment step**. Doing so releases their hold.
 32. **Fields are validated as soon as they lose focus**, in every form of both apps (§6.1). The server repeats every check on save.
 33. On the admin timeline, clicking an empty cell (or "+ New", using today) pre-fills the **Mid-week or Weekend period containing that day**, the same mapping as the booking app's calendar: Mon–Thu → Mid-week, Fri–Sun → Weekend (§12.1).
@@ -125,6 +127,10 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 35. **Backend code follows build-enforced organisation rules** (§7.9): one top-level type per file; one thin controller per resource, each paired with one application service (§8); pure booking validation strategies; a separate repository interface and Firestore implementation per aggregate; typed ids and value objects throughout the domain. Analyzers and architecture tests fail the build when a rule is broken.
 36. **Holds are read-only in the admin app.** A `PendingPayment` hold cannot be edited or paid by staff, because the customer may still pay online. Once it is `Expired`, the customer can no longer pay online, and staff may **confirm** it by recording a manual payment of at least the checkout amount (§7.3).
 37. The booking app keeps **saved progress** in `localStorage`, so a refresh or a later visit resumes the booking. Personal details are never stored in the browser; they are reloaded from the booking draft (§11.2).
+38. **Payments are edited as part of the booking.** In the booking dialog, staff add manual payments and remove any payment, including a Stripe payment they have refunded in the Stripe dashboard; keeping the payments up to date is the staff's job. Changes are saved only with the booking. A manual payment is dated no earlier than the booking's creation date and no later than today (§7.3).
+39. **Boats are listed in boat order everywhere:** by the Normal season Week rate, highest first, then name (§7.3).
+40. A **superseded stand-by is reactivated by moving it.** When staff change its boat or dates and the new stay is free, it becomes an Active stand-by again (§7.3).
+41. The booking app's **progress steps are clickable.** A customer can go back to any earlier step, and forward to any step up to the furthest reached; a forward jump repeats each step's checks on the way (§11.2).
 
 ## 5. Architecture overview
 
@@ -194,9 +200,9 @@ firestore.indexes.json
 - **Libraries:**
   - **TanStack Query** for all server data (queries, caching and mutations). A mutation's pending state drives the busy buttons described below.
   - **React Router** in the admin app only (`/bookings`, `/fleet`, `/customers`, `/settings`). The booking app's steps are internal state, not routes. The pay page `/pay/` is a separate Vite entry of the booking app.
-  - **React Hook Form** for every form, created through one shared `useAppForm` hook that sets `onTouched` mode (see Field validation below), with `useFieldArray` for a booking's add-on lines. Forms with a zod schema (the booking dialog, the booking app's details step and the manual payment dialog) use `zodResolver`; the others use `register` validation rules. Both mirror the server's rules and messages. The API's per-field ProblemDetails errors are mapped onto the matching form fields. Client-side validation is a convenience; the server is authoritative.
+  - **React Hook Form** for every form, created through one shared `useAppForm` hook that sets `onTouched` mode (see Field validation below), with `useFieldArray` for a booking's add-on lines and payments. Forms with a zod schema (the booking dialog, the booking app's details step and the manual payment dialog) use `zodResolver`; the others use `register` validation rules. Both mirror the server's rules and messages. The API's per-field ProblemDetails errors are mapped onto the matching form fields. Client-side validation is a convenience; the server is authoritative.
   - **`@stripe/react-stripe-js`** for Embedded Checkout, **`@marsidev/react-turnstile`** for Turnstile, and **`libphonenumber-js`** behind the shared `MobileInput` component.
-  - **No global client-state library.** The booking app's step state (period, guests, filters, selected boat, details, add-ons, draft id) lives in one `useReducer` behind a React context. Everything in it except the personal details is also written to `localStorage` as saved progress (§11.2). Everything else is server data (TanStack Query) or local to a component.
+  - **No global client-state library.** The booking app's step state (type of stay, period, guests, filters, selected boat, details, add-ons, draft id, furthest step reached) lives in one `useReducer` behind a React context. Everything in it except the personal details is also written to `localStorage` as saved progress (§11.2). Everything else is server data (TanStack Query) or local to a component.
 - **Bulletproof React layout**, in each app:
   ```
   src/
@@ -208,13 +214,14 @@ firestore.indexes.json
   ```
   - **Booking app features:**
     - `dates-and-boat`, `details`, `addons`, `summary`.
-    - `deposit-checkout`: the Payment step, which creates the hold, mounts Embedded Checkout for the deposit with the hold countdown, and handles Back and the hold running out.
+    - `deposit-checkout`: the Payment step, which creates the hold, mounts Embedded Checkout for the deposit with the hold countdown, and handles leaving it (Back or an earlier progress step) and the hold running out.
+    - Each step's Continue checks live in a function outside its component, so a forward jump on the progress steps can run them for steps that are not on screen (§11.2).
     - `complete`.
     - `balance-payment`: the `/pay/?token=` page reached from payment links in emails.
     - The `<EmbeddedCheckout>` wrapper used by `deposit-checkout` and `balance-payment` lives in the app's `src/components`.
   - **Admin app features:** `bookings` (timeline and booking dialog), `fleet`, `customers`, `settings`.
   - **`web/shared`** holds what both apps use:
-    - `components/`: Button, Dialog, Toast, Spinner (a small size for buttons and a large size for an area that is loading), Field, MobileInput.
+    - `components/`: Button (with an icon-only variant), Dialog, Toast, Spinner (a small size for buttons and fields and a large size for an area that is loading), Field, MobileInput.
     - `lib/`: the http client and the generated API types.
     - `utils/`: dates, periods, phone and money formatting.
     - `styles/`: `tokens.css` and a reset.
@@ -224,17 +231,17 @@ firestore.indexes.json
     - When a page needs another feature's component (the Customers page opens the booking dialog), the two are put together in the `app` layer (the route), not through a cross-feature import.
 - **Styling:** every component has its own co-located CSS Module (e.g. `BoatCard.tsx` + `BoatCard.module.css`). The only global CSS is `shared/styles/tokens.css` (design tokens) and a small reset, loaded once per app. No Tailwind, no CSS-in-JS.
 - **Busy states (both apps):**
-  - Every button that sends a backend request is disabled while the request runs and shows a spinner with a progress label ("Creating…", "Saving…", "Sending…"). It can never be submitted twice.
+  - Every button that sends a backend request is disabled while the request runs and shows a spinner with a progress label ("Creating…", "Saving…", "Sending…"). An icon-only button shows the spinner in place of its icon, and its accessible label carries the progress text. It can never be submitted twice.
   - In a dialog, the other actions and the fields are locked while it saves.
   - On success, the dialog closes, a toast confirms, and the data it changed (e.g. the timeline) refreshes.
   - On error, the dialog stays open with the error shown and everything the user typed kept.
 - **Field validation (both apps, every form):**
   - A field is validated when it loses focus, so an invalid email, mobile or number is reported straight away, not on save. Leaving a required field empty shows its "Required" error.
   - Once a field shows an error, it is re-validated on every change, so the error clears as soon as the value is fixed. Changing the country in `MobileInput` re-validates a number already entered.
-  - Rules that involve two fields (e.g. Berth ≥ adult beds + kids beds, first night ≤ last night, start date < end date) are checked when either field loses focus, and the error shows on the field that owns it.
+  - Rules that involve two fields (e.g. Berth ≥ adult beds + kids beds, first night ≤ last night, start date < end date, secondary mobile ≠ mobile) are checked when either field loses focus, and the error shows on the field that owns it.
   - The main button stays enabled. Pressing it validates every field and moves focus to the first invalid one.
   - Rules only the server can check (overlaps, version conflicts, unknown email placeholders, online add-on capacity) are reported on save.
-- **No intermediate saves:** a form is saved only by its main button ("Create booking", "Save changes", "Save"). Editing part of a form, such as adding an add-on line, never saves anything and never resets other fields.
+- **No intermediate saves:** a form is saved only by its main button ("Create booking", "Save changes", "Save"). Editing part of a form, such as adding an add-on line or a payment, never saves anything and never resets other fields.
 
 ## 7. Backend
 
@@ -243,7 +250,7 @@ firestore.indexes.json
 - **DDD:**
   - Validation and invariants are encapsulated in domain objects (constructors, factory methods and intention-revealing methods such as `booking.Cancel()`, `booking.RecordPayment(...)`, `boat.Deactivate()`). Domain objects are never in an invalid state. There are no public setters on aggregates.
   - **Small aggregates referencing each other by Id** (Vaughn Vernon). Aggregates: `Boat`, `Booking`, `BookingDraft`, `Customer`, `BoatUnavailability`, `Season`, `BlockedPeriod`, `AddonDefinition`, `EmailTemplate`, `BusinessSettings`. If a natural root appears later, they can be merged; do not pre-merge.
-  - **Domain services** for cross-aggregate rules, e.g. `BookingAvailabilityService` (overlap checks given loaded bookings, unavailabilities and blocked periods), `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory` (period type + clicked date → stay), `FrequentFloaterService` (§7.8).
+  - **Domain services** for cross-aggregate rules, e.g. `BookingAvailabilityService` (overlap checks given loaded bookings, unavailabilities and blocked periods), `PricingService`, `PaymentScheduleService`, `AddonCapacityService`, `StayPeriodFactory` (type of stay + clicked date → stay; for Week, the type of stay gives the start weekday, Friday or Monday), `FrequentFloaterService` (§7.8).
 - **Repositories:** one repository interface and one implementation per aggregate.
   - The interface is its own file next to its aggregate in the Domain project (`Domain/Bookings/IBookingRepository.cs`), never declared inside the aggregate's file.
   - The implementation is `Infrastructure/Firestore/Repositories/Firestore<Aggregate>Repository.cs` (§7.9).
@@ -253,7 +260,7 @@ firestore.indexes.json
   - `BookingValidationContext` holds everything the rules need. The calling application service loads it before validating: the boat, `BusinessSettings`, blocked periods, add-on definitions, today (Australia/Sydney) and the scope. Online it also holds the booking draft and the remaining capacity of each capacity-limited add-on for the stay (§7.5).
   - `BookingValidationScope` is `Quote` or `Submit`. `Quote` skips the draft, terms, rooming acceptance and contact details.
   - `OnlineBookingValidationStrategy` is registered in `PublicApi`. It enforces the rules in §7.7: period shape, lead time, open-until, blocked periods, adult/child limits, rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
-  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer: first name, last name and a valid email are required; Mobile and Secondary mobile are optional but must be valid mobile numbers; the address follows the `Address` rules (§7.3). It applies on create and on every update.
+  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, and a valid customer: first name, last name and a valid email are required; Mobile and Secondary mobile are optional but must be valid mobile numbers, and the secondary mobile can't be the same as the mobile; the address follows the `Address` rules (§7.3). It applies on create and on every update.
   - Strategies return errors only. Staff's non-blocking warnings come from `StaffBookingWarnings`, a separate class that is not a strategy: guests above berth, guests above beds, add-on capacity exceeded, and a custom time clashing with a same-day changeover. It is pure too and works on data the application service has loaded.
   - Both strategies are always followed by the availability invariant (decision 15), which is not part of either strategy.
 - **Money:** `decimal` AUD in the domain, stored as integer cents. All amounts include GST.
@@ -262,6 +269,7 @@ firestore.indexes.json
   - It must be valid for its country and of number type `MOBILE`, or `FIXED_LINE_OR_MOBILE` for countries where the two can't be told apart (e.g. the US and Canada). Landlines are rejected.
   - It is checked with `libphonenumber-csharp` on the server and `libphonenumber-js` in the browser. The error is "Enter a valid mobile number for the selected country."
   - It is stored in E.164 format (e.g. `+61412345678`), and shown in national format for Australian numbers and international format for others.
+  - A customer's Secondary mobile can't be the same number as their Mobile, compared in E.164 (so `0412 345 678` and `+61412345678` are the same). The error is on `secondaryMobile`: "The secondary mobile can't be the same as the mobile." It only applies when both are filled.
   - The business's contact phone (Settings) is not restricted.
 - **Email addresses:** one rule, in the `EmailAddress` value object, for every email in the system (customers, booking drafts, the staff alert and contact emails in Settings). The browser uses the same rule.
   - Checked after trimming; at most 254 characters.
@@ -309,10 +317,10 @@ Any write that can create or move occupancy for a boat (create or update a booki
 - **Activation:** a boat can only be activated when `AdultBeds`, `KidsBeds` (0 allowed), `BeddingDescription` and a rate for **every season × {Midweek, Weekend, Week}** are present. `ImageUrl`, `HasSpa` and `IsPetFriendly` are not required.
 - **Berth and beds:** `Berth >= AdultBeds + KidsBeds`. It applies always (active or not), on create and on every edit. A violation is rejected with a field error on `berth`: "Berth can't be less than adult beds + kids beds ({n})."
 
-**Ordering:** everywhere boats are listed (admin timeline rows, Fleet grid, every boat dropdown, and the booking app's "Other boats available" list), boats are sorted by `Berth` descending, then `Name`.
+**Ordering (boat order):** everywhere boats are listed (both `GET /api/boats`, admin timeline rows, Fleet grid, every boat dropdown, and the booking app's "Other boats available" list), boats are sorted by their **Normal season Week rate** descending, then `Name`. Boats without that rate come after every boat that has one, by `Name`. The order never depends on a selected period or its prices.
 
 #### Customer (aggregate)
-`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile; required for online bookings, optional for staff-created), `SecondaryMobileNumber` (E.164 mobile, optional, staff-entered only, empty when the customer is created), `Address` (optional `Address` value object, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
+`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile; required for online bookings, optional for staff-created), `SecondaryMobileNumber` (E.164 mobile, optional, staff-entered only, empty when the customer is created, never the same as `MobileNumber`, §7.1), `Address` (optional `Address` value object, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
 
 - The customer's name is displayed everywhere as `FirstName LastName`.
 - `Address` has the parts `Line1`, `Line2`, `Locality` (City/Locality), `State`, `Postcode` and `Country`:
@@ -324,7 +332,7 @@ Any write that can create or move occupancy for a boat (create or update a booki
   - It is not available to email templates. It is kept to fill hire agreements later (§2).
 - `Comments` are staff-only notes about the customer (e.g. preferences, history). They are shared by all of the customer's bookings, edited from the Customers page and the booking dialog, never shown to the customer, and never available to email templates.
 - Email uniqueness is enforced with a `customerEmails/{normalisedEmail}` index document written in the same transaction.
-- When an existing email books again, `FirstName`, `LastName` and `MobileNumber` are updated to the latest values. `SecondaryMobileNumber`, `Address` and `Comments` are only ever changed by staff.
+- When an existing email books again, `FirstName`, `LastName` and `MobileNumber` are updated to the latest values. `SecondaryMobileNumber`, `Address` and `Comments` are only ever changed by staff, with one exception: when an online booking's mobile is the customer's stored secondary mobile, the secondary mobile is cleared, so the two never match.
 - Online, the customer is created or updated **only when the booking becomes Active** (deposit paid online, or staff confirmation), from the booking's `CustomerDetails` snapshot. Abandoned drafts and expired holds that staff don't confirm never create or change a customer.
 
 #### BoatUnavailability (aggregate)
@@ -355,7 +363,8 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 | `DepositAmount` | Snapshot of the boat's effective deposit at creation |
 | `PaymentSchedule` | `Standard` \| `Extended` (derived from blocked-period overlap at creation, and re-derived when dates change) |
 | `AddonLines` | List of `AddonLine { Id, AddonId, NameSnapshot, Quantity, UnitPrice (nullable until staff set it) }`. There is **no line status**: a line on the booking is accepted; staff decline by deleting it. Staff edit lines as part of the booking and they are saved with it (§8.2). |
-| `Payments` | List of `Payment { Id, Amount, Method: Stripe \| Manual, StripePaymentIntentId?, PaidAt, Note?, RecordedBy: Customer \| SystemUser }` |
+| `Payments` | List of `Payment { Id, Amount, Method: Stripe \| Manual, StripePaymentIntentId?, PaidAt, Note?, RecordedBy: Customer \| SystemUser }`. Staff add manual payments and remove any payment as part of the booking, saved with it (see **Payments** below, §8.2). |
+| `RemovedStripePaymentIntentIds` | PaymentIntent ids of Stripe payments staff have removed. A webhook for one of them never records it again (§8.3). |
 | `HoldExpiresAt` | Instant, only while `PendingPayment` |
 | `StripeCheckoutSessionId` | Of the deposit checkout |
 | `RoomingWarningAcceptance` | `{ AcceptedAt, WarningTextShown }`, present when guests > `AdultBeds + KidsBeds` on an online booking |
@@ -374,6 +383,13 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
   - else `FullyPaid` if `AmountPaid >= TotalPrice`
   - else `DepositPaid` if `AmountPaid == DepositAmount`
   - else `PartPaid` (this includes amounts below the deposit)
+
+**Payments** (staff):
+- **Adding:** a manual payment has an amount > 0, a date and an optional note (at most 500 characters). Its `PaidAt` is now when the date is today, otherwise 12:00 Australia/Sydney on that date.
+- **Date rule:** the date must be on or after the booking's `CreatedDate` and on or before today, both as Australia/Sydney dates. Errors are on `date`: "The payment date can't be before the booking was created ({dd/MM/yyyy})." and "The payment date can't be in the future." On a new staff booking the only valid date is therefore today. The rule applies to every manual payment, including staff confirmation; Stripe payments are dated by Stripe.
+- **Removing:** staff may remove any payment, Stripe or manual, e.g. after refunding it in the Stripe dashboard. A removed Stripe payment's PaymentIntent id is added to `RemovedStripePaymentIntentIds`.
+- Adding or removing a payment never changes the booking's status; `AmountPaid` and `PaymentStatus` follow from the payments that remain.
+- Payments can be added and removed on a new staff booking and on `Active`, `Cancelled` and `Superseded` bookings, including in a save that changes the status. `PendingPayment` and `Expired` bookings take no payment changes, except staff confirmation.
 
 **Booking references** (`BookingReference` value object; the suffix comes from the `IBookingReferenceGenerator` port):
 - **Format:** `LASTNAME-YYMMDDX`. That is the customer's last name, then the booking's **StartDate** as `yyMMdd`, then a suffix `X`. Example: John Smith from 15/01/2027 → `SMITH-2701150`. Andy Smith on the same start date → `SMITH-2701151`.
@@ -394,16 +410,17 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
   - `HoldExpiresAt` passing. admin-api **reports** a lapsed hold as `Expired` whenever it returns one (timeline, search, booking dialog, a customer's bookings), so staff never see a lapsed hold as `PendingPayment`. These reads never write. Staff confirmation expires a lapsed hold and confirms it in the same transaction. The hourly job saves the expiry of the rest (§9).
 - `Expired → Active`, with the same activation as above, inside `IBoatScheduleLock` and only when the dates are still free:
   - **Online:** a deposit whose webhook arrives after the hold expired (§8.3).
-  - **Staff confirmation:** staff record a manual payment of **at least the checkout amount** `min(DepositAmount, HirePrice)` (§7.6) on an Expired booking that has no payments. The payment is recorded and the booking activated in the same transaction. `CreatedBy` stays `Customer`, and the prices stay as snapshotted.
+  - **Staff confirmation** (`POST /api/bookings/{id}/confirmation`): staff record a manual payment of **at least the checkout amount** `min(DepositAmount, HirePrice)` (§7.6) on an Expired booking that has no payments. The payment follows the date rule above (its date can't be before the hold was created). The payment is recorded and the booking activated in the same transaction. `CreatedBy` stays `Customer`, and the prices stay as snapshotted.
     - A smaller amount is rejected with a field error on `amount`: "To confirm this booking, record at least {amount}." Nothing is recorded.
     - If the dates are now taken, it returns `409` naming the conflicting booking references. Nothing is recorded.
     - An Expired booking that already has a payment (paid-but-expired, §8.3) cannot be confirmed by staff; it is refunded in Stripe.
 - `Active → Cancelled` (staff).
 - `Cancelled → Active` (staff, subject to the availability check).
 - `Active (stand-by) → Superseded`. This is automatic when an Active non-stand-by booking for the same boat overlaps it.
+- `Superseded → Active (stand-by)` (staff **reactivation**): a staff save of a Superseded booking that changes its boat or its dates (start or end) reactivates it, inside `IBoatScheduleLock`, subject to the stand-by rules below. If the new stay overlaps an Active or PendingPayment non-stand-by booking or an unavailability, the save returns `409` naming the conflicting references and nothing is saved. It stays a stand-by. A save that changes neither the boat nor the dates leaves it Superseded. Staff can't otherwise change a Superseded booking's status or stand-by flag; once it is an Active stand-by again, they can.
 - Staff-created bookings start as `Active` (no hold), with their reference and `ActivatedAt` set at creation.
 
-**Staff editing by status:** `PendingPayment` and `Expired` bookings are **read-only**. A staff update of either is rejected, and no manual payment or payment link is accepted for a `PendingPayment` booking. The only staff action on an `Expired` booking is staff confirmation. Bookings in every other status are edited as described in §8.2.
+**Staff editing by status:** `PendingPayment` and `Expired` bookings are **read-only**. A staff update of either is rejected, and no payment change or payment link is accepted for a `PendingPayment` booking. The only staff action on an `Expired` booking is staff confirmation. Bookings in every other status are edited as described in §8.2.
 
 **What blocks availability:** non-stand-by bookings with status `Active`, and non-stand-by `PendingPayment` bookings whose `HoldExpiresAt` is in the future. Also boat unavailabilities, and (online only) blocked periods. Stand-by, Superseded, Cancelled and Expired bookings never block.
 
@@ -411,6 +428,7 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 - They may not overlap Active or PendingPayment non-stand-by bookings or unavailabilities. Creating one on taken dates is pointless.
 - They may overlap other stand-bys.
 - When any non-stand-by booking **becomes Active**, all overlapping Active stand-by bookings for that boat become `Superseded` and email #8 is sent.
+- A superseded stand-by is reactivated by moving it (above). If it is superseded again later, #8 is sent again.
 
 #### BookingDraft (aggregate)
 | Field | Notes |
@@ -587,7 +605,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 | public | `BookingsController` | `POST /api/bookings`, `…/{bookingId}/release`, `…/{bookingId}/status` | `OnlineBookingService` |
 | public | `PaymentsController` | `/api/payments/{token}` | `PaymentLinkService` |
 | public | `StripeWebhookController` | `POST /api/stripe/webhook` | `StripeWebhookService` |
-| admin | `BookingsController` | `/api/bookings`, incl. search, quote, payments and send-payment-link | `StaffBookingService` |
+| admin | `BookingsController` | `/api/bookings`, incl. search, quote, confirmation and send-payment-link | `StaffBookingService` |
 | admin | `BoatsController` | `/api/boats` | `BoatService` |
 | admin | `BoatUnavailabilitiesController` | `/api/boats/{id}/unavailabilities` | `BoatUnavailabilityService` |
 | admin | `CustomersController` | `/api/customers` | `CustomerService` |
@@ -603,7 +621,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 ### 8.1 public-api (customer-facing, no login)
 | Method & route | Purpose |
 |---|---|
-| `GET /api/boats` | Every **active `House`** boat, ordered by berth desc, then name: `{ boats: [{ slug, name, imageUrl, berth, hasSpa, isPetFriendly }], settings }`, where `settings` holds the booking settings (minimum lead time, bookings open until, contact phone/email, hire terms URL). Also the warm-up call. |
+| `GET /api/boats` | Every **active `House`** boat, in boat order (§7.3): `{ boats: [{ slug, name, imageUrl, berth, hasSpa, isPetFriendly }], settings }`, where `settings` holds the booking settings (minimum lead time, bookings open until, contact phone/email, hire terms URL). Also the warm-up call. |
 | `GET /api/boats/{slug}` | Customer-safe data for one boat, active or not: name, imageUrl, berth, hasSpa, isPetFriendly, adultBeds, kidsBeds, beddingDescription, securityBond, effective depositAmount, isActive, allowed add-ons in admin-defined order (id, name, description, priceOnRequest, quantityApplies, prices by period type, hasCapacity, capacityUnitLabel). Used for the requested boat on load and for the selected boat in later steps. `404` for an unknown slug or a non-House boat. |
 | `GET /api/availability?from=&to=` | Fleet availability for every active House boat. Returns only **ranges**, never booking or customer data: `{ enquireOnly: [{firstNight, lastNight}], boats: [{ slug, unavailable: [{start, end}] }] }`. `unavailable` = the boat's blocking bookings (as `[start,end)`) and unavailabilities. `enquireOnly` = blocked periods. Max span 15 months. |
 | `GET /api/availability/period?periodType=&startDate=` | For one stay: `{ boats: [{ slug, available, hirePrice }] }` for every active House boat. `available` = no blocking booking or unavailability overlaps the stay; `hirePrice` comes from `PricingService` (§7.4). `400` if the stay fails the period shape, lead time, open-until or blocked-period rules (§7.7 rules 2–5). Returns no booking or customer data. |
@@ -635,18 +653,26 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 
 | Area | Routes |
 |---|---|
-| Bookings | `GET /api/bookings?from=&to=&includeInactive=` (timeline data: bookings incl. customer name (from the Customer or the `CustomerDetails` snapshot), status, isStandby, paymentStatus, reference (empty for holds); unavailabilities; blocked periods. The timeline's boat rows come from `GET /api/boats`, not from this call) · `GET /api/bookings/search?q=` (name, email or reference, including `CustomerDetails` snapshots) · `GET /api/bookings/{id}` (includes the customer's address, comments, `frequentFloater` (§7.8), `holdExpiresAt` for a hold, and the checkout amount for an Expired booking) · `POST /api/bookings` · `PUT /api/bookings/{id}` (boat, dates, period type, adults, children, check-in/check-out times, standby, booking comments, customer comments, hire price, status Active/Cancelled, customer contact details incl. secondary mobile and address, and the full `addonLines` list; includes `version`; rejected for `PendingPayment` and `Expired` bookings, §7.3) · `POST /api/bookings/quote` (body: `{ boatId, periodType, startDate, addonIds[] }` → `{ hirePrice, addonPrices: [{ addonId, unitPrice }] }`, where either price is `null` when staff must enter it; used to pre-fill the hire price and new add-on lines and for "Recalculate from rates"; saves nothing) · `POST /api/bookings/{id}/payments` (manual payment: amount, date, note, `version`. On an Active booking it records the payment. On an Expired booking without payments it is staff confirmation (§7.3). Rejected for every other booking) · `POST /api/bookings/{id}/send-payment-link` (Active non-stand-by bookings only; sends email #4 immediately for the amount due now) · `GET /api/addons/{addonId}/availability?startDate=&endDate=&excludeBookingId=` (remaining capacity) |
-| Fleet | `GET /api/boats` (every boat, active or not, with `isActive`, ordered by berth desc, then name; also used for the boat rows of the Bookings timeline (§12.1)) · `GET /api/boats/{id}` · `POST /api/boats` · `PUT /api/boats/{id}` (all editable fields incl. adult beds, kids beds, deposit, image URL, spa, pet friendly, rates, allowed add-ons, active flag) · `GET /api/boats/{id}/unavailabilities` · `POST /api/boats/{id}/unavailabilities` · `PUT /api/boats/{id}/unavailabilities/{uid}` · `DELETE /api/boats/{id}/unavailabilities/{uid}` |
+| Bookings | `GET /api/bookings?from=&to=&includeInactive=` (timeline data: bookings incl. customer name (from the Customer or the `CustomerDetails` snapshot), status, isStandby, paymentStatus, reference (empty for holds); unavailabilities; blocked periods. The timeline's boat rows come from `GET /api/boats`, not from this call) · `GET /api/bookings/search?q=` (name, email or reference, including `CustomerDetails` snapshots) · `GET /api/bookings/{id}` (includes the customer's address, comments, `frequentFloater` (§7.8), `holdExpiresAt` for a hold, and the checkout amount for an Expired booking) · `POST /api/bookings` · `PUT /api/bookings/{id}` (boat, dates, period type, adults, children, check-in/check-out times, standby, booking comments, customer comments, hire price, status Active/Cancelled, customer contact details incl. secondary mobile and address, the full `addonLines` list and the full `payments` list; includes `version`; rejected for `PendingPayment` and `Expired` bookings, §7.3; changing a Superseded booking's boat or dates reactivates it as a stand-by, §7.3) · `POST /api/bookings/quote` (body: `{ boatId, periodType, startDate, addonIds[] }` → `{ hirePrice, addonPrices: [{ addonId, unitPrice }] }`, where either price is `null` when staff must enter it; used to pre-fill the hire price and new add-on lines and for "Recalculate from rates"; saves nothing) · `POST /api/bookings/{id}/confirmation` (staff confirmation, §7.3: body `{ amount, date, note, version }`. Only for an Expired booking without payments; rejected for every other booking) · `POST /api/bookings/{id}/send-payment-link` (Active non-stand-by bookings only; sends email #4 immediately for the amount due now) · `GET /api/addons/{addonId}/availability?startDate=&endDate=&excludeBookingId=` (remaining capacity) |
+| Fleet | `GET /api/boats` (every boat, active or not, with `isActive`, in boat order (§7.3); also used for the boat rows of the Bookings timeline (§12.1)) · `GET /api/boats/{id}` · `POST /api/boats` · `PUT /api/boats/{id}` (all editable fields incl. adult beds, kids beds, deposit, image URL, spa, pet friendly, rates, allowed add-ons, active flag) · `GET /api/boats/{id}/unavailabilities` · `POST /api/boats/{id}/unavailabilities` · `PUT /api/boats/{id}/unavailabilities/{uid}` · `DELETE /api/boats/{id}/unavailabilities/{uid}` |
 | Customers | `GET /api/customers?q=` · `GET /api/customers/by-email?email=` (used by the booking dialog to pre-fill contact details, address and customer comments; includes `frequentFloater` anchored at now, §7.8) · `PUT /api/customers/{id}/comments` (body: `{ comments, version }`) · `GET /api/customers/{id}/bookings` (all statuses, ordered by StartDate, newest first) |
 | Settings | `GET/PUT /api/settings/business` (incl. bank account name, BSB and account number) · CRUD `/api/settings/seasons` · CRUD `/api/settings/blocked-periods` · CRUD `/api/settings/addons` (incl. capacity and capacity unit label, which is required when a capacity is set; delete = deactivate) · `PUT /api/settings/addons/order` (body: the full ordered list of add-on ids; the server rewrites `SortOrder`) · `GET /api/settings/email-templates` · `PUT /api/settings/email-templates/{key}` · `POST /api/settings/email-templates/{key}/test` (sends a sample to the staff alert address) |
 | Jobs | `POST /api/jobs/process-notifications`. **Not** behind Access. It validates a Google OIDC token: issuer Google, audience = service URL, email = the Cloud Scheduler service account. |
 
 **Add-on lines on staff bookings:** `POST /api/bookings` and `PUT /api/bookings/{id}` carry the booking's complete `addonLines: [{ id?, addonId, quantity, unitPrice }]`. A line without an `id` is new. Existing lines with an `id` are updated. Existing lines left out are deleted. There are no separate add-on line endpoints; lines change only when the booking is saved.
 
+**Payments on staff bookings:** `POST /api/bookings` and `PUT /api/bookings/{id}` carry the booking's complete `payments: [{ id?, amount, date, note }]`, Stripe and manual alike. There are no separate payment endpoints; payments change only when the booking is saved.
+- A payment without an `id` is a new manual payment, validated as in §7.3 (amount, date rule, note).
+- A payment with an `id` is kept as it is. Payments can't be edited; staff remove one and add it again.
+- Existing payments left out are removed (§7.3). A removed Stripe payment's PaymentIntent id is remembered so the webhook never records it again.
+- Payment changes are accepted on create and for `Active`, `Cancelled` and `Superseded` bookings (§7.3).
+- Emails: payments saved with a new booking send no #5 (#1 covers them). On update, each new payment sends one #5 when the saved booking is an Active non-stand-by booking. Removing a payment sends nothing.
+
 **Customer fields on staff bookings:** `POST` and `PUT` carry the contact details (first name, last name, email, mobile, secondary mobile), `address` (`{ line1, line2, locality, state, postcode, country }`, or `null` for no address) and `customerComments`. They are saved to the booking's Customer in the same request. Only `PendingPayment` and `Expired` bookings lack a Customer, and those cannot be updated (§7.3).
 
 Staff-created bookings (`POST /api/bookings`):
-- Email, first name and last name are required. The email and any mobile numbers must be valid (§7.1), on create and on update. The customer is matched or created by email.
+- Email, first name and last name are required. The email and any mobile numbers must be valid, and the secondary mobile can't be the same as the mobile (§7.1), on create and on update. The customer is matched or created by email.
+- Manual payments in `payments` are recorded with it, dated today (§7.3).
 - Status is `Active` immediately. `CreatedBy = SystemUser`. The reference and `ActivatedAt` are set at creation.
 - Validated by `InternalBookingValidationStrategy` plus the availability invariant.
 - Responses include non-blocking `warnings[]` from `StaffBookingWarnings` (§7.1): guests above berth, guests above beds, add-on capacity exceeded, custom time clashing with a same-day changeover.
@@ -658,7 +684,7 @@ Staff-created bookings (`POST /api/bookings`):
 - Only synchronous methods (card + wallets) are allowed, so `checkout.session.completed` means paid.
 - Checkout session `metadata`: `bookingId`, `purpose` (`Deposit` | `Payment`).
 - **`checkout.session.completed`:**
-  - Record a `Payment`. This is idempotent on PaymentIntent id.
+  - Record a `Payment`. This is idempotent on PaymentIntent id: an event whose PaymentIntent is already on the booking, or in its `RemovedStripePaymentIntentIds` (staff removed it, §7.3), is treated as already processed and changes nothing.
   - If `purpose == Deposit` and the booking is `PendingPayment` or `Expired`, activate it inside `IBoatScheduleLock` when its dates are still free (§7.3: reference, `ActivatedAt`, Customer from `CustomerDetails`, `CustomerId`, draft converted, stand-bys superseded), then send #1 to the customer and #2 to staff. A deposit normally completes while the hold is still `PendingPayment`. It only finds an `Expired` booking when the webhook is delayed past the hold, because Checkout closes before the hold lapses (§8.1).
   - **Paid-but-expired:** if activation is impossible (the hold had expired or been released, and the dates were taken), keep the payment recorded, leave the booking `Expired` but assign it a reference so staff can find it (no Customer is created; staff use the `CustomerDetails` snapshot), and log an **error**. The log-based alert notifies staff, who refund by hand.
   - If the booking is already `Active` because staff confirmed it while the webhook was delayed, keep the payment recorded, leave the booking as it is, send nothing, and log an **error**: a second deposit that staff refund by hand.
@@ -677,10 +703,10 @@ Staff-created bookings (`POST /api/bookings`):
 | 1 | `BookingConfirmed` | Customer | Online: deposit paid (booking becomes Active), or staff confirmation of an expired hold (§7.3). Staff: non-stand-by booking created. Includes the deposit receipt, payment schedule, security bond notice, requested add-ons "subject to confirmation", and the hire terms link. If a milestone is **already due at activation**, it states that the balance of `{{AmountDue}}` is now due and includes `{{PaymentLink}}`. |
 | 2 | `StaffNewOnlineBooking` | Staff alert address | Online booking becomes Active through a Stripe deposit payment. Not sent on staff confirmation. The default template includes `{{FrequentFloaterNotice}}` so staff see repeat customers (§7.8). |
 | 4 | `PaymentDue` | Customer | For each Balance / First / Final milestone with a shortfall: once at `due − PaymentReminderBeforeDue` (7d) and once at `due`. Each is skipped if its trigger instant was at or before the booking's `ActivatedAt`. Also sent immediately from "Send payment link". Contains `{{PaymentLink}}`. |
-| 5 | `PaymentReceived` | Customer | Any Stripe payment other than the deposit checkout, and any manual payment except the one that confirms an expired hold (#1 covers it) |
+| 5 | `PaymentReceived` | Customer | Any Stripe payment other than the deposit checkout, and each manual payment staff add to an existing Active non-stand-by booking (one email per payment, §8.2). Not sent for payments saved with a new booking or for the payment that confirms an expired hold (#1 covers both), nor when a payment is removed. |
 | 6 | `PreHireInstructions` | Customer | `check-in − PreHireInstructionsBeforeHire` (7d). This is the existing "canned message". If the booking is created inside that window, it is sent at the next job run. |
 | 7 | `StaffBalanceOverdue` | Staff alert address | Once per milestone, when `now > due` and a shortfall remains. **Never sent for a milestone that was already due at activation.** |
-| 8 | `StaffStandbySuperseded` | Staff alert address | A stand-by is superseded |
+| 8 | `StaffStandbySuperseded` | Staff alert address | A stand-by is superseded, each time it happens (a reactivated stand-by that is superseded again sends it again) |
 | 10 | `StaffAbandonedBooking` | Staff alert address | A booking draft is abandoned (§7.3 BookingDraft rules). Includes the customer's name, email and mobile, the boat, dates, adults/children, requested add-ons and the last step reached, so staff can follow up. |
 
 Numbers 3 (add-on confirmed/declined) and 9 (cancellation) are **deliberately not implemented** (decision 10).
@@ -762,10 +788,22 @@ Each boat page gets this HTML block (deliver it as `/wordpress/book-now-block.ht
   - a CSP compatible with Stripe.js and Turnstile, whose `img-src` also allows `https://bergerhouseboats.com.au` and `https://www.bergerhouseboats.com.au` (boat images).
 
 ### 11.2 Flow
-The app is a single page with steps, in this order: **Dates & boat → Your details → Add-ons → Summary → Payment → Complete**. The progress is visible. The layout is responsive and works at 360px width (16px gutters, no horizontal scroll) and in the ~900×700 modal. Once a booking draft exists, moving forward through each step updates it (`PUT /api/booking-drafts/{draftId}`). Every button that sends a request (e.g. Continue on Your details, Pay, Back on Payment) follows the busy state in §6.1.
+The app is a single page with steps, in this order: **Dates & boat → Your details → Add-ons → Summary → Payment → Complete**. The progress steps are shown at the top, and there is no page title above them (the step's own heading is the only heading). The layout is responsive and works at 360px width (16px gutters, no horizontal scroll) and in the ~900×700 modal. Once a booking draft exists, moving forward through each step updates it (`PUT /api/booking-drafts/{draftId}`). Every button that sends a request (e.g. Continue on Your details, Pay, Back on Payment) follows the busy state in §6.1.
+
+**Progress steps** (decision 41):
+- Each step up to the **furthest step reached** is a button; the current step and later steps not yet reached are not. Payment and Complete are never clickable: the Summary's Pay button is the only way into Payment, because the terms must be ticked there.
+- **Going back:** clicking an earlier step goes straight to it, keeping everything entered. Leaving the Payment step this way does what Back does (step 6): it releases the hold first, and a `409` goes to Complete.
+- **Going forward:** clicking a later step runs the Continue of the current step and each step after it, in order, as if the customer had pressed Continue on each: the Dates & boat checks and rooming warning, the Your details validation and draft save, then the Add-ons checks and draft save. Each step passed updates the draft as its Continue does. The jump **stops on the first step that**:
+  - fails validation (shown with its errors, e.g. a period or boat no longer chosen);
+  - needs the rooming warning accepted (Dates & boat with the warning open; Accept continues to the next step as usual);
+  - had add-ons removed because the boat changed (Add-ons, with the notice);
+  - has a capacity-limited add-on above what now remains (Add-ons, with the message and the current figures).
+
+  If nothing stops it, the app opens the clicked step.
+- The progress steps are a list of buttons with the current step marked `aria-current="step"`.
 
 **Saved progress** (decision 37):
-- **What is kept.** The step state is written to `localStorage` as it changes: period type and dates, adults and children, filters, the requested and selected boat, "Show {Boat}'s availability only", add-on requests, the rooming warning acceptance, the draft id, the furthest step reached and, on the Payment step, the hold's booking id.
+- **What is kept.** The step state is written to `localStorage` as it changes: the type of stay and dates, adults and children, filters, the requested and selected boat, add-on requests, the rooming warning acceptance, the draft id, the furthest step reached and, on the Payment step, the hold's booking id.
 - **What is never kept.** The first name, last name, email and mobile are never written to browser storage; they are read back from the draft. The terms tick isn't kept either, so the customer ticks it again on the Summary. Details typed on Your details before its first Continue are lost on a refresh, because no draft exists yet.
 - **Resuming.** On load, saved progress for the same requested boat (the same `?boat=`, or none for both) is resumed:
   1. If it holds a booking id from the Payment step, the app releases that hold (`POST /api/bookings/{bookingId}/release`). A `409` (the payment completed meanwhile) goes to Complete.
@@ -784,46 +822,51 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 1. **Load:** read the optional `?boat=`. Show a skeleton while `GET /api/boats` and, when a boat is requested, `GET /api/boats/{slug}` load. Then resume any saved progress (above).
    - Unknown slug → friendly error.
    - No `?boat=` → there is no requested boat and no boat is selected.
-   - Active requested boat → it becomes the selected boat, and "Show {Boat}'s availability only" starts **ticked**.
+   - Active requested boat → it becomes the selected boat, so the calendar starts with that boat's availability only.
    - Inactive requested boat → its card is greyed (see Boat cards below) and no boat is selected.
 2. **Dates & boat:** the customer chooses the period, guests and filters, and the boat. On desktop and in the modal the controls are in a left column and the boat cards in a right column. At ≤ 768px everything stacks: the left column's controls in order, then the cards.
 
-   **Left column, top to bottom:** period radio buttons · check-in/check-out times line · calendar and legend · "Selected: …" line · "Show {Boat}'s availability only" checkbox · filters (Adults, Children, Spa, Pet friendly) · Base hire rate · **Continue**.
+   **Left column, top to bottom,** under the step heading "Choose your dates and boat": filters (Adults, Children, Spa, Pet friendly) · **Type of stay** radio buttons · custom-dates message · check-in/check-out times line · calendar and legend · "Selected: …" line · selected-boat message · Base hire rate · **Continue**.
+
+   **Type of stay:**
+   - Radio buttons, in one group: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, then a **Week** frame holding **Week (Fri–Fri)** and **Week (Mon–Mon)**. Mid-week is chosen by default.
+   - Both Week options book the `Week` period type; they differ only in the weekday the week starts on.
+   - **Custom-dates message**, an info line underneath: "For custom date periods, call {ContactPhone} to arrange." The phone (from the `settings` returned by `GET /api/boats`) is a `tel:` link. The line is hidden when no contact phone is set.
 
    **Calendar:**
-   - Radio buttons: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, **Week (Mon–Mon or Fri–Fri)**.
    - A classic month calendar with previous/next navigation and a legend. Weeks start on Monday, and the grid shows only the weeks that contain days of the month.
    - **Adjacent-month days:** the cells before the 1st and after the month's last day show the previous and next month's days in muted grey.
-     - They are not clickable in any mode and carry no availability styling; the customer uses Prev/Next to reach them.
+     - They are not clickable in any type of stay and carry no availability styling; the customer uses Prev/Next to reach them.
      - When the selected period extends into them, they show the selection in a muted version of the selection colour.
      - Part of a selection can still be off-screen. For example, Weekend Fri 26/02/2027 → Mon 01/03/2027 viewed in March 2027, which starts on a Monday, has no leading cells and shows only the check-out day.
    - Above the calendar, show **"Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)"**, with the time zone label (§3) for the selected dates, or for the visible month when nothing is selected. When the check-in and check-out dates fall in different zones (the stay crosses a daylight-saving change), each part carries its own label: "Check-in 11am – 2pm (AEST/NSW) · Check-out from 8am (AEDT/NSW)".
-   - Availability for the visible months is fetched with `GET /api/availability`, which covers every active House boat in one call. Filters, the checkbox and card clicks are applied in the browser and send no requests.
-   - **Calendar boats:** the selected boat when "Show {Boat}'s availability only" is ticked; otherwise all candidate boats.
-   - **Clickable days per mode:**
+   - Availability for the visible months is fetched with `GET /api/availability`, which covers every active House boat in one call. Filters and card clicks are applied in the browser and send no requests.
+   - **Calendar boats:** the selected boat when there is one; otherwise all candidate boats.
+   - **Clickable days per type of stay:**
      - Mid-week: Mon–Fri clickable; Sat and Sun disabled.
      - Weekend: Fri, Sat, Sun, Mon clickable; Tue–Thu disabled.
-     - Week: only Mondays and Fridays clickable.
-   - **Click mapping:** the period of the selected type that contains the day.
-     - Mid-week: Mon–Fri of that week. Clicking Fri selects the Mon→Fri ending that day. Clicking a different day in the same period doesn't change the selection.
+     - Week (Fri–Fri) and Week (Mon–Mon): every day clickable.
+   - **Click mapping:** the period of the selected type that contains the day. Clicking a different day in the same period doesn't change the selection.
+     - Mid-week: Mon–Fri of that week. Clicking Fri selects the Mon→Fri ending that day.
      - Weekend: the Fri→Mon containing it. Clicking Mon selects the weekend ending that day.
-     - Week: Mon→next Mon or Fri→next Fri, starting on the clicked day.
-   - The whole selected period is highlighted. The start shows a check-in marker and the end a check-out marker. **Every day inside the selection uses the active selection colour with normal (not grey) day numbers, even days that are not clickable in the current mode** (e.g. Tue–Thu inside a Week selection). Adjacent-month cells are the exception and use the muted selection colour (see above).
+     - Week (Fri–Fri): the Fri→next Fri whose nights contain the day. Clicking a Friday starts on that Friday; clicking Thu 15/10/2026 selects Fri 09/10/2026 → Fri 16/10/2026, so the start can be earlier than the clicked day.
+     - Week (Mon–Mon): the Mon→next Mon whose nights contain the day, in the same way. Clicking a Monday starts on that Monday.
+   - The whole selected period is highlighted. The start shows a check-in marker and the end a check-out marker. **Every day inside the selection uses the active selection colour with normal (not grey) day numbers.** Adjacent-month cells are the exception and use the muted selection colour (see above).
    - The **inner days** of the selection (every day strictly between check-in and check-out, e.g. Tue–Thu of a Mon→Fri stay) use a darker brand tint (`--c-brand-tint-strong`) than the general light tint, so the selected period stands out clearly against the disabled and non-selectable days around it. The difference must be obvious at a glance, not a subtle shade. The check-in and check-out days keep their solid brand colour and markers.
    - Below the calendar, a line states the selection without repeating the times, e.g. **"Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026."** (weekday + `dd/MM/yyyy`). The same text is announced in the ARIA live region.
-   - **Greying is per period, not per day:** a day is disabled in a mode when the period it maps to is unavailable or invalid. For example, a Monday on which a weekend booking checks out is still clickable in Mid-week mode.
+   - **Greying is per period, not per day:** a day is disabled in a type of stay when the period it maps to is unavailable or invalid. For example, a Monday on which a weekend booking checks out is still clickable in Mid-week.
    - A period is unavailable if:
      - no calendar boat is free for it (every calendar boat has an `unavailable` range overlapping it, or there are no calendar boats);
      - it starts before today + lead time;
      - it ends after `BookingsOpenUntil`.
-   - **Blocked periods:** days inside `enquireOnly` ranges are greyed out with a distinct style. If the period a click maps to overlaps a blocked period, show a pop-up instead of selecting: "Bookings over {period name} must be made by phone or email: {phone} / {email}." Example: Mid-week mode, click Tue 18/12 → Mon 17/12–Fri 21/12 overlaps Christmas → pop-up.
+   - **Blocked periods:** days inside `enquireOnly` ranges are greyed out with a distinct style. If the period a click maps to overlaps a blocked period, show a pop-up instead of selecting: "Bookings over {period name} must be made by phone or email: {phone} / {email}." Example: Mid-week, click Tue 18/12 → Mon 17/12–Fri 21/12 overlaps Christmas → pop-up.
    - Selecting a period calls `GET /api/availability/period` for it, which gives each boat's availability and hire price for that stay.
-   - Changing the period type clears the selected period. The selected boat is kept.
+   - Changing the type of stay, including between the two Week options, clears the selected period. The selected boat is kept.
 
-   **"Show {Boat}'s availability only" checkbox:**
-   - `{Boat}` is the selected boat's name. Ticked, the calendar shows only that boat's availability. Unticked, a period is free when **any** candidate boat is free for it.
-   - With no selected boat, the checkbox is unticked and disabled, and reads "Show the selected boat's availability only". When a boat becomes selected, the checkbox is enabled (still unticked).
-   - Selecting a different boat card never changes the checkbox. While it is ticked, the calendar follows the newly selected boat.
+   **Selected-boat message:**
+   - While a boat is selected, an info line reads "Currently showing availability for {Boat}. **Click here** to see all availability." "Click here" is a link that deselects the boat; the period is kept.
+   - With no selected boat, the line is hidden and a period is free when **any** candidate boat is free for it.
+   - Selecting a different card switches the calendar to that boat.
 
    **Filters:**
    - **Adults** (`1…N`, default 1) and **Children (Under 12)** (`0…N − adults`, default 0), where N is the largest `Berth` among active House boats. Changing adults clamps children so the total never exceeds N.
@@ -831,19 +874,21 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
    - Candidate boats (§3) are the active House boats with adults + children ≤ `Berth` and every ticked feature.
 
    **Boat cards:**
-   - The cards are a single-select **radio group**. The whole card is clickable and keyboard-operable (arrow keys, Enter/Space) with visible focus, and a small tick-box indicator in its corner shows the selection. The selected boat's name is announced in the ARIA live region. Greyed cards cannot be selected.
+   - Each card is a **toggle button** (`aria-pressed`), and at most one is pressed. The whole card is clickable and keyboard-operable (Tab between cards, Enter/Space toggles) with visible focus. There is no tick-box: the selected card is shown as selected as a whole (a strong brand border and tint).
+   - Clicking an unselected card selects it. **Clicking the selected card again deselects it**, and the calendar shows all candidate boats; the period is kept.
+   - The selected boat's name, or that no boat is selected, is announced in the ARIA live region. Greyed cards cannot be selected.
    - Each card shows the boat's image (`imageUrl`, or a neutral placeholder when it is empty or fails to load), its **name**, "**{n} berth**" (e.g. "12 berth"), a **Spa** and/or **Pet friendly** badge when set, and, once a period is selected, the boat's **hire price** for that period.
    - **The requested boat is always the first card**, whatever its state. When it cannot be selected it is greyed, with one short grey reason underneath; the first that applies is shown:
      1. "Not available for online booking" (inactive)
      2. "Not available for selected dates"
      3. "Too small for {n} guests"
      4. "Doesn't match your filters" (Spa or Pet friendly)
-   - Below it, a text separator **"Other boats available"** and the other candidate boats, ordered by `Berth` descending, then `Name` (without a requested boat, the separator is not shown). Before a period is selected, every candidate boat is shown. Once a period is selected, only the candidates free for it are shown; when there are none, the list says "No other boats are available for these dates.", or "No boats match your filters for these dates." when no candidate boat at all is free for the period.
+   - Below it, a text separator **"Other boats available"** and the other candidate boats, in boat order (§7.3) (without a requested boat, the separator is not shown). Before a period is selected, every candidate boat is shown. Once a period is selected, only the candidates free for it are shown; when there are none, the list says "No other boats are available for these dates.", or "No boats match your filters for these dates." when no candidate boat at all is free for the period.
 
    **Base hire rate:** labelled "Base hire rate" with the sub-label "Excludes add-ons". It shows the selected boat's hire price for the selected period (e.g. `$4,060.00`), or "Select dates and a boat" until both are chosen.
 
    **Keeping the selection valid:**
-   - When a change to the period, guests, Spa or Pet friendly makes the selected boat ineligible (not free for the period, too small for the guests, or missing a ticked feature), it is deselected. If "Show {Boat}'s availability only" was ticked, it becomes unticked and disabled, and the calendar shows all candidate boats.
+   - When a change to the period, guests, Spa or Pet friendly makes the selected boat ineligible (not free for the period, too small for the guests, or missing a ticked feature), it is deselected, and the calendar shows all candidate boats.
    - Changing a filter never clears the selected period, even when no candidate boat is free for it any more.
 
    **Continue** is enabled only when a period and a selected boat are chosen. The selected boat's details come from `GET /api/boats/{slug}`.
@@ -884,19 +929,22 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 
 **Pay page** `/pay/?token=`: shows the booking summary, total, paid, owing and amount due now, with a **Pay** button that mounts Embedded Checkout. If nothing is owing, show a "Nothing to pay" state.
 
-Accessibility: keyboard-operable calendar (arrow keys, Enter) and boat cards (a radio group: arrow keys, Enter/Space), visible focus, ARIA labels and live region for the selected period and boat, contrast AA.
+Accessibility: keyboard-operable calendar (arrow keys, Enter), boat cards (toggle buttons: Tab, Enter/Space) and progress steps, visible focus, ARIA labels and live region for the selected period and boat, contrast AA.
 
 ## 12. Admin app (`berger-admin.pages.dev`)
 
-Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed by berth (largest first), then name. Saving, busy states and field validation follow §6.1: nothing is saved until the form's main button is pressed, buttons are disabled with progress while their request runs, and every field is validated when it loses focus.
+Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Customers · Settings**. The layout is desktop-first and usable on a tablet. All dates, times and timestamps follow the display format in §3. Boats are always listed in boat order (§7.3): highest Normal season Week rate first, then name. Saving, busy states and field validation follow §6.1: nothing is saved until the form's main button is pressed, buttons are disabled with progress while their request runs, and every field is validated when it loses focus.
 
 ### 12.1 Bookings
-- **Full-screen timeline:** one row per boat (sticky boat-name column), one column per day, Prev/Next and Today buttons, weekend columns shaded. The rows come from `GET /api/boats` and the bars from `GET /api/bookings` for the displayed range (§8.2).
+- **Full-screen timeline:** one row per boat (sticky boat-name column), one column per day, Prev/Next and Today buttons, a refresh button, weekend columns shaded. The rows come from `GET /api/boats` and the bars from `GET /api/bookings` for the displayed range (§8.2).
 - **Loading:** the header controls, the day-column headers and the boat names stay visible while a range loads; only the cells wait for data.
   - While a range with no data loaded yet is fetched (first load, Prev/Next, Today, the Week/Month switch, Show inactive), the cell area shows a large `Spinner` instead of empty cells. On the very first load, before the boats arrive, the boat-name column shows the spinner too.
-  - A range already loaded shows straight away and refreshes in the background, with no spinner.
+  - A range already loaded shows straight away and refreshes in the background, with no large spinner; the refresh button shows that a fetch is running (below).
   - The controls stay usable while loading. Only the most recently requested range is ever shown.
   - If loading fails, the cell area shows the error with a **Retry** button.
+- **Refresh button:** an icon-only button with a refresh icon (accessible label "Refresh"), next to Today.
+  - Clicking it refetches the boats and the displayed range. Other ranges already loaded are marked stale, so they refetch when shown again.
+  - Whenever the boats or the displayed range are being fetched, by a click or in the background (including a range already loaded refreshing, and the first load), the icon is replaced by a small `Spinner`, the button is disabled and its label is "Refreshing…". Otherwise it shows the refresh icon.
 - **Inactive boats** keep their row, with the name muted, so their history stays visible. Their empty cells are not clickable (no pointer, no hover), but their bars still open the booking dialog.
 - **Week | Month toggle** (a segmented control next to Today):
   - **Month view:** one column per day of the month, stretched to fill the width, like the week view. It only scrolls horizontally when the columns would be narrower than about 28px (e.g. on a tablet); it then keeps that minimum width. Prev/Next move one month; Today goes to the current month. Title e.g. "October 2026".
@@ -924,16 +972,21 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - Period type (Midweek/Weekend/Week/LongWeekend/Custom) — selecting one pre-fills the end date
 - Start date, end date
 - **Number of adults** (≥ 1) and **number of children** (≥ 0). Show a non-blocking warning if the total is above the boat's berth or above `AdultBeds + KidsBeds`.
-- **Check-in time** (default 11am) and **check-out time** (default 8am). Staff-only. Show a non-blocking warning when a custom time clashes with a same-day changeover on that boat (this booking's check-in is earlier than the previous booking's check-out on the same day, or its check-out is later than the next booking's check-in).
+- **Check-in time** (default `11:00`) and **check-out time** (default `08:00`). Staff-only. Each is a plain text field for a **24-hour** time, with no time picker or dropdown, so any time of day can be typed:
+  - It accepts `HH:mm`, `H:mm`, `HHmm` and `Hmm` from 00:00 to 23:59. On blur the value is formatted as `HH:mm` (`9:30` → `09:30`, `1730` → `17:30`, `930` → `09:30`).
+  - Anything else shows "Enter a 24-hour time, e.g. 14:30."
+  - The API and domain values stay `HH:mm` / `TimeOnly` (§7.1). Elsewhere times keep the display format in §3 (e.g. `11am`).
+  - Show a non-blocking warning when a custom time clashes with a same-day changeover on that boat (this booking's check-in is earlier than the previous booking's check-out on the same day, or its check-out is later than the next booking's check-in).
 - **Customer:**
   - **Email** (required, §7.1). On blur it is validated. When it is valid, it looks up an existing customer; when a customer is found, the names, mobiles, address and customer comments are **always** filled from that customer, replacing what was typed. When it is invalid, the error shows and no lookup is made. If the email is changed to another existing customer, those fields reload from that customer. When no customer is found, the fields keep what was typed.
+    - **While the lookup runs** (on a new or an existing booking), the email field shows a small `Spinner` with "Looking up customer…". First name, last name, Mobile, Secondary mobile, the address fields and Customer comments are disabled, and so is Create booking / Save changes, until it finishes.
   - **First name** and **Last name** (required).
-  - **Mobile** (optional) and **Secondary mobile** (optional, empty by default). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1).
+  - **Mobile** (optional) and **Secondary mobile** (optional, empty by default). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1). The secondary mobile can't be the same number as the mobile; the error shows on Secondary mobile when either field loses focus (§6.1).
   - **Address**, below Secondary mobile: **Address line 1**, **Address line 2**, **City/Locality**, **State**, **Postcode** and **Country**. None is required (§7.3).
     - **Country** is a dropdown of ISO 3166-1 alpha-2 countries (the same hard-coded list the server validates against, with names from `Intl.DisplayNames`), defaulting to Australia, or the customer's stored address country.
     - For Australia, **State** is a dropdown (NSW, VIC, QLD, SA, WA, TAS, NT, ACT) and **Postcode** must be 4 digits. For other countries both are free text. Switching Country to Australia clears a State that isn't one of these.
 - **Frequent Floater badge:** "⭐ Frequent Floater" next to the customer's name when §7.8 applies. A new booking is checked against now, after the email lookup; an existing booking is anchored at its `ActivatedAt`. A tooltip gives the number of other bookings.
-- Stand-by checkbox
+- Stand-by checkbox (locked while the booking is Superseded)
 - **Booking comments** (stored on the booking)
 - **Customer comments**, directly below:
   - Stored on the Customer and shared by all of their bookings.
@@ -942,13 +995,20 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - Status (Active/Cancelled editable; other statuses read-only)
 
 **Holds (`PendingPayment` and `Expired`, read-only, decision 36):**
-- The whole dialog is read-only: every field (including the customer section and Customer comments), the add-on lines and picker, Recalculate from rates, Save changes and Send payment link. The details entered online are shown read-only (see below).
+- The whole dialog is read-only: every field (including the customer section and Customer comments), the add-on lines and picker, the payments' Remove buttons, Recalculate from rates, Save changes and Send payment link. The details entered online are shown read-only (see below).
 - **PendingPayment:** Add manual payment is disabled too. A banner reads "Waiting for the customer's online payment. The hold expires at {dd/MM/yyyy h:mma}."
 - **Expired, without payments:** only **Add manual payment** is enabled. A banner reads "This hold expired without payment. Record a manual payment of at least {checkout amount} to confirm the booking."
-  - The manual payment dialog shows the same minimum as help text on the amount.
+  - The manual payment dialog shows the same minimum as help text on the amount, and its date can't be before the hold was created (§7.3).
+  - Its **Add** button adds one payment row, which can be removed again. Add manual payment is disabled while the row is there.
+  - The main button reads **Confirm booking** and is enabled once the row is added. It sends `POST /api/bookings/{id}/confirmation` with that payment.
   - A confirming payment makes the booking Active (§7.3). The dialog reloads as an ordinary Active booking, editable, with the customer section filled from the new Customer. A toast confirms "Booking {reference} confirmed."
   - A `409` (the dates were taken meanwhile) shows the conflicting references, and nothing is recorded.
-- **Expired, with a payment** (paid-but-expired, §8.3): Add manual payment stays disabled. A banner reads "Paid online after the hold expired — refund in Stripe."
+- **Expired, with a payment** (paid-but-expired, §8.3): Add manual payment stays disabled, and the payment can't be removed. A banner reads "Paid online after the hold expired — refund in Stripe."
+
+**Superseded stand-bys (decision 40):**
+- A banner reads "This stand-by booking was superseded by another booking. Change its boat or dates to reactivate it as a stand-by booking."
+- The dialog is otherwise edited as usual, except that Status and the Stand-by checkbox are locked.
+- Saving with a changed boat or dates reactivates it as an Active stand-by (§7.3), and a toast confirms "Booking {reference} reactivated as a stand-by." A `409` shows the conflicting references, and nothing is saved. Saving without changing the boat or dates keeps it Superseded.
 
 **Add-ons section:**
 - Lines with name, quantity, unit price, line total and a remove button, plus an add-on picker (add-ons in the admin-defined order) with an **Add** button.
@@ -963,16 +1023,20 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - Capacity-limited add-ons show the remaining capacity for the booking's dates (excluding this booking) and a non-blocking warning when exceeded. On the new-booking form the figure is re-fetched whenever the start date, end date, period type or picked add-on changes (including when choosing a period type rewrites the end date); a slower, older response must never overwrite a newer one.
 
 **Price breakdown** (at the bottom of the dialog, always visible above the Create booking / Save changes buttons):
-- It shows Hire price, Add-ons (the sum of priced lines) and **Total**, plus Paid and Owing when editing.
+- It shows Hire price, Add-ons (the sum of priced lines) and **Total**, plus Paid and Owing, calculated from the payment rows in the form, saved or not.
 - It is calculated in the browser from the form values as they change, so staff can quote the final price over the phone before saving.
 - Unpriced lines are left out, with a note such as "1 add-on not yet priced".
 - The server recalculates every amount on save.
 
-**Payments section:**
-- A list of payments, the payment status, and the schedule with due dates and amounts.
+**Payments section** (decision 38), shown on new and existing bookings:
+- A table of payments with five columns: **Date**, **Amount**, **Method** (Card (Stripe) or Manual), **Note**, and a **Remove** button. Below it, the payment status and the schedule with due dates and amounts.
+- **Add manual payment** opens a small dialog (amount, date, note). Its **Add** button only adds a row to the form; it sends no request. The date defaults to today, and the dialog checks the date rule (no earlier than the booking's creation date, no later than today, §7.3) as the server does. On a new booking the date can only be today.
+- Rows added since the last save are tagged "Not saved". Rows can't be edited; staff remove one and add it again.
+- **Remove** is on every row, Stripe and manual (staff remove a Stripe payment after refunding it in the Stripe dashboard). It only takes the row out of the form.
+- **Nothing is saved until the booking is:** adding and removing payments only changes the form. They are saved by **Create booking** or **Save changes**, with the rest of the booking (§8.2), and every other field keeps what was typed.
+- Payments can be added and removed on new, Active, Cancelled and Superseded bookings. On holds, see Holds above.
 - The schedule depends on server rules (e.g. extended-schedule blocked periods), so it is calculated by the server and refreshes after saving. While the form has unsaved changes, it shows "Schedule updates when you save."
-- **"Add manual payment"** (amount, date, note) and **"Send payment link"** (disabled when nothing is owing; shows a confirmation toast) are actions of their own, separate from Save changes. They are disabled while the form has unsaved changes, with the hint "Save your changes first".
-- Add manual payment is available on Active bookings and, as staff confirmation, on Expired bookings without payments (see Holds above). Send payment link is available on Active non-stand-by bookings only.
+- **"Send payment link"** (disabled when nothing is owing; shows a confirmation toast) is an action of its own, separate from Save changes. It is available on Active non-stand-by bookings only, and is disabled while the form has unsaved changes, with the hint "Save your changes first".
 
 **Read-only info for online bookings:** created by, created date, terms accepted at, rooming warning accepted at + text, and the customer details entered online.
 
@@ -1097,7 +1161,7 @@ Sections:
 ## 15. Testing
 
 - **Domain unit tests** (high coverage), at least:
-  - Period mapping for every weekday in every mode, including boundary Mondays and Fridays.
+  - Period mapping for every weekday in every type of stay (Mid-week, Weekend, Week (Fri–Fri), Week (Mon–Mon)), including boundary Mondays and Fridays.
   - Overlap rules: same-day changeover (8am check-out, 11am check-in) allowed; booking vs blocked/unavailability inclusive-night rules, including the 28/09→02/10 and 17/12→21/12 examples.
   - Lead time and open-until boundaries.
   - Season lookup, including the year-wrapping Peak range; price snapshotting; add-on pricing; price on request; no add-on prices for LongWeekend/Custom.
@@ -1105,13 +1169,15 @@ Sections:
   - PaymentStatus derivation, including paid below the deposit → `PartPaid` and paid equal to the deposit → `DepositPaid`.
   - `TotalPrice` counts every priced add-on line and excludes unpriced ones.
   - Status transitions and illegal transitions, including `Expired → Active` on activation and the rejection of staff updates for `PendingPayment` and `Expired` bookings.
-  - Stand-by superseding.
+  - Stand-by superseding, and reactivation: a Superseded booking moved to another boat or other dates becomes an Active stand-by; a save that changes neither keeps it Superseded; its status and stand-by flag can't be changed otherwise.
+  - Manual payments: the date on the booking's creation date and today accepted, the day before creation and tomorrow rejected (Australia/Sydney dates); removing a payment, Stripe or manual, never changes the status and records a removed Stripe payment's PaymentIntent id; payment changes rejected on `PendingPayment` and `Expired` bookings.
+  - Boat order: by the Normal season Week rate descending, then name; boats without that rate last.
   - Guest rules: adults ≥ 1, adults + children ≤ berth (online), rooming warning trigger (`adults + children > AdultBeds + KidsBeds`).
   - Add-on capacity: busiest-night calculation including the four worked examples in §7.5; stand-by, Cancelled, Expired, Superseded and expired holds don't count; excluding a booking being edited.
   - Boat activation invariant (image URL, spa and pet friendly not required).
   - Boat `Berth >= AdultBeds + KidsBeds` on create and on edit, active or not.
   - Boat `ImageUrl` validation: empty allowed; only absolute `https://` URLs on `bergerhouseboats.com.au` or `www.bergerhouseboats.com.au` accepted.
-  - Customer email normalisation; the email rule's accepted and rejected examples (§7.1), including `.com.au` and `.co.uk` accepted and a missing or numeric top-level domain rejected; customer address: parts trimmed, a partial address accepted, an address with only a country stored empty, the length limits, and the Australian state list and 4-digit postcode applied only when the country is `AU`; mobile number E.164 normalisation; an Australian mobile accepted, an Australian landline rejected, a `FIXED_LINE_OR_MOBILE` number (e.g. US) accepted.
+  - Customer email normalisation; the email rule's accepted and rejected examples (§7.1), including `.com.au` and `.co.uk` accepted and a missing or numeric top-level domain rejected; customer address: parts trimmed, a partial address accepted, an address with only a country stored empty, the length limits, and the Australian state list and 4-digit postcode applied only when the country is `AU`; mobile number E.164 normalisation; an Australian mobile accepted, an Australian landline rejected, a `FIXED_LINE_OR_MOBILE` number (e.g. US) accepted; a secondary mobile equal to the mobile in E.164 (e.g. `0412 345 678` and `+61412345678`) rejected, and the secondary mobile cleared when an online booking's mobile matches it.
   - Booking references:
     - The format comes from the last name and `StartDate` (`SMITH-2701150`).
     - Name clean-up: accents, apostrophes, hyphens, spaces, the 20-character limit and the `GUEST` fallback.
@@ -1126,14 +1192,17 @@ Sections:
   - `StaffBookingWarnings`: guests above berth, guests above beds, add-on capacity exceeded (a warning, not an error), and changeover time clashes.
   - Notification job, using a fake clock and short offsets: idempotency; which emails at which instants; #4 and #7 skipped when their trigger had passed at activation (including a hold staff confirm days after it was created); #7 never sent for a milestone already due at activation; #1 including the payment link for late bookings; #6 sent for bookings created inside the pre-hire window.
   - Abandoned drafts: threshold, latest draft per email only, suppression after a booking for that email becomes Active, deletion after retention.
-  - Webhook handling: idempotent replay, deposit activation creating/updating the Customer and converting the draft, a late deposit activating an Expired booking whose dates are free, expired-hold conflict path creating no Customer, a deposit for a booking staff already confirmed recorded with an error logged and nothing sent, and `checkout.session.expired` expiring a hold.
+  - Webhook handling: idempotent replay, a replay for a Stripe payment staff removed recording nothing, deposit activation creating/updating the Customer and converting the draft, a late deposit activating an Expired booking whose dates are free, expired-hold conflict path creating no Customer, a deposit for a booking staff already confirmed recorded with an error logged and nothing sent, and `checkout.session.expired` expiring a hold.
   - An expired hold never creates or changes a Customer unless staff confirm it.
   - Hold expiry: admin-api returns a hold whose `HoldExpiresAt` has passed as `Expired` (timeline, search, dialog, a customer's bookings) without saving it; staff confirmation of a lapsed hold expires and confirms it in one transaction; the job saves the expiry of the rest.
-  - Staff confirmation (`POST /api/bookings/{id}/payments` on an Expired booking):
+  - Staff confirmation (`POST /api/bookings/{id}/confirmation`):
     - A payment of at least `min(DepositAmount, HirePrice)` records it and activates the booking (reference, `ActivatedAt`, Customer from `CustomerDetails`, draft converted, stand-bys superseded with #8), sending #1 only (no #2, no #5).
-    - A smaller amount is rejected with a field error and records nothing.
+    - A smaller amount, or a date before the hold was created or after today, is rejected with a field error and records nothing.
     - Taken dates return `409` naming the conflicting references and record nothing.
-    - It is rejected for an Expired booking that already has a payment, and manual payments and payment links are rejected for `PendingPayment` bookings.
+    - It is rejected for an Expired booking that already has a payment and for every other status, and payment changes and payment links are rejected for `PendingPayment` bookings.
+  - Staff bookings with `payments`: new manual payments recorded, kept payments unchanged, left-out payments (Stripe or manual) removed; payments accepted on create and on Active, Cancelled and Superseded bookings; #5 sent once per payment added on update to an Active non-stand-by booking, and never for payments saved on create or for removals.
+  - Superseded reactivation through `PUT /api/bookings/{id}`: a free new stay makes it an Active stand-by; an overlap with a blocking booking or unavailability returns `409` and saves nothing; when it is superseded again, #8 is sent again.
+  - Boat order in both `GET /api/boats` responses.
   - Booking drafts: `GET /api/booking-drafts/{draftId}` returns only the first name, last name, email and mobile, and `404` for an unknown, converted or deleted draft.
   - `POST /api/bookings` releases a still-`PendingPayment` hold from the same draft before creating the new one, and returns `checkoutExpiresAt` = the session's `expires_at`, which is before `HoldExpiresAt`.
   - Fleet availability (`GET /api/availability`) and period availability (`GET /api/availability/period`): only active House boats are included; blocking bookings and unavailabilities make a boat unavailable while stand-by, Cancelled, Expired, Superseded bookings and expired holds do not; hire prices match `PricingService`; no booking or customer data is returned; invalid stays (period shape, lead time, open-until, blocked periods) return `400`.
@@ -1142,7 +1211,7 @@ Sections:
   - Release (`POST /api/bookings/{bookingId}/release`): expires the Stripe session and the booking and frees the dates; a wrong draft id is rejected; an already Active booking returns `409`; repeating it is harmless.
   - Staff bookings with `addonLines`: new lines added, edited lines updated, left-out lines deleted; `POST /api/bookings/quote` pre-fill and recalculation prices (null for price on request, LongWeekend and Custom).
   - Customer comments are saved from staff booking create/update and from `PUT /api/customers/{id}/comments`; the address (every part, including a partial address) is saved from staff booking create/update; online activation and staff confirmation never change comments, the secondary mobile or the address.
-  - Staff booking create **and update** reject an invalid email or mobile with a field error (e.g. changing an existing booking's email to `jane@gmail`).
+  - Staff booking create **and update** reject an invalid email or mobile with a field error (e.g. changing an existing booking's email to `jane@gmail`), and a secondary mobile equal to the mobile with a field error on `secondaryMobile`.
   - Email #2 renders `{{FrequentFloaterNotice}}` only for a Frequent Floater booking; the bank placeholders render the Settings values (BSB as `123-456`) or empty.
 - **Integration tests (Firestore emulator):**
   - Repositories round-trip.
@@ -1161,7 +1230,9 @@ Sections:
   - No Application type implements a port from `Application.Abstractions`.
   - Every `IBookingRequestValidationStrategy` implementation has only a parameterless constructor.
 - **Frontend:** Vitest + React Testing Library, with MSW mocking the API. Pure rules (period mapping, greying, time-zone labels, lane assignment) are plain unit tests; behaviour is tested through the components. At least:
-  - the calendar period mapping, per-period greying logic, and highlighting of non-clickable days inside a selection;
+  - the calendar period mapping for every type of stay, including every day clickable in Week (Fri–Fri) and Week (Mon–Mon) with a start earlier than the clicked day, switching between the two Week options clearing the period, per-period greying logic, and the selection highlighting;
+  - the left column order (filters above Type of stay), the custom-dates message with the contact phone link and hidden without a phone, and no page title above the progress steps;
+  - progress steps: going back to any earlier step; leaving Payment through a step releasing the hold; forward jumps up to the furthest step reached running each step's checks and stopping on the first that fails, needs the rooming warning, removed add-ons or has too little capacity; Payment and Complete never clickable;
   - adjacent-month cells: muted, not clickable, and showing the muted selection colour when the selection extends into them;
   - the check-in/check-out line, including the AEST/NSW and AEDT/NSW labels and the split label for a stay that crosses a daylight-saving change;
   - the "Selected: …" text (dates only, no times), and the Summary's check-in and check-out rows (each with its own zone label);
@@ -1178,9 +1249,9 @@ Sections:
   - the capacity "remaining" text always uses the unit label;
   - the Close button: posts `bh-booking:close` inside an iframe, and falls back to the WordPress page outside one when the window stays open;
   - busy states in both apps: a button is disabled and labelled while its request runs and can't submit twice; a dialog closes only on success and keeps the user's input on error;
-  - Dates & boat step: calendar greying with the checkbox unticked (a period is free when any candidate boat is free, after the guest, Spa and Pet friendly filters) and ticked (selected boat only); the checkbox's enabled, disabled and ticked states, including selecting another card leaving it unchanged; deselecting the selected boat when the period or a filter makes it ineligible, without clearing the period; the requested boat always first; the requested boat's reason precedence (inactive → dates → too small → filters); hiding other boats not free for the period and the two empty-list messages; Base hire rate states; the rooming warning on Continue and re-showing it after the boat or guests change; add-ons removed after changing boat;
+  - Dates & boat step: calendar greying with no boat selected (a period is free when any candidate boat is free, after the guest, Spa and Pet friendly filters) and with a boat selected (that boat only); the selected-boat message shown only while a boat is selected, and its "Click here" link deselecting the boat and keeping the period; clicking the selected card again deselecting it; the cards as toggle buttons with at most one pressed; deselecting the selected boat when the period or a filter makes it ineligible, without clearing the period; the requested boat always first; the requested boat's reason precedence (inactive → dates → too small → filters); hiding other boats not free for the period and the two empty-list messages; Base hire rate states; the rooming warning on Continue and re-showing it after the boat or guests change; add-ons removed after changing boat;
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
-  - admin timeline loading: the large spinner in the cell area while a range with no data loads, with the day headers and boat names still shown; a loaded range showing without a spinner; a slower, older response never replacing a newer range; the error state with Retry;
+  - admin timeline loading: the large spinner in the cell area while a range with no data loads, with the day headers and boat names still shown; a loaded range showing without the large spinner while the refresh button shows its spinner during the background refresh; the refresh button refetching the displayed range, disabled with its spinner while any fetch runs, and showing its icon otherwise; a slower, older response never replacing a newer range; the error state with Retry;
   - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning;
   - admin timeline lane assignment by check-in/check-out time (a standard changeover shares a lane; clashing custom times get a new lane);
   - admin new-booking pre-fill for a clicked day of every weekday: Mon–Thu → Mid-week Mon→Fri of that week, Fri–Sun → Weekend Fri→Mon containing it; "+ New" applies the same rule to today with no boat; empty cells of inactive boats are not clickable while their bars still open;
@@ -1195,9 +1266,13 @@ Sections:
     - The Frequent Floater badge.
     - Address and customer comments: always filled from the customer on an email lookup that finds one, and kept as typed when none is found.
     - Address fields: none required; Country defaulting to Australia or the stored country; the Australian State dropdown and 4-digit postcode; free text for other countries.
-    - No customer lookup for an invalid email.
-    - Manual payment and Send payment link are disabled while there are unsaved changes.
-    - Holds: a PendingPayment booking fully read-only with its expiry banner; an Expired booking read-only except Add manual payment, with the minimum shown, becoming editable once confirmed; a paid-but-expired booking with Add manual payment disabled.
+    - No customer lookup for an invalid email. While a lookup runs, the email field's spinner shows and the other customer fields and the main button are disabled.
+    - The secondary mobile error when it matches the mobile.
+    - Check-in/check-out times: typed 24-hour values formatted on blur (`930` → `09:30`, `1730` → `17:30`, `9:30` → `09:30`), and the error for anything else.
+    - Payments: Add manual payment adds a "Not saved" row and sends no request; Remove on Stripe and manual rows takes them out without a request; the date rule (before creation, in the future) on blur; Paid and Owing following the rows; payments saved only with Create booking / Save changes; the payments section on a new booking.
+    - Send payment link is disabled while there are unsaved changes.
+    - Holds: a PendingPayment booking fully read-only with its expiry banner; an Expired booking read-only except Add manual payment, with the minimum shown, its row enabling Confirm booking, becoming editable once confirmed; a paid-but-expired booking with Add manual payment and Remove disabled.
+    - Superseded: the banner; Status and Stand-by locked; a save with a changed boat or dates reactivating it.
   - add-on settings: price on request disables and clears the unit prices; an empty capacity disables and clears the unit label; a capacity without a unit label shows "Required";
   - the booking reference shown on Complete, and "Pending payment" bar labels for holds.
 
@@ -1212,7 +1287,7 @@ Sections:
    4. Gmail SMTP: 2-Step Verification and a Google app password for `info@bergerhouseboats.com.au`, and checking SPF, DKIM and DMARC for `bergerhouseboats.com.au` at its existing DNS host.
    5. Cloudflare Pages projects (booking custom domain; admin on `pages.dev` with no custom domain), `_headers`, Access app on the admin `pages.dev` address + Google IdP + policy, Turnstile.
    6. Run the seed. In the admin app, complete every boat (berth, adult beds, kids beds, bedding, bond, optional deposit, image URL, spa, pet friendly, rates, allowed add-ons) and activate it. Set add-on prices, order and car parking capacity. Enter blocked periods (Easter, long weekends) up to "bookings open until". Review email templates. Fill in contact details and, if wanted, bank details.
-   7. **Before go-live: staff enter every existing future booking** from paper/Excel as staff bookings, recording payments already received as manual payments. Past bookings are not entered.
+   7. **Before go-live: staff enter every existing future booking** from paper/Excel as staff bookings, recording payments already received as manual payments. A payment can't be dated before the booking was entered (§7.3), so these payments are dated the day they are entered, with the date actually received in the note (e.g. "Bank transfer, received 03/08/2026"). Past bookings are not entered.
    8. End-to-end test in Stripe test mode, then switch to live keys.
    9. Paste the HTML block into each of the 14 WordPress boat pages.
 4. A final summary listing anything not implemented and every assumption you made.
