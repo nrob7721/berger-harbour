@@ -9,7 +9,7 @@ namespace BergerHarbour.Application.Seed;
 
 /// <summary>
 /// The setup seed (§13). Idempotent: it only creates what is missing and never overwrites staff edits. Boat data comes
-/// from each boat's page on bergerhouseboats.com.au; only Pacific Blue is active until staff verify the others in Fleet.
+/// from each boat's page on bergerhouseboats.com.au; every seeded boat is created active.
 /// </summary>
 public sealed class SeedService
 {
@@ -21,7 +21,7 @@ public sealed class SeedService
     [
         new("Pacific Blue", "pacific-blue", 12, 6, 2, "4 queen bedrooms, bunk area (2 singles), single in lounge, single in dining area", 2000, null,
             "https://bergerhouseboats.com.au/wp-content/uploads/2025/03/1-12.jpg", true, false,
-            [4060, 4060, 4620, 5850], [3570, 3570, 4050, 5250], [4500, 4500, 5100, 6200], true),
+            [4060, 4060, 4620, 5850], [3570, 3570, 4050, 5250], [4500, 4500, 5100, 6200]),
         new("Ocean Spirit", "ocean-spirit", 12, 6, 0, "4 bedrooms (2 queen, 2 double), queen trundle bed, double sofa bed", 2000, 1000,
             "https://bergerhouseboats.com.au/wp-content/uploads/2022/11/ocean-spirit-walkthrough-7-600x450.jpg", true, false,
             [4060, 4060, 4620, 5850], [3570, 3570, 4050, 5250], [4500, 4500, 5100, 6200]),
@@ -170,7 +170,7 @@ public sealed class SeedService
     /// <summary>Rates in the order the website lists them: Weekend, Midweek, Long weekend, Week.</summary>
     private sealed record SeedBoat(
         string Name, string Slug, int Berth, int AdultBeds, int KidsBeds, string Bedding, decimal Bond, decimal? Deposit, string ImageUrl, bool Spa,
-        bool Pets, decimal[] NormalRates, decimal[] OffPeakRates, decimal[] PeakRates, bool Active = false)
+        bool Pets, decimal[] NormalRates, decimal[] OffPeakRates, decimal[] PeakRates, bool Active = true)
     {
         public BoatDetails ToDetails(IReadOnlyList<AddonId> addonIds) =>
             new(Name, Slug, BoatType.House, Berth, AdultBeds, KidsBeds, Bedding, Bond, Deposit, ImageUrl, Spa, Pets,

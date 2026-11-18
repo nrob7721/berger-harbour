@@ -178,7 +178,8 @@ public sealed class StaffBookingService
     /// <summary>
     /// Saves every field of the booking dialog, including the full add-on line and payment lists and the customer's details.
     /// Each payment added to an Active non-stand-by booking sends one #5. Changing a Superseded booking's boat or dates
-    /// reactivates it as a stand-by (§7.3).
+    /// reactivates it as a stand-by (§7.3). The deposit is set again from the boat unless the save keeps a payment the booking
+    /// already had (§7.3).
     /// </summary>
     public async Task<BookingSaveResponse> UpdateAsync(string id, UpdateStaffBookingRequest request, CancellationToken ct = default)
     {
@@ -223,6 +224,7 @@ public sealed class StaffBookingService
                 current.ChangeStatusByStaff(request.Status, now);
             }
 
+            current.ResetDepositUnlessPaid(boat.EffectiveDeposit(reference.Settings), keptPayments);
             current.ChangePaymentsByStaff(keptPayments, addedPayments, now);
 
             IReadOnlyList<Booking> supersededHere = [];

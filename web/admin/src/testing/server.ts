@@ -5,12 +5,12 @@ import type { Addon, Boat, BookingDetail, Customer, Timeline } from '@/lib/types
 export const boats: Boat[] = [
   {
     id: 'b-pb', name: 'Pacific Blue', slug: 'pacific-blue', type: 'House', berth: 12, adultBeds: 6, kidsBeds: 2, beddingDescription: '4 queens',
-    securityBond: 2000, depositAmount: null, imageUrl: null, hasSpa: true, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
+    securityBond: 2000, depositAmount: null, effectiveDepositAmount: 1000, imageUrl: null, hasSpa: true, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
     missingForActivation: [], version: 1,
   },
   {
     id: 'b-mb', name: 'Misty Blue', slug: 'misty-blue', type: 'House', berth: 9, adultBeds: 3, kidsBeds: 3, beddingDescription: 'doubles',
-    securityBond: 1500, depositAmount: null, imageUrl: null, hasSpa: false, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
+    securityBond: 1500, depositAmount: 1500, effectiveDepositAmount: 1500, imageUrl: null, hasSpa: false, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
     missingForActivation: [], version: 1,
   },
 ];

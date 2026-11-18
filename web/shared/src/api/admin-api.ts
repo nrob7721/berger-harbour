@@ -1455,6 +1455,8 @@ export interface components {
             securityBond: number;
             /** Format: double */
             depositAmount: null | number;
+            /** Format: double */
+            effectiveDepositAmount: number;
             imageUrl: null | string;
             hasSpa: boolean;
             isPetFriendly: boolean;

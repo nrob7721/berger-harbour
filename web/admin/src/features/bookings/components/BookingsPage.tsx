@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
+import { RefreshCwIcon } from '@shared/components/icons/RefreshCwIcon';
 import { formatDate, todayInSydney, type IsoDate } from '@shared/utils/dates';
 import { useBoats } from '@/hooks/useReferenceData';
 import { api, keys } from '@/lib/api';
@@ -25,16 +26,6 @@ function writeView(view: TimelineView) {
   } catch {
     /* per-browser convenience only */
   }
-}
-
-/** The refresh icon: a circular arrow. */
-function RefreshIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M20 11a8 8 0 1 0-2.34 5.66" />
-      <path d="M20 4v7h-7" />
-    </svg>
-  );
 }
 
 type DialogState = { bookingId: string | null; initial?: { boatId?: string; day?: IsoDate } } | null;
@@ -87,7 +78,7 @@ export function BookingsPage({ todayIso = todayInSydney() }: { todayIso?: IsoDat
           <Button onClick={() => setRange((r) => step(r, -1))}>‹ Prev</Button>
           <Button onClick={() => setRange(today(range.view, todayIso))}>Today</Button>
           <Button iconOnly aria-label="Refresh" busy={refreshing} busyLabel="Refreshing…" onClick={refresh} title="Refresh">
-            <RefreshIcon />
+            <RefreshCwIcon />
           </Button>
           <div className={styles.segmented} role="group" aria-label="View">
             {(['week', 'month'] as const).map((v) => (

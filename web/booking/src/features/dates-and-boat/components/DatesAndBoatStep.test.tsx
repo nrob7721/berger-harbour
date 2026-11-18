@@ -171,13 +171,16 @@ describe('Dates & boat: calendar boats and the selected boat', () => {
 });
 
 describe('Dates & boat: layout', () => {
-  it('puts the filters above the type of stay, with both Weeks in a Week frame', () => {
+  it('puts the filters above the type of stay: four radios in one group, with no frame around the two Weeks', () => {
     renderStep();
     const adults = screen.getByLabelText('Adults');
     const midweek = screen.getByRole('radio', { name: 'Mid-week (Mon–Fri)' });
     expect(adults.compareDocumentPosition(midweek) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const week = screen.getByRole('group', { name: 'Week' });
-    expect(within(week).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['WeekFri', 'WeekMon']);
+    const group = screen.getByRole('group', { name: 'Type of stay' });
+    expect(within(group).getAllByRole('radio').map((r) => r.getAttribute('aria-label')))
+      .toEqual(['Mid-week (Mon–Fri)', 'Weekend (Fri–Mon)', 'Week (Fri–Fri)', 'Week (Mon–Mon)']);
+    expect(within(group).queryByRole('group')).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Week (Mon–Mon)' }).closest('label')).toHaveTextContent(/^WeekMon–Mon$/);
     expect(midweek).toBeChecked();
   });
 

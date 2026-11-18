@@ -12,25 +12,28 @@ public sealed class BoatService
     private readonly IBoatRepository boats;
     private readonly ISeasonRepository seasons;
     private readonly IAddonDefinitionRepository addons;
+    private readonly IBusinessSettingsRepository settings;
     private readonly IClock clock;
 
-    public BoatService(IBoatRepository boats, ISeasonRepository seasons, IAddonDefinitionRepository addons, IClock clock)
+    public BoatService(IBoatRepository boats, ISeasonRepository seasons, IAddonDefinitionRepository addons, IBusinessSettingsRepository settings, IClock clock)
     {
         this.boats = boats;
         this.seasons = seasons;
         this.addons = addons;
+        this.settings = settings;
         this.clock = clock;
     }
 
-    /// <summary>Every boat, in boat order (§7.3).</summary>
+    /// <summary>Every boat, in boat order (§7.3), with its effective deposit.</summary>
     public async Task<IReadOnlyList<AdminBoat>> ListAsync(CancellationToken ct = default)
     {
         var allSeasons = await seasons.ListAsync(ct);
-        return Boat.InListOrder(await boats.ListAsync(ct), allSeasons).Select(b => ToDto(b, allSeasons)).ToList();
+        var current = await SettingsAsync(ct);
+        return Boat.InListOrder(await boats.ListAsync(ct), allSeasons).Select(b => ToDto(b, allSeasons, current)).ToList();
     }
 
     public async Task<AdminBoat> GetAsync(string id, CancellationToken ct = default) =>
-        ToDto(await LoadAsync(id, ct), await seasons.ListAsync(ct));
+        ToDto(await LoadAsync(id, ct), await seasons.ListAsync(ct), await SettingsAsync(ct));
 
     public async Task<AdminBoat> CreateAsync(SaveBoatRequest request, CancellationToken ct = default)
     {
@@ -43,7 +46,7 @@ public sealed class BoatService
         }
 
         await boats.SaveAsync(boat, ct);
-        return ToDto(boat, allSeasons);
+        return ToDto(boat, allSeasons, await SettingsAsync(ct));
     }
 
     /// <summary>Edits every field, including the active flag (activation reports what is missing).</summary>
@@ -66,13 +69,17 @@ public sealed class BoatService
         }
 
         await boats.SaveAsync(boat, ct);
-        return ToDto(boat, allSeasons);
+        return ToDto(boat, allSeasons, await SettingsAsync(ct));
     }
 
-    private static AdminBoat ToDto(Boat b, IReadOnlyList<Season> seasons) =>
-        new(b.Id.Value, b.Name, b.Slug, b.Type, b.Berth, b.AdultBeds, b.KidsBeds, b.BeddingDescription, b.SecurityBond, b.DepositAmount, b.ImageUrl,
+    private static AdminBoat ToDto(Boat b, IReadOnlyList<Season> seasons, BusinessSettings settings) =>
+        new(b.Id.Value, b.Name, b.Slug, b.Type, b.Berth, b.AdultBeds, b.KidsBeds, b.BeddingDescription, b.SecurityBond, b.DepositAmount,
+            b.EffectiveDeposit(settings), b.ImageUrl,
             b.HasSpa, b.IsPetFriendly, b.IsActive, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
             b.AllowedAddonIds.Select(a => a.Value).ToList(), b.MissingForActivation(seasons), b.Version);
+
+    private async Task<BusinessSettings> SettingsAsync(CancellationToken ct) =>
+        await settings.GetAsync(ct) ?? throw new InvalidOperationException("Business settings are missing. Run the seed first.");
 
     private async Task<Boat> LoadAsync(string id, CancellationToken ct) =>
         await boats.GetAsync(new BoatId(id), ct) ?? throw new NotFoundException("We couldn't find that boat.");

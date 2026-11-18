@@ -103,6 +103,21 @@ export function priceBreakdown(hirePrice: number | null, lines: Pick<LineForm, '
   };
 }
 
+/**
+ * The breakdown's Deposit (§12.1): what saving will store (§7.3). While the form has no saved payment rows it is the chosen
+ * boat's effective deposit; with a saved payment row, and on holds, it is the booking's stored deposit. Falls back to the stored
+ * deposit while the boat's isn't known; `null` ("—") on a new booking without a boat.
+ */
+export function breakdownDeposit({ boatDeposit, storedDeposit, hasSavedPayment, isHold }: {
+  boatDeposit: number | null;
+  storedDeposit: number | null;
+  hasSavedPayment: boolean;
+  isHold: boolean;
+}): number | null {
+  if (isHold || hasSavedPayment) return storedDeposit;
+  return boatDeposit ?? storedDeposit;
+}
+
 /** Non-blocking warnings about guests and beds. */
 export function guestWarnings(boat: Boat | undefined, adults: number, children: number): string[] {
   if (!boat) return [];

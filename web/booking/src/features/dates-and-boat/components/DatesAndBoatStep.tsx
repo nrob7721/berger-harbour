@@ -4,7 +4,7 @@ import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
 import { addDays, addMonths, monthGrid, startOfMonth, type IsoDate } from '@shared/utils/dates';
 import { formatMoney } from '@shared/utils/money';
-import { TYPE_OF_STAY_LABELS, type Stay, type TypeOfStay } from '@shared/utils/periods';
+import { TYPE_OF_STAY_LABELS, TYPES_OF_STAY, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import { Notice } from '@/components/Notice/Notice';
 import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
 import { keys } from '@/lib/api';
@@ -27,9 +27,6 @@ export interface DatesAndBoatStepProps {
   onContinue: () => void;
 }
 
-/** The type of stay radios: Mid-week and Weekend, then both Weeks inside a Week frame (§11.2). */
-const SINGLE_TYPES: TypeOfStay[] = ['Midweek', 'Weekend'];
-const WEEK_TYPES: TypeOfStay[] = ['WeekFri', 'WeekMon'];
 
 export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }: DatesAndBoatStepProps) {
   const { state, dispatch } = useBooking();
@@ -121,14 +118,20 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : 'No boat selected.']
     .filter(Boolean).join(' ');
   const deselect = () => dispatch({ type: 'selectBoat', slug: null });
-  const typeRadio = (t: TypeOfStay) => (
-    <label key={t} className={`${styles.period} ${state.typeOfStay === t ? styles.periodChecked : ''}`}>
-      <input type="radio" name="typeOfStay" value={t} checked={state.typeOfStay === t} onChange={() => dispatch({ type: 'typeOfStay', typeOfStay: t })} />
-      <span>
-        <strong>{TYPE_OF_STAY_LABELS[t].name}</strong> <span className={styles.muted}>({TYPE_OF_STAY_LABELS[t].days})</span>
-      </span>
-    </label>
-  );
+  /** One type-of-stay box: the name in bold with the days stacked underneath; the radio's name is the full label (§11.2). */
+  const typeRadio = (t: TypeOfStay) => {
+    const { name, days } = TYPE_OF_STAY_LABELS[t];
+    return (
+      <label key={t} className={`${styles.period} ${state.typeOfStay === t ? styles.periodChecked : ''}`}>
+        <input type="radio" name="typeOfStay" value={t} aria-label={`${name} (${days})`} checked={state.typeOfStay === t}
+          onChange={() => dispatch({ type: 'typeOfStay', typeOfStay: t })} />
+        <span className={styles.periodText}>
+          <strong>{name}</strong>
+          <span className={styles.periodDays}>{days}</span>
+        </span>
+      </label>
+    );
+  };
 
   return (
     <section className={styles.step} aria-labelledby="dates-heading">
@@ -164,13 +167,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
 
           <fieldset className={styles.fieldset}>
             <legend className={styles.label}>Type of stay</legend>
-            <div className={styles.periods}>
-              {SINGLE_TYPES.map(typeRadio)}
-              <div className={styles.weekFrame} role="group" aria-label="Week">
-                <span className={styles.weekTitle}>Week</span>
-                {WEEK_TYPES.map(typeRadio)}
-              </div>
-            </div>
+            <div className={styles.periods}>{TYPES_OF_STAY.map(typeRadio)}</div>
           </fieldset>
           {settings.contactPhone && (
             <p className={styles.info} data-testid="custom-dates">

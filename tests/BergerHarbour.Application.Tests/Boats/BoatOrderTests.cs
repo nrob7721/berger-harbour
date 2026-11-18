@@ -34,6 +34,21 @@ public class BoatOrderTests
     }
 
     [Fact]
+    public async Task Admin_boats_give_their_own_deposit_or_the_Settings_default_as_the_effective_deposit()
+    {
+        var listed = await h.Get<BoatService>().ListAsync();
+        var defaultDeposit = h.Db.Settings.All.Single().DepositAmount;
+        Assert.Contains(listed, b => b.DepositAmount is null);
+        foreach (var boat in listed)
+        {
+            Assert.Equal(boat.DepositAmount ?? defaultDeposit, boat.EffectiveDepositAmount);
+        }
+
+        var own = h.Boat("ocean-spirit");
+        Assert.Equal(own.DepositAmount, (await h.Get<BoatService>().GetAsync(own.Id.Value)).EffectiveDepositAmount);
+    }
+
+    [Fact]
     public async Task Public_boats_are_in_boat_order()
     {
         foreach (var boat in h.Db.Boats.All.Where(b => b.Type == BoatType.House))

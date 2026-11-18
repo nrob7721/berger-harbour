@@ -409,6 +409,21 @@ public sealed class Booking : AggregateRoot
     }
 
     /// <summary>
+    /// The deposit on a staff save (§7.3): it follows the boat (<paramref name="boatDeposit"/>, the boat's effective deposit as
+    /// saved) unless the save keeps a payment the booking already had. Called before the save's payment changes, so a payment
+    /// added in the same save doesn't stop it, and a save removing every payment sets it from the boat again.
+    /// </summary>
+    public void ResetDepositUnlessPaid(decimal boatDeposit, IReadOnlyCollection<string> keptPaymentIds)
+    {
+        if (payments.Any(p => keptPaymentIds.Contains(p.Id)))
+        {
+            return;
+        }
+
+        DepositAmount = boatDeposit;
+    }
+
+    /// <summary>
     /// The manual payment date rule (§7.3): on or after the booking's creation date and on or before today, both as Sydney
     /// dates. Stripe payments are dated by Stripe.
     /// </summary>

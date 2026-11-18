@@ -2,7 +2,7 @@ using BergerHarbour.Domain.Boats;
 
 namespace BergerHarbour.Application.Boats.Dtos;
 
-/// <summary>A boat in Fleet, with what is missing before it can be activated.</summary>
+/// <summary>A boat in Fleet, with what is missing before it can be activated. <c>EffectiveDepositAmount</c> is its own deposit, or the Settings default.</summary>
 public sealed record AdminBoat(
     string Id,
     string Name,
@@ -14,6 +14,7 @@ public sealed record AdminBoat(
     string? BeddingDescription,
     decimal SecurityBond,
     decimal? DepositAmount,
+    decimal EffectiveDepositAmount,
     string? ImageUrl,
     bool HasSpa,
     bool IsPetFriendly,

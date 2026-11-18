@@ -1994,6 +1994,7 @@
           "beddingDescription",
           "securityBond",
           "depositAmount",
+          "effectiveDepositAmount",
           "imageUrl",
           "hasSpa",
           "isPetFriendly",
@@ -2050,6 +2051,10 @@
               "null",
               "number"
             ],
+            "format": "double"
+          },
+          "effectiveDepositAmount": {
+            "type": "number",
             "format": "double"
           },
           "imageUrl": {

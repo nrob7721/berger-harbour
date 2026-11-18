@@ -25,12 +25,14 @@
   outline-offset: 2px;
 }
 
-/* The selected card is shown as selected as a whole: a strong brand border and tint (no tick-box). */
-.selected {
-  border: 3px solid var(--c-brand);
-  background: var(--c-brand-tint-strong);
-  padding: 6px;
-  box-shadow: 0 0 0 1px var(--c-brand);
+/*
+ * The selected card is shown as selected as a whole, like a checked type-of-stay box: a 1px brand border and the light brand
+ * tint (no tick-box). Only colours change, so selecting a card moves nothing.
+ */
+.selected,
+.selected:hover:not(.greyed) {
+  border-color: var(--c-brand);
+  background: var(--c-brand-tint);
 }
 
 .selected .name {

@@ -175,6 +175,46 @@ describe('Booking dialog: payments', () => {
   });
 });
 
+describe('Booking dialog: price breakdown deposit', () => {
+  const deposit = () => screen.getByTestId('breakdown-deposit');
+
+  it('shows "—" on a new booking until a boat is chosen, then the boat\'s effective deposit', async () => {
+    renderAdmin(<BookingDialog bookingId={null} onClose={() => {}} />);
+    const user = userEvent.setup();
+    await screen.findByRole('option', { name: 'Misty Blue' });
+    expect(deposit()).toHaveTextContent('—');
+    await user.selectOptions(screen.getByLabelText('Boat'), 'b-mb');
+    expect(deposit()).toHaveTextContent('$1,500.00');
+    await user.selectOptions(screen.getByLabelText('Boat'), 'b-pb');
+    expect(deposit()).toHaveTextContent('$1,000.00'); // the Settings default
+    // Not part of the Total: there are no add-on lines, so the Total is the hire price.
+    expect(screen.getByTestId('breakdown-total').textContent).toBe(screen.getByTestId('breakdown-hire').textContent);
+  });
+
+  it('follows the chosen boat while the form has no saved payment rows, including with only an unsaved row', async () => {
+    const { user } = await openExisting({ payments: [], amountPaid: 0, depositAmount: 900 });
+    expect(deposit()).toHaveTextContent('$1,000.00');
+    await addPayment(user, '200');
+    await user.selectOptions(screen.getByLabelText('Boat'), 'b-mb');
+    expect(deposit()).toHaveTextContent('$1,500.00');
+    expect(screen.getByTestId('breakdown-total')).toHaveTextContent('$4,010.00');
+  });
+
+  it('keeps the stored deposit while a saved payment row remains, and follows the boat once they are all removed', async () => {
+    const { user } = await openExisting({ depositAmount: 900 });
+    expect(deposit()).toHaveTextContent('$900.00');
+    await user.selectOptions(screen.getByLabelText('Boat'), 'b-mb');
+    expect(deposit()).toHaveTextContent('$900.00');
+    await user.click(screen.getByRole('button', { name: 'Remove the $1,000.00 payment of 02/08/2026' }));
+    expect(deposit()).toHaveTextContent('$1,500.00');
+  });
+
+  it('shows the stored deposit on holds', async () => {
+    await openExisting({ ...onlineHold, status: 'PendingPayment', holdExpiresAt: '2026-10-01T03:40:00Z', depositAmount: 800 });
+    expect(deposit()).toHaveTextContent('$800.00');
+  });
+});
+
 describe('Booking dialog: customer', () => {
   it('shows the Frequent Floater badge with the count', async () => {
     await openExisting({ frequentFloater: { isFrequentFloater: true, otherBookingCount: 2 } });
@@ -233,7 +273,11 @@ describe('Booking dialog: customer', () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Email'), 'jane@example.com');
     await user.tab();
-    expect(await screen.findByText('Looking up customer…')).toBeInTheDocument();
+    // The spinner sits right of the email input, on its line, announced by its accessible label.
+    const status = await screen.findByRole('status', { name: 'Looking up customer…' });
+    const email = screen.getByLabelText('Email');
+    expect(email.parentElement).toContainElement(status);
+    expect(email.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     for (const label of ['First name', 'Last name', 'Mobile', 'Secondary mobile', 'Address line 1', 'Country', 'Customer comments'])
       expect(screen.getByLabelText(label)).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Create booking' })).toBeDisabled();

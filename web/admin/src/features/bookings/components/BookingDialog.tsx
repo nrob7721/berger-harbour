@@ -366,13 +366,13 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
             <fieldset className={styles.fieldset} aria-label="Customer">
               <div className={styles.grid}>
                 <Field label="Email" htmlFor={ids.email} error={errors.email?.message}>
-                  <input id={ids.email} type="email" className={inputClass} aria-describedby={lookingUp ? `${ids.email}-lookup` : undefined}
-                    {...register('email', { onBlur: () => void lookupEmail() })} />
-                  {lookingUp && (
-                    <span id={`${ids.email}-lookup`} className={styles.lookup} role="status">
-                      <Spinner size="small" /> Looking up customer…
+                  {/* The lookup spinner sits in a fixed slot right of the input, so the field never moves or resizes (§12.1). */}
+                  <div className={styles.emailRow}>
+                    <input id={ids.email} type="email" className={inputClass} {...register('email', { onBlur: () => void lookupEmail() })} />
+                    <span className={styles.lookup} data-testid="email-lookup">
+                      {lookingUp && <Spinner size="small" label="Looking up customer…" />}
                     </span>
-                  )}
+                  </div>
                 </Field>
               </div>
               {/* While the email lookup runs, the fields it fills are disabled (§12.1). */}
@@ -435,7 +435,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
           </fieldset>
         </form>
 
-        <PriceBreakdown />
+        <PriceBreakdown storedDeposit={detail?.depositAmount ?? null} isHold={isHold} />
 
         <PaymentsSection detail={detail} createdOn={createdOn} dirty={isDirty} saving={saving} />
         {detail && detail.createdBy === 'Customer' && <OnlineInfo detail={detail} />}
