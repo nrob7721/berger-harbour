@@ -28,10 +28,17 @@ export function DetailsStep({ onContinued }: { onContinued: (changes: Partial<Bo
   const [formError, setFormError] = useState<string | null>(null);
   const needsTurnstile = !state.draftId;
   // Each field is validated when it loses focus (§6.1).
-  const { register, handleSubmit, control, setError, trigger, formState: { errors } } = useAppForm<Form>({
+  const { register, handleSubmit, control, setError, trigger, watch, getValues, formState: { errors } } = useAppForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: state.details ?? { firstName: '', lastName: '', email: '', mobile: '' },
   });
+
+  // Edits are kept in the step state exactly as entered, unvalidated and unsaved, so leaving the step backwards (Back or an
+  // earlier progress step) keeps them. The next forward move validates and saves them (decision 41).
+  useEffect(() => {
+    const { unsubscribe } = watch(() => dispatch({ type: 'details', details: getValues() }));
+    return unsubscribe;
+  }, [watch, getValues, dispatch]);
 
   const save = useMutation({
     mutationFn: async (details: ContactDetails) => {

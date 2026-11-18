@@ -95,6 +95,47 @@ describe('Progress steps', () => {
     expect(currentState().details?.firstName).toBe('Janet');
   });
 
+  it('edits on Your details are kept, unsaved, when leaving it for an earlier step, then saved by the next Continue', async () => {
+    renderSteps({ ...filledState, step: 'summary', furthestStep: 'summary' });
+    const user = userEvent.setup();
+    await user.click(stepButton('2. Your details'));
+    await user.clear(screen.getByLabelText('First name'));
+    await user.type(screen.getByLabelText('First name'), 'Janet');
+    await user.click(stepButton('1. Dates & boat'));
+    expect(currentState().step).toBe('dates');
+    expect(draftUpdates()).toHaveLength(0);
+    await user.click(stepButton('2. Your details'));
+    expect(screen.getByLabelText('First name')).toHaveValue('Janet');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(currentState().step).toBe('addons'));
+    expect(draftUpdates().map((c) => (c.body as { firstName: string }).firstName)).toEqual(['Janet']);
+  });
+
+  it('Back keeps the edits on Your details too, even invalid, without validating or saving them', async () => {
+    renderSteps({ ...filledState, step: 'details', furthestStep: 'summary' });
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText('First name'));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(currentState().step).toBe('dates');
+    expect(currentState().details?.firstName).toBe('');
+    expect(draftUpdates()).toHaveLength(0);
+    await user.click(stepButton('2. Your details'));
+    expect(screen.getByLabelText('First name')).toHaveValue('');
+    expect(screen.queryByText('First name is required.')).not.toBeInTheDocument();
+  });
+
+  it('a forward jump from Dates & boat saves the details kept from Your details', async () => {
+    renderSteps({ ...filledState, step: 'details', furthestStep: 'summary' });
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText('Last name'));
+    await user.type(screen.getByLabelText('Last name'), 'Jones');
+    await user.click(stepButton('1. Dates & boat'));
+    await waitFor(() => expect(within(progress()).getAllByRole('button')).toHaveLength(3));
+    await user.click(stepButton('4. Summary'));
+    await waitFor(() => expect(currentState().step).toBe('summary'));
+    expect(draftUpdates().map((c) => (c.body as { lastName: string }).lastName)).toEqual(['Jones', 'Jones']);
+  });
+
   it('stops on Dates & boat with the rooming warning open', async () => {
     renderSteps({ ...filledState, adults: 9, step: 'dates', furthestStep: 'summary' }); // Pacific Blue has 8 beds
     await waitFor(() => expect(within(progress()).getAllByRole('button')).toHaveLength(3));

@@ -51,6 +51,10 @@ export interface BookingState {
   /** While a boat is selected, the calendar shows only that boat's availability. */
   selectedSlug: string | null;
   rooming: RoomingAcceptance | null;
+  /**
+   * The details as entered on Your details, kept when it is left backwards even if invalid or unsaved; the step's Continue
+   * (or a forward jump past it) validates them and saves them to the draft.
+   */
   details: ContactDetails | null;
   /** Ticked add-ons and their quantities. */
   addons: Record<string, number>;
