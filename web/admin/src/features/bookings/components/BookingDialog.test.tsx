@@ -535,7 +535,15 @@ describe('Booking dialog: saving', () => {
   });
 
   it('locks the form and shows progress while saving, then closes on success', async () => {
-    api.saveDelay = 50;
+    // Hold the save open until released, so the "Saving…" state lasts exactly as long as the test needs
+    // (a fixed delay races the assertions below on slower machines, e.g. CI).
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(http.put('*/api/bookings/:id', async ({ request }) => {
+      api.calls.push({ method: request.method, path: new URL(request.url).pathname, body: await request.clone().json() });
+      await gate;
+      return HttpResponse.json({ booking: api.booking, warnings: [] });
+    }));
     const { onClose, user } = await openExisting();
     await user.type(screen.getByLabelText('Booking comments'), 'Note');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -543,7 +551,8 @@ describe('Booking dialog: saving', () => {
     expect(busy).toBeDisabled();
     expect(screen.getByLabelText('Booking comments')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    await user.click(busy);
+    await user.click(busy); // disabled: must not send a second request
+    release();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(writes().filter((c) => c.method === 'PUT')).toHaveLength(1);
     expect(writes()[0].body).toMatchObject({ bookingComments: 'Note', version: 4, addonLines: [{ id: 'l-1', addonId: 'ice', quantity: 2, unitPrice: 5 }] });
