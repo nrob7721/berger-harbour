@@ -16,7 +16,7 @@ public class AvailabilityServiceTests
     [Fact]
     public async Task Fleet_availability_lists_only_active_house_boats_with_ranges_and_no_booking_data()
     {
-        h.Activate("misty-blue");
+        h.SetActiveBoats("pacific-blue", "misty-blue");
         await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12"));
         await h.Staff.CreateAsync(h.StaffRequest("2027-03-15", "2027-03-19", standby: true));
         h.AddUnavailability("misty-blue", "2027-03-20", "2027-03-22");
@@ -60,6 +60,7 @@ public class AvailabilityServiceTests
     [Fact]
     public async Task Standbys_cancelled_expired_superseded_and_expired_holds_dont_make_a_boat_unavailable()
     {
+        h.SetActiveBoats("pacific-blue");
         var standby = await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12", standby: true));
         var cancelled = await h.Staff.CreateAsync(h.StaffRequest("2027-03-15", "2027-03-19"));
         await h.Staff.UpdateAsync(cancelled.Booking.Id, UpdateRequest(cancelled.Booking, r => r with { Status = BookingStatus.Cancelled }));

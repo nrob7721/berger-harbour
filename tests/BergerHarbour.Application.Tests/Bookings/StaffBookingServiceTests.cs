@@ -39,6 +39,7 @@ public class StaffBookingServiceTests
     [Fact]
     public async Task Overlaps_are_409_naming_the_reference_and_inactive_boats_cannot_be_booked()
     {
+        h.Deactivate("kalinda");
         await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19"));
         var e = await Assert.ThrowsAsync<ConflictException>(() => h.Staff.CreateAsync(h.StaffRequest("2027-01-18", "2027-01-20", email: "x@example.com")));
         Assert.Equal(["SMITH-2701150"], e.ConflictingReferences);

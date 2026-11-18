@@ -58,6 +58,9 @@ public sealed class ApplicationHarness
         s.AddSingleton<IBookingRequestValidationStrategy, OnlineBookingValidationStrategy>();
         Services = s.BuildServiceProvider();
         Get<SeedService>().SeedAsync(new SeedOptions(StaffEmail, "02 4455 6677", "info@berger.test")).GetAwaiter().GetResult();
+
+        // Boat activation is arranged here, not inherited from the seed: tests start with Pacific Blue as the only active boat.
+        SetActiveBoats("pacific-blue");
     }
 
     public InMemoryDatabase Db { get; } = new();
@@ -91,7 +94,32 @@ public sealed class ApplicationHarness
 
     public Booking Booking(string id) => Db.Bookings.Get(new BookingId(id))!;
 
-    /// <summary>Seeded boats are complete, so any can be activated.</summary>
+    /// <summary>Arranges exactly these boats as the active ones, whatever the seed created. Seeded boats are complete, so any can be activated.</summary>
+    public void SetActiveBoats(params string[] slugs)
+    {
+        foreach (var boat in Db.Boats.All.Where(b => !slugs.Contains(b.Slug)).ToList())
+        {
+            Deactivate(boat.Slug);
+        }
+
+        foreach (var slug in slugs)
+        {
+            Activate(slug);
+        }
+    }
+
+    public Boat Deactivate(string slug)
+    {
+        var boat = Boat(slug);
+        if (boat.IsActive)
+        {
+            boat.Deactivate(Clock.UtcNow);
+            Db.Boats.Save(boat);
+        }
+
+        return boat;
+    }
+
     public Boat Activate(string slug)
     {
         var boat = Boat(slug);
