@@ -1,12 +1,12 @@
 using BergerHarbour.Application.Customers;
-using BergerHarbour.Domain.Customers;
+using BergerHarbour.Domain.Bookings;
 using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Application.Bookings.Validation;
 
 /// <summary>
-/// The staff booking rules: start before end, adults ≥ 1, children ≥ 0 and a valid customer, whose secondary
-/// mobile can't be the same as the mobile. Everything else is a non-blocking warning (<see cref="StaffBookingWarnings"/>). Registered in the admin API.
+/// The staff booking rules: start before end, adults ≥ 1, children ≥ 0 and a valid customer, and a secondary
+/// mobile (a booking field) that can't be the same as the mobile. Everything else is a non-blocking warning (<see cref="StaffBookingWarnings"/>). Registered in the admin API.
 /// </summary>
 public sealed class InternalBookingValidationStrategy : IBookingRequestValidationStrategy
 {
@@ -41,7 +41,7 @@ public sealed class InternalBookingValidationStrategy : IBookingRequestValidatio
         errors.Capture(() => EmailAddress.Create(request.Email));
         var mobile = errors.Capture(() => MobileNumber.CreateOptional(request.Mobile, "mobile"));
         var secondary = errors.Capture(() => MobileNumber.CreateOptional(request.SecondaryMobile, "secondaryMobile"));
-        errors.Capture(() => Customer.EnsureDistinctMobiles(mobile, secondary));
+        errors.Capture(() => Booking.EnsureDistinctMobiles(mobile, secondary));
         errors.Capture(() => request.Address.ToAddress());
         return errors;
     }

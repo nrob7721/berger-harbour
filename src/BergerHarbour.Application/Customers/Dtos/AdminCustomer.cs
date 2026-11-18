@@ -7,7 +7,6 @@ public sealed record AdminCustomer(
     string LastName,
     string Email,
     string? Mobile,
-    string? SecondaryMobile,
     AddressDto? Address,
     string? Comments,
     DateTimeOffset CreatedDate,

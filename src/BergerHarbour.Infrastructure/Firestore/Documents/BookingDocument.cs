@@ -62,6 +62,9 @@ public sealed class BookingDocument : IVersionedDocument
     [FirestoreProperty("bookingComments")]
     public string? BookingComments { get; set; }
 
+    [FirestoreProperty("secondaryMobileNumber")]
+    public string? SecondaryMobileNumber { get; set; }
+
     [FirestoreProperty("hirePriceCents")]
     public long HirePriceCents { get; set; }
 
@@ -129,6 +132,7 @@ public sealed class BookingDocument : IVersionedDocument
         CheckInTime = FirestoreValues.Time(b.CheckInTime),
         CheckOutTime = FirestoreValues.Time(b.CheckOutTime),
         BookingComments = b.BookingComments,
+        SecondaryMobileNumber = b.SecondaryMobileNumber?.Value,
         HirePriceCents = FirestoreValues.Cents(b.HirePrice),
         DepositAmountCents = FirestoreValues.Cents(b.DepositAmount),
         PaymentSchedule = b.PaymentSchedule.ToString(),
@@ -165,6 +169,7 @@ public sealed class BookingDocument : IVersionedDocument
         FirestoreValues.Time(CheckInTime),
         FirestoreValues.Time(CheckOutTime),
         BookingComments,
+        SecondaryMobileNumber is null ? null : MobileNumber.Create(SecondaryMobileNumber),
         FirestoreValues.Money(HirePriceCents),
         FirestoreValues.Money(DepositAmountCents),
         Enum.Parse<PaymentScheduleType>(PaymentSchedule),

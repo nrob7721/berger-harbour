@@ -16,4 +16,5 @@ public sealed record StaffBookingDetails(
     string? BookingComments,
     decimal HirePrice,
     PaymentScheduleType PaymentSchedule,
-    IReadOnlyList<AddonLine> AddonLines);
+    IReadOnlyList<AddonLine> AddonLines,
+    MobileNumber? SecondaryMobile = null);

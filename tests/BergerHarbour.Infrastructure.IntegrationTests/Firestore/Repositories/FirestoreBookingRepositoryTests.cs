@@ -18,10 +18,14 @@ public class FirestoreBookingRepositoryTests(EmulatorFixture fx)
     {
         var request = await fx.StaffRequestAsync("2028-01-10", "2028-01-14", email: "roundtrip@example.com",
             lines: [new StaffAddonLineInput(null, "ice", 2, 7.5m), new StaffAddonLineInput(null, "welcome-hamper", 1, null)]);
-        var saved = await fx.Staff().CreateAsync(request with { Payments = [new StaffPaymentInput(null, 1000.55m, D("2026-11-09"), "Cash")] });
+        var saved = await fx.Staff().CreateAsync(request with
+        {
+            SecondaryMobile = "0412 000 222", Payments = [new StaffPaymentInput(null, 1000.55m, D("2026-11-09"), "Cash")],
+        });
         var loaded = (await Repository.GetAsync(new BookingId(saved.Booking.Id)))!;
         Assert.Equal(saved.Booking.Reference, loaded.Reference!.Value);
         Assert.Equal(D("2028-01-10"), loaded.StartDate);
+        Assert.Equal("+61412000222", loaded.SecondaryMobileNumber!.Value);
         Assert.Equal(new TimeOnly(11, 0), loaded.CheckInTime);
         Assert.Equal(4000m + 15m, loaded.TotalPrice);
         Assert.Null(loaded.AddonLines.Single(l => l.AddonId.Value == "welcome-hamper").UnitPrice);

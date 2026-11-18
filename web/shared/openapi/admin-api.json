@@ -2114,6 +2114,7 @@
           "checkInTime",
           "checkOutTime",
           "bookingComments",
+          "secondaryMobile",
           "hirePrice",
           "depositAmount",
           "paymentScheduleType",
@@ -2195,6 +2196,12 @@
             "type": "string"
           },
           "bookingComments": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secondaryMobile": {
             "type": [
               "null",
               "string"
@@ -2323,7 +2330,6 @@
           "lastName",
           "email",
           "mobile",
-          "secondaryMobile",
           "address",
           "comments",
           "createdDate",
@@ -2344,12 +2350,6 @@
             "type": "string"
           },
           "mobile": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "secondaryMobile": {
             "type": [
               "null",
               "string"

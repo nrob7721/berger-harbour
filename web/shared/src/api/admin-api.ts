@@ -1489,6 +1489,7 @@ export interface components {
             checkInTime: string;
             checkOutTime: string;
             bookingComments: null | string;
+            secondaryMobile: null | string;
             /** Format: double */
             hirePrice: number;
             /** Format: double */
@@ -1529,7 +1530,6 @@ export interface components {
             lastName: string;
             email: string;
             mobile: null | string;
-            secondaryMobile: null | string;
             address: null | components["schemas"]["AddressDto"];
             comments: null | string;
             /** Format: date-time */

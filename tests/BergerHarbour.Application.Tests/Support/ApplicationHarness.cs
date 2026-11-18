@@ -188,7 +188,7 @@ public sealed class ApplicationHarness
     {
         var r = new UpdateStaffBookingRequest(d.BoatId, d.PeriodType, d.StartDate, d.EndDate, d.NumberOfAdults, d.NumberOfChildren, d.CheckInTime,
             d.CheckOutTime, d.IsStandby, d.BookingComments, d.Customer?.Comments, d.HirePrice, d.Status, d.Customer?.Email, d.Customer?.FirstName,
-            d.Customer?.LastName, d.Customer?.Mobile, d.Customer?.SecondaryMobile, d.Customer?.Address,
+            d.Customer?.LastName, d.Customer?.Mobile, d.SecondaryMobile, d.Customer?.Address,
             d.AddonLines.Select(l => new StaffAddonLineInput(l.Id, l.AddonId, l.Quantity, l.UnitPrice)).ToList(),
             d.Payments.Select(p => new StaffPaymentInput(p.Id, p.Amount, Sydney.DateOf(p.PaidAt), p.Note)).ToList(), d.Version);
         return change is null ? r : change(r);

@@ -295,6 +295,25 @@ public class StaffBookingServiceTests
     }
 
     [Fact]
+    public async Task A_secondary_mobile_belongs_to_its_booking_and_changing_it_leaves_the_customer_and_other_bookings_alone()
+    {
+        var first = await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19") with { SecondaryMobile = "0412 000 222" });
+        var second = await h.Staff.CreateAsync(h.StaffRequest("2027-02-15", "2027-02-19"));
+        Assert.Equal("+61412000222", first.Booking.SecondaryMobile);
+        Assert.Null(second.Booking.SecondaryMobile);
+
+        var updated = await h.Staff.UpdateAsync(second.Booking.Id, UpdateRequest(second.Booking, r => r with { SecondaryMobile = "+61412000333" }));
+        Assert.Equal("+61412000333", updated.Booking.SecondaryMobile);
+        Assert.Equal("+61412000333", (await h.Staff.GetAsync(second.Booking.Id)).SecondaryMobile);
+        Assert.Equal("+61412000222", (await h.Staff.GetAsync(first.Booking.Id)).SecondaryMobile);
+        Assert.Single(h.Db.Customers.All);
+
+        var cleared = await h.Staff.UpdateAsync(second.Booking.Id, UpdateRequest(updated.Booking, r => r with { SecondaryMobile = null }));
+        Assert.Null(cleared.Booking.SecondaryMobile);
+        Assert.Equal("+61412000222", (await h.Staff.GetAsync(first.Booking.Id)).SecondaryMobile);
+    }
+
+    [Fact]
     public async Task A_secondary_mobile_equal_to_the_mobile_is_rejected_on_create_and_update()
     {
         var create = await Assert.ThrowsAsync<DomainValidationException>(() =>

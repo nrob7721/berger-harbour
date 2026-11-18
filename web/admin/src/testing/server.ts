@@ -22,7 +22,7 @@ export const addons: Addon[] = [
 ];
 
 export const customer: Customer = {
-  id: 'c-1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678', secondaryMobile: null, address: null,
+  id: 'c-1', firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678', address: null,
   comments: 'Likes the top deck', createdDate: '2026-01-01T00:00:00Z', version: 3,
 };
 
@@ -30,7 +30,7 @@ export function detail(overrides: Partial<BookingDetail> = {}): BookingDetail {
   return {
     id: 'bk-1', reference: 'SMITH-2610120', createdBy: 'SystemUser', isStandby: false, status: 'Active', activatedAt: '2026-08-01T00:00:00Z',
     boatId: 'b-pb', boatName: 'Pacific Blue', periodType: 'Midweek', startDate: '2026-10-12', endDate: '2026-10-16', numberOfAdults: 2,
-    numberOfChildren: 0, checkInTime: '11:00', checkOutTime: '08:00', bookingComments: null, hirePrice: 4000, depositAmount: 1000,
+    numberOfChildren: 0, checkInTime: '11:00', checkOutTime: '08:00', bookingComments: null, secondaryMobile: null, hirePrice: 4000, depositAmount: 1000,
     paymentScheduleType: 'Standard', addonLines: [{ id: 'l-1', addonId: 'ice', name: 'Ice', quantity: 2, unitPrice: 5, lineTotal: 10 }],
     payments: [{ id: 'p-1', amount: 1000, method: 'Manual', paidAt: '2026-08-02T02:00:00Z', note: 'Transfer', recordedBy: 'SystemUser' }],
     totalPrice: 4010, amountPaid: 1000, amountOwing: 3010, amountDueNow: 1000, paymentStatus: 'DepositPaid',

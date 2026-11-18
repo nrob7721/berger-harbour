@@ -16,7 +16,7 @@ public static class AggregateCopies
 
     public static Booking Copy(Booking b) => Booking.Rehydrate(new BookingState(b.Id, b.Reference, b.CreatedBy, b.IsStandby, b.Status, b.ActivatedAt,
         b.CustomerId, b.CustomerDetails, b.BookingDraftId, b.BoatId, b.PeriodType, b.Stay, b.NumberOfAdults, b.NumberOfChildren, b.CheckInTime,
-        b.CheckOutTime, b.BookingComments, b.HirePrice, b.DepositAmount, b.PaymentSchedule, b.AddonLines.ToList(), b.Payments.ToList(),
+        b.CheckOutTime, b.BookingComments, b.SecondaryMobileNumber, b.HirePrice, b.DepositAmount, b.PaymentSchedule, b.AddonLines.ToList(), b.Payments.ToList(),
         b.RemovedStripePaymentIntentIds.ToList(), b.HoldExpiresAt,
         b.StripeCheckoutSessionId, b.RoomingWarningAcceptance, b.TermsAcceptedAt, b.PaymentLinkTokenHash, b.SentNotifications.ToList(), b.CreatedDate,
         b.ModifiedDate, b.Version));
@@ -24,7 +24,7 @@ public static class AggregateCopies
     public static BookingDraft Copy(BookingDraft d) =>
         BookingDraft.Rehydrate(d.Id, d.Contents, d.LastActivityAt, d.ConvertedBookingId, d.ConvertedAt, d.AbandonedNotifiedAt, d.CreatedDate, d.Version);
 
-    public static Customer Copy(Customer c) => Customer.Rehydrate(c.Id, c.FirstName, c.LastName, c.Email, c.MobileNumber, c.SecondaryMobileNumber,
+    public static Customer Copy(Customer c) => Customer.Rehydrate(c.Id, c.FirstName, c.LastName, c.Email, c.MobileNumber,
         c.Address, c.Comments, c.CreatedDate, c.ModifiedDate, c.Version);
 
     public static BoatUnavailability Copy(BoatUnavailability u) =>

@@ -9,6 +9,8 @@ namespace BergerHarbour.Domain.Bookings;
 /// <summary>A house boat booking: an online hold that becomes Active when its deposit is paid, or a staff booking.</summary>
 public sealed class Booking : AggregateRoot
 {
+    public const string SameSecondaryMobileError = "The secondary mobile can't be the same as the mobile.";
+
     private List<AddonLine> addonLines = [];
     private List<Payment> payments = [];
     private List<string> removedStripePaymentIntentIds = [];
@@ -58,6 +60,9 @@ public sealed class Booking : AggregateRoot
     public TimeOnly CheckOutTime { get; private set; }
 
     public string? BookingComments { get; private set; }
+
+    /// <summary>Staff-entered only; empty when the booking is created. Belongs to this booking, never to the customer (§7.3).</summary>
+    public MobileNumber? SecondaryMobileNumber { get; private set; }
 
     public decimal HirePrice { get; private set; }
 
@@ -189,6 +194,7 @@ public sealed class Booking : AggregateRoot
             CheckInTime = s.CheckInTime,
             CheckOutTime = s.CheckOutTime,
             BookingComments = s.BookingComments,
+            SecondaryMobileNumber = s.SecondaryMobileNumber,
             HirePrice = s.HirePrice,
             DepositAmount = s.DepositAmount,
             PaymentSchedule = s.PaymentSchedule,
@@ -517,6 +523,15 @@ public sealed class Booking : AggregateRoot
         }
     }
 
+    /// <summary>The secondary mobile can't be the same number as the mobile (compared in E.164); only when both are filled (§7.1).</summary>
+    public static void EnsureDistinctMobiles(MobileNumber? mobile, MobileNumber? secondaryMobile)
+    {
+        if (mobile is not null && mobile == secondaryMobile)
+        {
+            throw new DomainValidationException("secondaryMobile", SameSecondaryMobileError);
+        }
+    }
+
     private void Apply(StaffBookingDetails details)
     {
         if (details.HirePrice < 0)
@@ -532,6 +547,7 @@ public sealed class Booking : AggregateRoot
         CheckOutTime = details.CheckOutTime;
         IsStandby = details.IsStandby;
         BookingComments = string.IsNullOrWhiteSpace(details.BookingComments) ? null : details.BookingComments.Trim();
+        SecondaryMobileNumber = details.SecondaryMobile;
         HirePrice = details.HirePrice;
         PaymentSchedule = details.PaymentSchedule;
         addonLines = details.AddonLines.ToList();

@@ -24,6 +24,7 @@ public sealed record BookingState(
     TimeOnly CheckInTime,
     TimeOnly CheckOutTime,
     string? BookingComments,
+    MobileNumber? SecondaryMobileNumber,
     decimal HirePrice,
     decimal DepositAmount,
     PaymentScheduleType PaymentSchedule,

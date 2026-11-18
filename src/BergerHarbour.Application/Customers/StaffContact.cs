@@ -9,6 +9,5 @@ public sealed record StaffContact(
     string LastName,
     EmailAddress Email,
     MobileNumber? Mobile,
-    MobileNumber? SecondaryMobile,
     Address? Address,
     string? Comments);

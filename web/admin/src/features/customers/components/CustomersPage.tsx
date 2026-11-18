@@ -24,7 +24,7 @@ export function CustomersPage({ onOpenBooking }: { onOpenBooking: (bookingId: st
   const [expanded, setExpanded] = useState<string | null>(null);
   const term = filter.trim().toLowerCase();
   const rows = (customers.data ?? []).filter((c) =>
-    !term || `${c.firstName} ${c.lastName} ${c.email} ${c.mobile ?? ''} ${c.secondaryMobile ?? ''} ${formatMobile(c.mobile)}`.toLowerCase().includes(term));
+    !term || `${c.firstName} ${c.lastName} ${c.email} ${c.mobile ?? ''} ${formatMobile(c.mobile)}`.toLowerCase().includes(term));
 
   return (
     <div>
@@ -35,7 +35,7 @@ export function CustomersPage({ onOpenBooking }: { onOpenBooking: (bookingId: st
       <div className={`${table.scroll} ${styles.card}`}>
         <table className={table.table}>
           <thead>
-            <tr><th aria-label="Expand" /><th>Name</th><th>Email</th><th>Mobile</th><th>Secondary mobile</th><th>Created</th></tr>
+            <tr><th aria-label="Expand" /><th>Name</th><th>Email</th><th>Mobile</th><th>Created</th></tr>
           </thead>
           <tbody>
             {rows.map((c) => {
@@ -52,18 +52,17 @@ export function CustomersPage({ onOpenBooking }: { onOpenBooking: (bookingId: st
                     <td>{c.firstName} {c.lastName}</td>
                     <td>{c.email}</td>
                     <td>{formatMobile(c.mobile)}</td>
-                    <td>{formatMobile(c.secondaryMobile)}</td>
                     <td>{formatTimestamp(c.createdDate)}</td>
                   </tr>
                   {open && (
                     <tr className={styles.detailRow}>
-                      <td colSpan={6}><CustomerDetail customer={c} onOpenBooking={onOpenBooking} /></td>
+                      <td colSpan={5}><CustomerDetail customer={c} onOpenBooking={onOpenBooking} /></td>
                     </tr>
                   )}
                 </Fragment>
               );
             })}
-            {customers.data && rows.length === 0 && <tr><td colSpan={6} className={table.muted}>No customers match.</td></tr>}
+            {customers.data && rows.length === 0 && <tr><td colSpan={5} className={table.muted}>No customers match.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -108,7 +108,7 @@ function defaults(detail: BookingDetail | null, initial: BookingDialogProps['ini
       numberOfAdults: detail.numberOfAdults, numberOfChildren: detail.numberOfChildren, checkInTime: detail.checkInTime, checkOutTime: detail.checkOutTime,
       isStandby: detail.isStandby, bookingComments: detail.bookingComments ?? '', customerComments: c?.comments ?? '', hirePrice: detail.hirePrice,
       status: detail.status, email: c?.email ?? snapshot?.email ?? '', firstName: c?.firstName ?? snapshot?.firstName ?? '',
-      lastName: c?.lastName ?? snapshot?.lastName ?? '', mobile: c?.mobile ?? snapshot?.mobileNumber ?? '', secondaryMobile: c?.secondaryMobile ?? '',
+      lastName: c?.lastName ?? snapshot?.lastName ?? '', mobile: c?.mobile ?? snapshot?.mobileNumber ?? '', secondaryMobile: detail.secondaryMobile ?? '',
       address: toAddressForm(c?.address),
       addonLines: detail.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
       payments: detail.payments.map((p) => ({
@@ -198,7 +198,6 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       setValue('firstName', found.customer.firstName, { shouldDirty: true });
       setValue('lastName', found.customer.lastName, { shouldDirty: true });
       setValue('mobile', found.customer.mobile ?? '', { shouldDirty: true });
-      setValue('secondaryMobile', found.customer.secondaryMobile ?? '', { shouldDirty: true });
       setValue('address', toAddressForm(found.customer.address), { shouldDirty: true });
       setValue('customerComments', found.customer.comments ?? '', { shouldDirty: true });
     } catch (e) {
@@ -375,14 +374,14 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                   </div>
                 </Field>
               </div>
-              {/* While the email lookup runs, the fields it fills are disabled (§12.1). */}
-              <fieldset className={styles.fieldset} disabled={lookingUp}>
+              {/* While the email lookup runs, the customer fields it fills are disabled (§12.1). The secondary mobile belongs to the booking, so it stays enabled. */}
+              <div className={styles.fieldset}>
                 <div className={styles.grid}>
                   <Field label="First name" htmlFor={ids.firstName} error={errors.firstName?.message}>
-                    <input id={ids.firstName} className={inputClass} {...register('firstName')} />
+                    <input id={ids.firstName} className={inputClass} {...register('firstName')} disabled={lookingUp} />
                   </Field>
                   <Field label="Last name" htmlFor={ids.lastName} error={errors.lastName?.message}>
-                    <input id={ids.lastName} className={inputClass} {...register('lastName')} />
+                    <input id={ids.lastName} className={inputClass} {...register('lastName')} disabled={lookingUp} />
                   </Field>
                   <Field label="Mobile" htmlFor={ids.mobile} error={errors.mobile?.message}>
                     <Controller control={control} name="mobile" render={({ field }) => (
@@ -393,12 +392,14 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                   <Field label="Secondary mobile" htmlFor={ids.secondaryMobile} error={errors.secondaryMobile?.message}>
                     <Controller control={control} name="secondaryMobile" render={({ field }) => (
                       <MobileInput id={ids.secondaryMobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur}
-                        invalid={!!errors.secondaryMobile} disabled={isHold || saving || lookingUp} />
+                        invalid={!!errors.secondaryMobile} disabled={isHold || saving} />
                     )} />
                   </Field>
                 </div>
-                <AddressFields ids={ids} />
-              </fieldset>
+                <fieldset className={styles.fieldset} disabled={lookingUp}>
+                  <AddressFields ids={ids} />
+                </fieldset>
+              </div>
             </fieldset>
 
             <div className={styles.grid}>

@@ -242,6 +242,25 @@ describe('Booking dialog: customer', () => {
     expect(screen.getByText('⭐ Frequent Floater')).toHaveAttribute('title', '1 other booking within a year');
   });
 
+  it('never fills, replaces or clears the secondary mobile on an email lookup: it belongs to the booking', async () => {
+    api.lookups['jane@example.com'] = { customer, frequentFloater: { isFrequentFloater: false, otherBookingCount: 0 } };
+    renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Secondary mobile'), '0412 000 222');
+    await user.type(screen.getByLabelText('Email'), 'jane@example.com');
+    await user.tab();
+    await waitFor(() => expect(screen.getByLabelText('First name')).toHaveValue('Jane'));
+    expect(screen.getByLabelText('Secondary mobile')).toHaveValue('0412 000 222');
+  });
+
+  it("shows the booking's own secondary mobile and sends it with the booking, not with the customer", async () => {
+    const { onClose, user } = await openExisting({ secondaryMobile: '+61412000222' });
+    expect(screen.getByLabelText('Secondary mobile')).toHaveValue('0412 000 222');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(writes()[0].body).toMatchObject({ secondaryMobile: '+61412000222' });
+  });
+
   it('validates the email on blur and makes no lookup when it is invalid', async () => {
     api.lookups['jane@gmail'] = { customer, frequentFloater: { isFrequentFloater: false, otherBookingCount: 0 } };
     renderAdmin(<BookingDialog bookingId={null} initial={{ boatId: 'b-pb', day: '2026-10-12' }} onClose={() => {}} />);
@@ -278,8 +297,10 @@ describe('Booking dialog: customer', () => {
     const email = screen.getByLabelText('Email');
     expect(email.parentElement).toContainElement(status);
     expect(email.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    for (const label of ['First name', 'Last name', 'Mobile', 'Secondary mobile', 'Address line 1', 'Country', 'Customer comments'])
+    for (const label of ['First name', 'Last name', 'Mobile', 'Address line 1', 'Country', 'Customer comments'])
       expect(screen.getByLabelText(label)).toBeDisabled();
+    // The secondary mobile belongs to the booking, not the customer, so the lookup never touches it.
+    expect(screen.getByLabelText('Secondary mobile')).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Create booking' })).toBeDisabled();
     release();
     await waitFor(() => expect(screen.queryByText('Looking up customer…')).not.toBeInTheDocument());

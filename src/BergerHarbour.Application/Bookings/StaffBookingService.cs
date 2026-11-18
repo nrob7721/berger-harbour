@@ -147,13 +147,15 @@ public sealed class StaffBookingService
         var bookingRequest = new BookingRequest(request.PeriodType, request.StartDate, request.EndDate, request.NumberOfAdults, request.NumberOfChildren,
             request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address, [], false, null, false, null);
         var input = Validate(bookingRequest, boat, reference, request.CheckInTime, request.CheckOutTime, request.HirePrice, request.AddonLines, [], errors);
-        var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address,
+        var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.Address,
             request.CustomerComments, errors);
+        var secondaryMobile = errors.Capture(() => MobileNumber.CreateOptional(request.SecondaryMobile, "secondaryMobile"));
         var addedPayments = NewPayments(request.Payments, now, now, errors);
         errors.ThrowIfAny();
 
         var details = new StaffBookingDetails(boat!.Id, request.PeriodType, input.Stay, request.NumberOfAdults, request.NumberOfChildren, input.CheckIn,
-            input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, schedule.ScheduleFor(input.Stay, reference.BlockedPeriods), input.Lines);
+            input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, schedule.ScheduleFor(input.Stay, reference.BlockedPeriods), input.Lines,
+            secondaryMobile);
         await PreCheckAvailabilityAsync(boat.Id, input.Stay, null, ct);
 
         var customer = await customers.SaveFromStaffAsync(null, contact!, ct);
@@ -195,8 +197,9 @@ public sealed class StaffBookingService
             request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address, [], false, null, false, null);
         var input = Validate(bookingRequest, boat, reference, request.CheckInTime, request.CheckOutTime, request.HirePrice, request.AddonLines,
             booking.AddonLines, errors);
-        var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.SecondaryMobile, request.Address,
+        var contact = ContactFrom(request.FirstName, request.LastName, request.Email, request.Mobile, request.Address,
             request.CustomerComments, errors);
+        var secondaryMobile = errors.Capture(() => MobileNumber.CreateOptional(request.SecondaryMobile, "secondaryMobile"));
         if (booking.Status is not (BookingStatus.Active or BookingStatus.Cancelled) && request.Status != booking.Status)
         {
             errors.Add("status", $"A {booking.Status} booking's status can't be changed.");
@@ -212,7 +215,7 @@ public sealed class StaffBookingService
         errors.ThrowIfAny();
         var scheduleType = input.Stay == booking.Stay ? booking.PaymentSchedule : schedule.ScheduleFor(input.Stay, reference.BlockedPeriods);
         var details = new StaffBookingDetails(boat!.Id, request.PeriodType, input.Stay, request.NumberOfAdults, request.NumberOfChildren, input.CheckIn,
-            input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, scheduleType, input.Lines);
+            input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, scheduleType, input.Lines, secondaryMobile);
         var (saved, superseded) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
             var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
@@ -382,12 +385,11 @@ public sealed class StaffBookingService
     }
 
     private static StaffContact? ContactFrom(
-        string? firstName, string? lastName, string? email, string? mobile, string? secondaryMobile, AddressDto? address, string? comments,
+        string? firstName, string? lastName, string? email, string? mobile, AddressDto? address, string? comments,
         ValidationErrors errors)
     {
         var e = errors.Capture(() => EmailAddress.Create(email));
         var m = errors.Capture(() => MobileNumber.CreateOptional(mobile, "mobile"));
-        var s = errors.Capture(() => MobileNumber.CreateOptional(secondaryMobile, "secondaryMobile"));
         var a = errors.Capture(() => address.ToAddress());
         if (comments?.Trim().Length > Customer.MaxCommentsLength)
         {
@@ -396,7 +398,7 @@ public sealed class StaffBookingService
 
         return e is null || string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName)
             ? null
-            : new StaffContact(firstName.Trim(), lastName.Trim(), e, m, s, a, comments);
+            : new StaffContact(firstName.Trim(), lastName.Trim(), e, m, a, comments);
     }
 
     /// <summary>Loads a booking, reporting a lapsed hold as Expired. Nothing is saved.</summary>
@@ -521,7 +523,7 @@ public sealed class StaffBookingService
         return new AdminBookingDetail(
             b.Id.Value, b.Reference?.Value, b.CreatedBy, b.IsStandby, b.Status, b.ActivatedAt, b.BoatId.Value, boat?.Name ?? string.Empty, b.PeriodType,
             b.StartDate, b.EndDate, b.NumberOfAdults, b.NumberOfChildren, StaffTimes.Format(b.CheckInTime), StaffTimes.Format(b.CheckOutTime),
-            b.BookingComments, b.HirePrice, b.DepositAmount, b.PaymentSchedule,
+            b.BookingComments, b.SecondaryMobileNumber?.Value, b.HirePrice, b.DepositAmount, b.PaymentSchedule,
             b.AddonLines.Select(l => new AddonLineDto(l.Id, l.AddonId.Value, l.NameSnapshot, l.Quantity, l.UnitPrice, l.LineTotal)).ToList(),
             b.Payments.OrderBy(p => p.PaidAt).Select(p => new PaymentDto(p.Id, p.Amount, p.Method, p.PaidAt, p.Note, p.RecordedBy)).ToList(),
             b.TotalPrice, b.AmountPaid, b.AmountOwing, schedule.AmountDueNow(milestones, b.AmountPaid, b.AmountOwing, now), b.PaymentStatus,

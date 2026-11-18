@@ -44,7 +44,7 @@ public class StripeWebhookServiceTests
     }
 
     [Fact]
-    public async Task Rebooking_updates_name_and_mobile_but_never_comments_secondary_mobile_or_address()
+    public async Task Rebooking_updates_name_and_mobile_but_never_comments_address_or_a_bookings_secondary_mobile()
     {
         var first = await h.BookOnlineAsync(start: "2027-03-08");
         var detail = await h.Staff.GetAsync(first.Id.Value);
@@ -56,7 +56,7 @@ public class StripeWebhookServiceTests
         var customer = h.Db.Customers.All.Single();
         Assert.Equal("Smith-Jones", customer.LastName);
         Assert.Equal("VIP", customer.Comments);
-        Assert.Equal("+61412000999", customer.SecondaryMobileNumber!.Value);
+        Assert.Equal("+61412000999", h.Booking(first.Id.Value).SecondaryMobileNumber!.Value);
         Assert.Equal("1 River Rd", customer.Address!.Line1);
     }
 

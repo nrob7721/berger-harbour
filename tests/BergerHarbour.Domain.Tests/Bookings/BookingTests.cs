@@ -163,6 +163,29 @@ public class BookingTests
     }
 
     [Fact]
+    public void The_secondary_mobile_starts_empty_is_set_by_staff_and_kept_through_status_changes()
+    {
+        var b = Staff("2027-01-15", "2027-01-19");
+        Assert.Null(b.SecondaryMobileNumber);
+        b.UpdateByStaff(new StaffBookingDetails(PacificBlue, PeriodType.Custom, b.Stay, 2, 0, Sydney.StandardCheckIn, Sydney.StandardCheckOut, false, null,
+            4000, PaymentScheduleType.Standard, [], MobileNumber.Create("0412 000 222")), Now);
+        Assert.Equal("+61412000222", b.SecondaryMobileNumber!.Value);
+        b.Cancel(Now);
+        b.Reactivate(Now);
+        Assert.Equal("+61412000222", b.SecondaryMobileNumber!.Value);
+    }
+
+    [Fact]
+    public void The_secondary_mobile_cannot_be_the_same_number_as_the_mobile_compared_in_E164()
+    {
+        var e = Assert.Throws<DomainValidationException>(() =>
+            Booking.EnsureDistinctMobiles(MobileNumber.Create("0412 345 678"), MobileNumber.Create("+61412345678")));
+        Assert.Equal(Booking.SameSecondaryMobileError, e.Errors.ByField["secondaryMobile"][0]);
+        Booking.EnsureDistinctMobiles(null, MobileNumber.Create("+61412345678"));
+        Booking.EnsureDistinctMobiles(MobileNumber.Create("+61412345678"), null);
+    }
+
+    [Fact]
     public void The_reference_never_changes_when_dates_or_name_change()
     {
         var b = Staff("2027-01-15", "2027-01-19", lastName: "Smith");

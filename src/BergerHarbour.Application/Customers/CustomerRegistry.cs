@@ -20,7 +20,7 @@ public sealed class CustomerRegistry
 
     /// <summary>
     /// Online activation: creates the customer, or updates an existing one's name and mobile to the latest values. The
-    /// secondary mobile, address and comments are never changed here.
+    /// address and comments are never changed here.
     /// </summary>
     public async Task<Customer> UpsertFromOnlineAsync(CustomerDetails details, CancellationToken ct = default)
     {
@@ -60,7 +60,7 @@ public sealed class CustomerRegistry
         }
 
         customer ??= Customer.Create(CustomerId.New(), contact.FirstName, contact.LastName, contact.Email, contact.Mobile, clock.UtcNow);
-        customer.UpdateByStaff(contact.FirstName, contact.LastName, contact.Email, contact.Mobile, contact.SecondaryMobile, contact.Address,
+        customer.UpdateByStaff(contact.FirstName, contact.LastName, contact.Email, contact.Mobile, contact.Address,
             contact.Comments, clock.UtcNow);
         try
         {

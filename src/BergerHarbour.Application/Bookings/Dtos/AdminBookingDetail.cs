@@ -22,6 +22,7 @@ public sealed record AdminBookingDetail(
     string CheckInTime,
     string CheckOutTime,
     string? BookingComments,
+    string? SecondaryMobile,
     decimal HirePrice,
     decimal DepositAmount,
     PaymentScheduleType PaymentScheduleType,
