@@ -100,8 +100,9 @@ public class BookingTests
     {
         var hold = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40));
         hold.Expire(Now);
-        Assert.True(hold.CanBeConfirmedByStaff);
-        hold.RecordStaffConfirmation(new Payment("p1", 1000, PaymentMethod.Manual, null, Now, null, BookingCreator.SystemUser), Now);
+        Assert.False(hold.IsReadyForStaffConfirmation);
+        hold.ChangePaymentsByStaff([], [new Payment("p1", 1000, PaymentMethod.Manual, null, Now, null, BookingCreator.SystemUser)], Now);
+        Assert.True(hold.IsReadyForStaffConfirmation);
         hold.AssignReference(BookingReference.Create("SMITH-270308", 0));
         hold.ActivateFromDeposit(Now.AddDays(2));
         Assert.Equal(BookingStatus.Active, hold.Status);
@@ -111,23 +112,28 @@ public class BookingTests
     }
 
     [Fact]
-    public void Staff_confirmation_needs_an_Expired_hold_without_payments_and_at_least_the_checkout_amount()
+    public void An_Expired_booking_holds_either_no_payments_or_at_least_the_checkout_amount()
     {
         var hold = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40), hire: 800);
         Assert.Equal(800m, hold.CheckoutAmount);
         Payment Manual(decimal amount) => new(Guid.NewGuid().ToString("N"), amount, PaymentMethod.Manual, null, Now, null, BookingCreator.SystemUser);
-        Assert.Throws<BusinessRuleException>(() => hold.RecordStaffConfirmation(Manual(800), Now));
         hold.Expire(Now);
-        var e = Assert.Throws<DomainValidationException>(() => hold.RecordStaffConfirmation(Manual(799.99m), Now));
-        Assert.Equal("To confirm this booking, record at least $800.00.", e.Errors.ByField["amount"][0]);
-        Assert.Empty(hold.Payments);
-        hold.RecordPayment(new Payment("p", 800, PaymentMethod.Stripe, "pi", Now, null, BookingCreator.Customer), Now);
-        Assert.False(hold.CanBeConfirmedByStaff);
-        Assert.Throws<BusinessRuleException>(() => hold.RecordStaffConfirmation(Manual(800), Now));
+        hold.EnsureNoExpiredPartPayment();
+        Assert.False(hold.IsReadyForStaffConfirmation);
+
+        hold.ChangePaymentsByStaff([], [Manual(500), Manual(299.99m)], Now);
+        var e = Assert.Throws<DomainValidationException>(() => hold.EnsureNoExpiredPartPayment());
+        Assert.Equal("To activate this booking, record at least $800.00.", e.Errors.ByField["payments"][0]);
+        Assert.False(hold.IsReadyForStaffConfirmation);
+
+        hold.ChangePaymentsByStaff(hold.Payments.Select(p => p.Id).ToList(), [Manual(0.01m)], Now);
+        hold.EnsureNoExpiredPartPayment();
+        Assert.True(hold.IsReadyForStaffConfirmation);
+        Assert.Equal(BookingStatus.Expired, hold.Status);
     }
 
     [Fact]
-    public void A_lapsed_hold_expires_and_staff_cannot_update_holds()
+    public void A_lapsed_hold_expires_and_staff_can_edit_an_Expired_booking_but_not_a_PendingPayment_one()
     {
         var hold = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40));
         hold.ExpireIfLapsed(Now.AddMinutes(39));
@@ -136,8 +142,31 @@ public class BookingTests
         Assert.True(hold.IsLapsedHold(Now.AddMinutes(40)));
         hold.ExpireIfLapsed(Now.AddMinutes(40));
         Assert.Equal(BookingStatus.Expired, hold.Status);
-        Assert.Throws<BusinessRuleException>(() => hold.EnsureEditableByStaff());
+        hold.EnsureEditableByStaff();
         Staff("2027-03-08", "2027-03-12").EnsureEditableByStaff();
+    }
+
+    [Fact]
+    public void Staff_edits_of_an_Expired_booking_keep_it_Expired_and_save_its_contact_details_to_the_snapshot()
+    {
+        var hold = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40));
+        hold.Expire(Now);
+        var moved = hold.UpdateByStaff(new StaffBookingDetails(new Domain.Boats.BoatId("other"), PeriodType.Custom, StayRange.Create(D("2027-04-01"), D("2027-04-05")),
+            3, 1, Sydney.StandardCheckIn, Sydney.StandardCheckOut, true, "Phoned", 3000, PaymentScheduleType.Standard, []), Now);
+        Assert.False(moved);
+        Assert.Equal(BookingStatus.Expired, hold.Status);
+        Assert.True(hold.IsStandby);
+
+        var address = Domain.Customers.Address.Create("1 Wharf St", null, "Paradise Point", "QLD", "4216", "AU");
+        hold.UpdateCustomerDetailsByStaff(new CustomerDetails("Janet", "Jones", EmailAddress.Create("janet@example.com"),
+            MobileNumber.Create("+61412000111"), address, "  Likes the top deck  "), Now);
+        Assert.Equal("Janet Jones", hold.CustomerDetails!.FullName);
+        Assert.Equal(address, hold.CustomerDetails.Address);
+        Assert.Equal("Likes the top deck", hold.CustomerDetails.CustomerComments);
+        Assert.Null(hold.CustomerId);
+        Assert.Null(hold.Reference);
+
+        Assert.Throws<InvalidOperationException>(() => Staff("2027-03-08", "2027-03-12").UpdateCustomerDetailsByStaff(hold.CustomerDetails, Now));
     }
 
     [Fact]

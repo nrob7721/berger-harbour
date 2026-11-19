@@ -1,0 +1,3 @@
+<Project>
+  <!-- Standalone one-off scripts: not part of the solution, so they don't inherit the root build rules (StyleCop, warnings as errors). -->
+</Project>

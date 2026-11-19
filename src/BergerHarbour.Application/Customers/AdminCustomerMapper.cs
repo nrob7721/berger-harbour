@@ -7,7 +7,7 @@ namespace BergerHarbour.Application.Customers;
 public static class AdminCustomerMapper
 {
     public static AdminCustomer ToDto(this Customer c) =>
-        new(c.Id.Value, c.FirstName, c.LastName, c.Email.Value, c.MobileNumber?.Value, c.Address.ToDto(), c.Comments,
+        new(c.Id.Value, c.FirstName, c.LastName, c.Email.Value, c.MobileNumber.Value, c.Address.ToDto(), c.Comments,
             c.CreatedDate, c.Version);
 
     public static AddressDto? ToDto(this Address? a) =>

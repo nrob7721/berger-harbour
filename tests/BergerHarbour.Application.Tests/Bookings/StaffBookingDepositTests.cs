@@ -4,6 +4,7 @@ using BergerHarbour.Application.Bookings.Dtos;
 using BergerHarbour.Application.Settings;
 using BergerHarbour.Application.Tests.Support;
 using BergerHarbour.Domain.Bookings;
+using BergerHarbour.Domain.Shared;
 using static BergerHarbour.Application.Tests.Support.ApplicationHarness;
 
 namespace BergerHarbour.Application.Tests.Bookings;
@@ -97,16 +98,39 @@ public class StaffBookingDepositTests
     }
 
     [Fact]
-    public async Task Staff_confirmation_keeps_the_holds_deposit()
+    public async Task A_staff_confirmation_without_payments_before_takes_the_boats_current_deposit()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(TimeSpan.FromDays(1));
         await SetBoatDepositAsync("pacific-blue", 1200);
         var expired = await h.Staff.GetAsync(created.BookingId);
         Assert.Equal(BookingStatus.Expired, expired.Status);
+        Assert.Equal(1000m, expired.DepositAmount);
 
-        var confirmed = await h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version));
+        // The threshold is min(1200, 4060) with the deposit the save stores, so 1000 isn't enough any more.
+        var e = await Assert.ThrowsAsync<DomainValidationException>(() => h.SaveWithPaymentAsync(expired, 1000, "2026-11-09"));
+        Assert.Equal("To activate this booking, record at least $1,200.00.", e.Errors.ByField["payments"][0]);
+
+        var confirmed = await h.SaveWithPaymentAsync(expired, 1200, "2026-11-09");
         Assert.Equal(BookingStatus.Active, confirmed.Status);
-        Assert.Equal(1000m, confirmed.DepositAmount);
+        Assert.Equal(1200m, confirmed.DepositAmount);
+    }
+
+    [Fact]
+    public async Task A_staff_confirmation_keeping_a_payment_keeps_the_deposit()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(TimeSpan.FromHours(1));
+        await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12", email: "other@example.com", lastName: "Jones"));
+        await h.PayDepositAsync(created.BookingId);
+        await SetBoatDepositAsync("pacific-blue", 1200);
+        var paidButExpired = await h.Staff.GetAsync(created.BookingId);
+
+        var moved = await h.Staff.UpdateAsync(paidButExpired.Id, UpdateRequest(paidButExpired, r => r with
+        {
+            StartDate = D("2027-04-05"), EndDate = D("2027-04-09"),
+        }));
+        Assert.Equal(BookingStatus.Active, moved.Booking.Status);
+        Assert.Equal(1000m, moved.Booking.DepositAmount);
     }
 }

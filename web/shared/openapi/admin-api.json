@@ -1144,65 +1144,6 @@
         }
       }
     },
-    "/api/bookings/{id}/confirmation": {
-      "post": {
-        "tags": [
-          "Bookings"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualPaymentRequest"
-              }
-            },
-            "text/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualPaymentRequest"
-              }
-            },
-            "application/*+json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualPaymentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "text/plain": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminBookingDetail"
-                }
-              },
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminBookingDetail"
-                }
-              },
-              "text/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminBookingDetail"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/bookings/{id}/send-payment-link": {
       "post": {
         "tags": [
@@ -2132,7 +2073,6 @@
           "termsAcceptedAt",
           "roomingWarningAcceptance",
           "holdExpiresAt",
-          "checkoutAmount",
           "createdDate",
           "modifiedDate",
           "version"
@@ -2302,13 +2242,6 @@
             ],
             "format": "date-time"
           },
-          "checkoutAmount": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          },
           "createdDate": {
             "type": "string",
             "format": "date-time"
@@ -2350,10 +2283,7 @@
             "type": "string"
           },
           "mobile": {
-            "type": [
-              "null",
-              "string"
-            ]
+            "type": "string"
           },
           "address": {
             "oneOf": [
@@ -2862,7 +2792,9 @@
           "firstName",
           "lastName",
           "email",
-          "mobileNumber"
+          "mobileNumber",
+          "address",
+          "customerComments"
         ],
         "type": "object",
         "properties": {
@@ -2877,6 +2809,22 @@
           },
           "mobileNumber": {
             "type": "string"
+          },
+          "address": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AddressDto"
+              }
+            ]
+          },
+          "customerComments": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2963,35 +2911,6 @@
             "type": "boolean"
           },
           "otherBookingCount": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "ManualPaymentRequest": {
-        "required": [
-          "amount",
-          "date",
-          "note",
-          "version"
-        ],
-        "type": "object",
-        "properties": {
-          "amount": {
-            "type": "number",
-            "format": "double"
-          },
-          "date": {
-            "type": "string",
-            "format": "date"
-          },
-          "note": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "version": {
             "type": "integer",
             "format": "int32"
           }

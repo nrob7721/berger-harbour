@@ -125,14 +125,24 @@ public sealed class Booking : AggregateRoot
     /// </summary>
     public DateTimeOffset ActivationAnchor => ActivatedAt ?? CreatedDate;
 
-    /// <summary>The online checkout amount, min(deposit, hire price). Also the least a staff confirmation must record.</summary>
+    /// <summary>
+    /// The online checkout amount, min(deposit, hire price). Also the least the payments on an Expired booking must total
+    /// for a staff save to confirm it (§7.3).
+    /// </summary>
     public decimal CheckoutAmount => PaymentScheduleService.CheckoutAmount(DepositAmount, HirePrice);
 
-    /// <summary>An Expired online hold without payments: the only booking staff may confirm (§7.3).</summary>
-    public bool CanBeConfirmedByStaff => Status == BookingStatus.Expired && payments.Count == 0;
+    /// <summary>
+    /// Is this an Expired booking whose payments reach the checkout amount? A staff save that leaves it so confirms it
+    /// (§7.3): it is activated in the same transaction.
+    /// </summary>
+    public bool IsReadyForStaffConfirmation => Status == BookingStatus.Expired && AmountPaid > 0m && AmountPaid >= CheckoutAmount;
 
-    /// <summary>Staff add and remove payments on Active, Cancelled and Superseded bookings (§7.3); holds take none.</summary>
-    public bool AcceptsStaffPaymentChanges => Status is BookingStatus.Active or BookingStatus.Cancelled or BookingStatus.Superseded;
+    /// <summary>
+    /// Staff add and remove payments on Active, Cancelled, Superseded and Expired bookings (§7.3); a PendingPayment hold
+    /// takes none.
+    /// </summary>
+    public bool AcceptsStaffPaymentChanges =>
+        Status is BookingStatus.Active or BookingStatus.Cancelled or BookingStatus.Superseded or BookingStatus.Expired;
 
     /// <summary>Starts a PendingPayment hold. No customer is created and no reference is assigned yet.</summary>
     public static Booking CreateOnlineHold(BookingId id, OnlineHold hold, DateTimeOffset now)
@@ -270,7 +280,8 @@ public sealed class Booking : AggregateRoot
     }
 
     /// <summary>
-    /// The deposit was paid: PendingPayment (or a hold that lapsed while its dates stayed free) → Active. Sets ActivatedAt.
+    /// Activation: the deposit was paid on a PendingPayment hold (or on one that lapsed while its dates stayed free), or a
+    /// staff save confirmed an Expired booking (§7.3) → Active. Sets ActivatedAt.
     /// </summary>
     public void ActivateFromDeposit(DateTimeOffset now)
     {
@@ -310,24 +321,34 @@ public sealed class Booking : AggregateRoot
     }
 
     /// <summary>
-    /// Staff confirmation's payment: an Expired hold without payments, and at least the checkout amount. The caller then
-    /// activates the booking (<see cref="ActivateFromDeposit"/>) in the same transaction.
+    /// An Expired booking never holds a part-payment (§7.3): after a staff save its payments total either nothing or at
+    /// least the checkout amount, with the deposit and hire price as the save stores them.
     /// </summary>
-    public void RecordStaffConfirmation(Payment payment, DateTimeOffset now)
+    public void EnsureNoExpiredPartPayment()
     {
-        if (!CanBeConfirmedByStaff)
+        if (Status == BookingStatus.Expired && AmountPaid > 0m && AmountPaid < CheckoutAmount)
         {
-            throw new BusinessRuleException(Status == BookingStatus.Expired
-                ? "This booking was paid online after its hold expired. Refund the payment in Stripe."
-                : "Only an expired online booking without payments can be confirmed.");
+            throw new DomainValidationException("payments",
+                $"To activate this booking, record at least ${CheckoutAmount.ToString("N2", CultureInfo.InvariantCulture)}.");
+        }
+    }
+
+    /// <summary>
+    /// Staff edit an Expired booking's contact details, address and customer comments (§7.3). They are saved to the
+    /// <see cref="CustomerDetails"/> snapshot; no Customer is created or changed until the booking is confirmed.
+    /// </summary>
+    public void UpdateCustomerDetailsByStaff(CustomerDetails details, DateTimeOffset now)
+    {
+        if (Status != BookingStatus.Expired)
+        {
+            throw new InvalidOperationException($"A {Status} booking's contact details are saved to its Customer.");
         }
 
-        if (payment.Amount < CheckoutAmount)
+        CustomerDetails = details with
         {
-            throw new DomainValidationException("amount", $"To confirm this booking, record at least ${CheckoutAmount.ToString("N2", CultureInfo.InvariantCulture)}.");
-        }
-
-        RecordPayment(payment, now);
+            CustomerComments = string.IsNullOrWhiteSpace(details.CustomerComments) ? null : details.CustomerComments.Trim(),
+        };
+        ModifiedDate = now;
     }
 
     /// <summary>PendingPayment → Expired (hold lapsed, Stripe session expired, or released from the Payment step).</summary>
@@ -485,8 +506,8 @@ public sealed class Booking : AggregateRoot
     }
 
     /// <summary>
-    /// Staff edits from the booking dialog. Prices are accepted as typed; totals are derived. Holds (PendingPayment and
-    /// Expired) are read-only. A Superseded booking keeps its stand-by flag, and changing its boat or dates
+    /// Staff edits from the booking dialog. Prices are accepted as typed; totals are derived. A PendingPayment hold is
+    /// read-only; an Expired booking is edited like any other and stays Expired (§7.3). A Superseded booking keeps its stand-by flag, and changing its boat or dates
     /// <b>reactivates</b> it as an Active stand-by (§7.3); the caller checks the new stay is free. Returns whether it was
     /// reactivated.
     /// </summary>
@@ -511,15 +532,12 @@ public sealed class Booking : AggregateRoot
         return false;
     }
 
-    /// <summary>PendingPayment and Expired bookings can't be edited by staff (decision 36).</summary>
+    /// <summary>A PendingPayment hold can't be edited by staff, because the customer may still pay online (decision 36).</summary>
     public void EnsureEditableByStaff()
     {
-        switch (Status)
+        if (Status == BookingStatus.PendingPayment)
         {
-            case BookingStatus.PendingPayment:
-                throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be edited.");
-            case BookingStatus.Expired:
-                throw new BusinessRuleException("This hold has expired and can't be edited. Record a manual payment to confirm it.");
+            throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be edited.");
         }
     }
 

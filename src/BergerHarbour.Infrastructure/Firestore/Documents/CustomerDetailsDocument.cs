@@ -19,8 +19,22 @@ public sealed class CustomerDetailsDocument
     [FirestoreProperty("mobileNumber")]
     public string MobileNumber { get; set; } = string.Empty;
 
-    public static CustomerDetailsDocument From(CustomerDetails d) =>
-        new() { FirstName = d.FirstName, LastName = d.LastName, Email = d.Email.Value, MobileNumber = d.MobileNumber.Value };
+    [FirestoreProperty("address")]
+    public AddressDocument? Address { get; set; }
 
-    public CustomerDetails ToDomain() => new(FirstName, LastName, EmailAddress.Create(Email), Domain.Shared.MobileNumber.Create(MobileNumber));
+    [FirestoreProperty("customerComments")]
+    public string? CustomerComments { get; set; }
+
+    public static CustomerDetailsDocument From(CustomerDetails d) => new()
+    {
+        FirstName = d.FirstName,
+        LastName = d.LastName,
+        Email = d.Email.Value,
+        MobileNumber = d.MobileNumber.Value,
+        Address = AddressDocument.From(d.Address),
+        CustomerComments = d.CustomerComments,
+    };
+
+    public CustomerDetails ToDomain() =>
+        new(FirstName, LastName, EmailAddress.Create(Email), Domain.Shared.MobileNumber.Create(MobileNumber), Address?.ToDomain(), CustomerComments);
 }

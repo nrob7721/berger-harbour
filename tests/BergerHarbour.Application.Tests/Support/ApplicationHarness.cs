@@ -184,11 +184,14 @@ public sealed class ApplicationHarness
         new(Boat(slug).Id.Value, type, D(start), D(end), adults, 0, checkIn, checkOut, standby, null, customerComments, hire, email, "John", lastName,
             "+61412000111", null, address, lines ?? []);
 
+    /// <summary>The booking dialog's save of <paramref name="d"/> as loaded: the customer section comes from the Customer, or from the snapshot.</summary>
     public static UpdateStaffBookingRequest UpdateRequest(AdminBookingDetail d, Func<UpdateStaffBookingRequest, UpdateStaffBookingRequest>? change = null)
     {
+        var c = d.Customer;
+        var s = d.CustomerDetails;
         var r = new UpdateStaffBookingRequest(d.BoatId, d.PeriodType, d.StartDate, d.EndDate, d.NumberOfAdults, d.NumberOfChildren, d.CheckInTime,
-            d.CheckOutTime, d.IsStandby, d.BookingComments, d.Customer?.Comments, d.HirePrice, d.Status, d.Customer?.Email, d.Customer?.FirstName,
-            d.Customer?.LastName, d.Customer?.Mobile, d.SecondaryMobile, d.Customer?.Address,
+            d.CheckOutTime, d.IsStandby, d.BookingComments, c is null ? s?.CustomerComments : c.Comments, d.HirePrice, d.Status, c?.Email ?? s?.Email,
+            c?.FirstName ?? s?.FirstName, c?.LastName ?? s?.LastName, c?.Mobile ?? s?.MobileNumber, d.SecondaryMobile, c is null ? s?.Address : c.Address,
             d.AddonLines.Select(l => new StaffAddonLineInput(l.Id, l.AddonId, l.Quantity, l.UnitPrice)).ToList(),
             d.Payments.Select(p => new StaffPaymentInput(p.Id, p.Amount, Sydney.DateOf(p.PaidAt), p.Note)).ToList(), d.Version);
         return change is null ? r : change(r);
@@ -196,6 +199,18 @@ public sealed class ApplicationHarness
 
     /// <summary>A new manual payment row for a staff create or update.</summary>
     public static StaffPaymentInput NewPayment(decimal amount, string date, string? note = null) => new(null, amount, D(date), note);
+
+    /// <summary>
+    /// A staff save of an Expired booking that adds one manual payment: staff confirmation when the payments reach the
+    /// checkout amount (§7.3).
+    /// </summary>
+    public async Task<AdminBookingDetail> SaveWithPaymentAsync(
+        AdminBookingDetail expired, decimal amount, string date, Func<UpdateStaffBookingRequest, UpdateStaffBookingRequest>? change = null) =>
+        (await Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r =>
+        {
+            var withPayment = r with { Payments = [.. r.Payments, NewPayment(amount, date)] };
+            return change is null ? withPayment : change(withPayment);
+        }))).Booking;
 
     public IReadOnlyList<EmailMessage> EmailsTo(string address) => Emails.To(address);
 

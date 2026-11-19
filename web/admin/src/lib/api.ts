@@ -1,7 +1,7 @@
 import { http, query } from '@shared/lib/http';
 import type {
   Addon, AdminQuote, AdminQuoteRequest, Boat, BlockedPeriod, BookingDetail, BusinessSettings, CreateBookingRequest, Customer,
-  CustomerBooking, CustomerLookup, EmailTemplate, EmailTemplateKey, EmailTemplates, ManualPaymentRequest, SaveAddonRequest,
+  CustomerBooking, CustomerLookup, EmailTemplate, EmailTemplateKey, EmailTemplates, SaveAddonRequest,
   SaveBlockedPeriodRequest, SaveBoatRequest, SaveResponse, SaveSeasonRequest, SaveUnavailabilityRequest, SearchResult, Season, Timeline,
   Unavailability, UpdateBookingRequest,
 } from './types';
@@ -15,7 +15,6 @@ export const api = {
   createBooking: (body: CreateBookingRequest) => http.post<SaveResponse>('/api/bookings', body),
   updateBooking: (bookingId: string, body: UpdateBookingRequest) => http.put<SaveResponse>(`/api/bookings/${id(bookingId)}`, body),
   quote: (body: AdminQuoteRequest) => http.post<AdminQuote>('/api/bookings/quote', body),
-  confirmBooking: (bookingId: string, body: ManualPaymentRequest) => http.post<BookingDetail>(`/api/bookings/${id(bookingId)}/confirmation`, body),
   sendPaymentLink: (bookingId: string) => http.post<void>(`/api/bookings/${id(bookingId)}/send-payment-link`),
   addonRemaining: (addonId: string, startDate: string, endDate: string, excludeBookingId?: string) =>
     http.get<{ remaining: number }>(`/api/addons/${id(addonId)}/availability${query({ startDate, endDate, excludeBookingId })}`),

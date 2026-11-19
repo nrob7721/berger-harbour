@@ -28,6 +28,13 @@ export interface PaymentsSectionProps {
   dirty: boolean;
   /** While the booking saves, nothing in the section can change. */
   saving: boolean;
+  /**
+   * On an Expired booking: the checkout amount calculated live from the form (§12.1 Holds), which its payments must reach to
+   * activate it. `null` otherwise.
+   */
+  activationAmount: number | null;
+  /** The server's error for the payments, e.g. a part-payment on an Expired booking. */
+  error?: string | null;
 }
 
 /**
@@ -35,7 +42,7 @@ export interface PaymentsSectionProps {
  * schedule. Adding and removing payments only changes the form; they are saved with the booking. "Send payment link" is an
  * action of its own.
  */
-export function PaymentsSection({ detail, createdOn, dirty, saving }: PaymentsSectionProps) {
+export function PaymentsSection({ detail, createdOn, dirty, saving, activationAmount, error = null }: PaymentsSectionProps) {
   const toast = useToast();
   const { control } = useFormContext<BookingFormValues>();
   const { fields, append, remove } = useFieldArray({ control, name: 'payments', keyName: 'key' });
@@ -48,11 +55,11 @@ export function PaymentsSection({ detail, createdOn, dirty, saving }: PaymentsSe
   });
 
   const status = detail?.status;
-  // Holds (§12.1): nothing changes on a PendingPayment hold or a paid-but-expired one. An Expired hold without payments takes
-  // exactly one row, the payment that confirms it.
-  const confirming = status === 'Expired' && detail!.payments.length === 0;
-  const locked = saving || status === 'PendingPayment' || (status === 'Expired' && !confirming);
-  const canAdd = !locked && !(confirming && rows.length > 0);
+  // Holds (§12.1): nothing changes on a PendingPayment hold. An Expired booking takes payments like any other; until they
+  // reach the checkout amount, the payment dialog suggests what is still needed to activate it.
+  const locked = saving || status === 'PendingPayment';
+  const formTotal = sum(rows.map((r) => Number(r.amount) || 0));
+  const activating = activationAmount !== null && formTotal < activationAmount;
   const canSendLink = !dirty && status === 'Active' && !detail!.isStandby && detail!.amountOwing > 0;
 
   return (
@@ -60,6 +67,7 @@ export function PaymentsSection({ detail, createdOn, dirty, saving }: PaymentsSe
       <h3 className={styles.subheading}>
         Payments {detail && <span className={styles.muted}>· {STATUS_LABEL[detail.paymentStatus]}</span>}
       </h3>
+      {error && <p className={styles.paymentsError} role="alert">{error}</p>}
       {fields.length === 0 ? <p className={styles.muted}>No payments yet.</p> : (
         <table className={styles.miniTable}>
           <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Note</th><th><span className="visually-hidden">Remove</span></th></tr></thead>
@@ -101,7 +109,7 @@ export function PaymentsSection({ detail, createdOn, dirty, saving }: PaymentsSe
         </>
       )}
       <div className={styles.paymentActions}>
-        <Button onClick={() => setAdding(true)} disabled={!canAdd}>Add manual payment</Button>
+        <Button onClick={() => setAdding(true)} disabled={locked}>Add manual payment</Button>
         {detail && (
           <>
             <Button onClick={() => send.mutate()} busy={send.isPending} busyLabel="Sending…" disabled={!canSendLink}>
@@ -114,8 +122,8 @@ export function PaymentsSection({ detail, createdOn, dirty, saving }: PaymentsSe
       {adding && (
         <ManualPaymentDialog
           createdOn={createdOn}
-          minimum={confirming ? detail!.checkoutAmount : null}
-          suggested={confirming ? (detail!.checkoutAmount ?? 0) : Math.max(0, dueNow(detail, rows))}
+          activationAmount={activating ? activationAmount : null}
+          suggested={activating ? sum([activationAmount, -formTotal]) : Math.max(0, dueNow(detail, rows))}
           onClose={() => setAdding(false)}
           onAdd={(row) => {
             append(row);
@@ -133,9 +141,9 @@ function dueNow(detail: BookingDetail | null, rows: PaymentForm[]): number {
   return sum([detail.amountDueNow, -sum(rows.filter((r) => r.id === null).map((r) => Number(r.amount) || 0))]);
 }
 
-const paymentSchema = (createdOn: IsoDate, minimum: number | null) => z.object({
-  amount: z.number({ message: 'Enter the amount.' }).positive('The amount must be more than $0.')
-    .refine((v) => minimum === null || v >= minimum, `To confirm this booking, record at least ${formatMoney(minimum ?? 0)}.`),
+// Any amount above $0: on an Expired booking, the save checks that the payments reach the checkout amount (§7.3).
+const paymentSchema = (createdOn: IsoDate) => z.object({
+  amount: z.number({ message: 'Enter the amount.' }).positive('The amount must be more than $0.'),
   date: z.string().min(1, 'Enter the date.').superRefine((v, ctx) => {
     const error = paymentDateError(v, createdOn);
     if (error) ctx.addIssue({ code: 'custom', message: error });
@@ -145,10 +153,10 @@ const paymentSchema = (createdOn: IsoDate, minimum: number | null) => z.object({
 type ManualPaymentValues = { amount: number; date: IsoDate; note: string };
 
 /** Amount, date and note for a new manual payment. Its Add button only adds a row to the booking form; it sends no request. */
-function ManualPaymentDialog({ createdOn, minimum, suggested, onClose, onAdd }: {
+function ManualPaymentDialog({ createdOn, activationAmount, suggested, onClose, onAdd }: {
   createdOn: IsoDate;
-  /** Set when the payment confirms an expired hold: the least it must be (the checkout amount). */
-  minimum: number | null;
+  /** On an Expired booking whose payments don't reach it yet: the checkout amount, shown as help text. */
+  activationAmount: number | null;
   suggested: number;
   onClose: () => void;
   onAdd: (row: PaymentForm) => void;
@@ -157,7 +165,7 @@ function ManualPaymentDialog({ createdOn, minimum, suggested, onClose, onAdd }: 
   const today = todayInSydney();
   // Each field is validated when it loses focus (§6.1), with the server's date rule.
   const { register, handleSubmit, formState: { errors } } = useAppForm<ManualPaymentValues>({
-    resolver: zodResolver(paymentSchema(createdOn, minimum)),
+    resolver: zodResolver(paymentSchema(createdOn)),
     defaultValues: { amount: suggested || undefined, date: today, note: '' },
   });
   const add = handleSubmit((v) => onAdd({ id: null, amount: v.amount, date: v.date, note: v.note.trim(), method: 'Manual' }));
@@ -170,7 +178,7 @@ function ManualPaymentDialog({ createdOn, minimum, suggested, onClose, onAdd }: 
       <form onSubmit={add} noValidate>
         <fieldset className={styles.fieldset}>
           <Field label="Amount" htmlFor={ids.amount} error={errors.amount?.message}
-            hint={minimum !== null ? `To confirm this booking, record at least ${formatMoney(minimum)}.` : undefined}>
+            hint={activationAmount !== null ? `To activate this booking, record at least ${formatMoney(activationAmount)}.` : undefined}>
             <input id={ids.amount} type="number" step="0.01" min={0} className={inputClass} {...register('amount', { valueAsNumber: true })} />
           </Field>
           <Field label="Date" htmlFor={ids.date} error={errors.date?.message}>

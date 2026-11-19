@@ -2,17 +2,18 @@ using BergerHarbour.Domain.Shared;
 
 namespace BergerHarbour.Domain.Customers;
 
-/// <summary>A customer, unique by normalised email. Created only by staff bookings or when an online deposit is paid.</summary>
+/// <summary>A customer, unique by normalised email, always with a mobile. Created only by staff bookings or when an online deposit is paid.</summary>
 public sealed class Customer : AggregateRoot
 {
     public const int MaxCommentsLength = 5000;
 
-    private Customer(CustomerId id, string firstName, string lastName, EmailAddress email, DateTimeOffset createdDate)
+    private Customer(CustomerId id, string firstName, string lastName, EmailAddress email, MobileNumber mobile, DateTimeOffset createdDate)
     {
         Id = id;
         FirstName = firstName;
         LastName = lastName;
         Email = email;
+        MobileNumber = mobile;
         CreatedDate = createdDate;
         ModifiedDate = createdDate;
     }
@@ -25,7 +26,7 @@ public sealed class Customer : AggregateRoot
 
     public EmailAddress Email { get; private set; }
 
-    public MobileNumber? MobileNumber { get; private set; }
+    public MobileNumber MobileNumber { get; private set; }
 
     /// <summary>Staff-entered only; empty when the customer is created.</summary>
     public Address? Address { get; private set; }
@@ -39,23 +40,16 @@ public sealed class Customer : AggregateRoot
     public string FullName => $"{FirstName} {LastName}";
 
     /// <summary>A new customer. The address starts empty.</summary>
-    public static Customer Create(CustomerId id, string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, DateTimeOffset now)
-    {
-        var customer = new Customer(id, RequiredName(firstName, "firstName", "First name is required."),
-            RequiredName(lastName, "lastName", "Last name is required."), email, now)
-        {
-            MobileNumber = mobile,
-        };
-        return customer;
-    }
+    public static Customer Create(CustomerId id, string? firstName, string? lastName, EmailAddress email, MobileNumber mobile, DateTimeOffset now) =>
+        new(id, RequiredName(firstName, "firstName", "First name is required."), RequiredName(lastName, "lastName", "Last name is required."),
+            email, mobile, now);
 
     public static Customer Rehydrate(
-        CustomerId id, string firstName, string lastName, EmailAddress email, MobileNumber? mobile,
+        CustomerId id, string firstName, string lastName, EmailAddress email, MobileNumber mobile,
         Address? address, string? comments, DateTimeOffset createdDate, DateTimeOffset modifiedDate, int version)
     {
-        var customer = new Customer(id, firstName, lastName, email, createdDate)
+        var customer = new Customer(id, firstName, lastName, email, mobile, createdDate)
         {
-            MobileNumber = mobile,
             Address = address,
             Comments = comments,
             ModifiedDate = modifiedDate,
@@ -65,21 +59,17 @@ public sealed class Customer : AggregateRoot
     }
 
     /// <summary>The same email booked again: the name and mobile take the latest values.</summary>
-    public void UpdateFromBooking(string? firstName, string? lastName, MobileNumber? mobile, DateTimeOffset now)
+    public void UpdateFromBooking(string? firstName, string? lastName, MobileNumber mobile, DateTimeOffset now)
     {
         FirstName = RequiredName(firstName, "firstName", "First name is required.");
         LastName = RequiredName(lastName, "lastName", "Last name is required.");
-        if (mobile is not null)
-        {
-            MobileNumber = mobile;
-        }
-
+        MobileNumber = mobile;
         ModifiedDate = now;
     }
 
     /// <summary>Staff edit every contact detail from the booking dialog.</summary>
     public void UpdateByStaff(
-        string? firstName, string? lastName, EmailAddress email, MobileNumber? mobile, Address? address,
+        string? firstName, string? lastName, EmailAddress email, MobileNumber mobile, Address? address,
         string? comments, DateTimeOffset now)
     {
         var errors = new ValidationErrors();

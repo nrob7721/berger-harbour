@@ -11,7 +11,6 @@ export type UpdateBookingRequest = AdminSchemas['UpdateStaffBookingRequest'];
 export type SaveResponse = AdminSchemas['BookingSaveResponse'];
 export type AdminQuoteRequest = AdminSchemas['AdminQuoteRequest'];
 export type AdminQuote = AdminSchemas['AdminQuoteResponse'];
-export type ManualPaymentRequest = AdminSchemas['ManualPaymentRequest'];
 export type Customer = AdminSchemas['AdminCustomer'];
 export type Address = AdminSchemas['AddressDto'];
 export type CustomerLookup = AdminSchemas['CustomerLookupResponse'];

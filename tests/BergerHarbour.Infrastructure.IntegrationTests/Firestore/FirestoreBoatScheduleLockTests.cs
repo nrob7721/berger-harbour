@@ -51,7 +51,7 @@ public class FirestoreBoatScheduleLockTests(EmulatorFixture fx)
         var boats = await client.GetFromJsonAsync<JsonElement>("/api/boats");
         var boatId = boats.EnumerateArray().First(b => b.GetProperty("slug").GetString() == "pacific-blue").GetProperty("id").GetString()!;
         CreateStaffBookingRequest Request(string email, string start, string end) => new(boatId, PeriodType.Custom, EmulatorFixture.D(start),
-            EmulatorFixture.D(end), 2, 0, null, null, false, null, null, 4000, email, "John", "Smith", null, null, null, []);
+            EmulatorFixture.D(end), 2, 0, null, null, false, null, null, 4000, email, "John", "Smith", "+61412000111", null, null, []);
         var responses = await Task.WhenAll(
             client.PostAsJsonAsync("/api/bookings", Request("http-a@example.com", "2029-02-05", "2029-02-09"), Json),
             client.PostAsJsonAsync("/api/bookings", Request("http-b@example.com", "2029-02-07", "2029-02-12"), Json));

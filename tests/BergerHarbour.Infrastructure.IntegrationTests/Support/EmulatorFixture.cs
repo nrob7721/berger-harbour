@@ -73,7 +73,7 @@ public sealed class EmulatorFixture
     public async Task<CreateStaffBookingRequest> StaffRequestAsync(string start, string end, string slug = "pacific-blue", string email = "john@example.com",
         IReadOnlyList<StaffAddonLineInput>? lines = null, string lastName = "Smith") =>
         new((await BoatAsync(slug)).Id.Value, PeriodType.Custom, D(start), D(end), 2, 0, "11:00", "08:00", false, null, null, 4000, email, "John",
-            lastName, null, null, null, lines ?? []);
+            lastName, "+61412000111", null, null, lines ?? []);
 
     public async Task ActivateAsync(string slug)
     {

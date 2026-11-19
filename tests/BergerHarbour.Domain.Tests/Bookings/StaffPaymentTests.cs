@@ -76,7 +76,7 @@ public class StaffPaymentTests
     }
 
     [Fact]
-    public void Payments_change_on_Active_Cancelled_and_Superseded_bookings_but_not_on_holds()
+    public void Payments_change_on_Active_Cancelled_Superseded_and_Expired_bookings_but_not_on_PendingPayment_holds()
     {
         var cancelled = Staff("2027-03-08", "2027-03-12");
         cancelled.Cancel(Now);
@@ -90,9 +90,10 @@ public class StaffPaymentTests
 
         var pending = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40));
         Assert.Throws<BusinessRuleException>(() => pending.ChangePaymentsByStaff([], [Manual(100, "2026-11-09", Now)], Now));
-        pending.Expire(Now);
-        Assert.Throws<BusinessRuleException>(() => pending.ChangePaymentsByStaff([], [Manual(100, "2026-11-09", Now)], Now));
         Assert.Empty(pending.Payments);
+        pending.Expire(Now);
+        pending.ChangePaymentsByStaff([], [Manual(100, "2026-11-09", Now)], Now);
+        Assert.Equal(BookingStatus.Expired, pending.Status);
     }
 
     [Fact]
@@ -104,11 +105,11 @@ public class StaffPaymentTests
     }
 
     [Fact]
-    public void Staff_confirmation_follows_the_date_rule()
+    public void Payments_on_an_Expired_booking_follow_the_date_rule()
     {
         var hold = Hold("2027-03-08", "2027-03-12", Now.AddMinutes(40));
         hold.Expire(Now);
-        var e = Assert.Throws<DomainValidationException>(() => hold.RecordStaffConfirmation(Manual(1000, "2026-11-08", Now), Now));
+        var e = Assert.Throws<DomainValidationException>(() => hold.ChangePaymentsByStaff([], [Manual(1000, "2026-11-08", Now)], Now));
         Assert.True(e.Errors.Has("date"));
         Assert.Empty(hold.Payments);
     }

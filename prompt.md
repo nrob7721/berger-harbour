@@ -64,7 +64,7 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | **Berth** | The number of people a boat sleeps (industry term, e.g. "a 12 berth houseboat"). Online, adults + children must not exceed it. |
 | **Booking reference** | `LASTNAME-YYMMDDX`, e.g. `SMITH-2701150` (§7.3). |
 | **Frequent Floater** | A customer who makes a booking while they have at least one other booking starting within a year either side of it (§7.8). Staff decide the perk; the system only flags it. |
-| **Mobile** | Every phone number is a mobile number: the customer's **Mobile** and a booking's **Secondary mobile**. Landlines are not accepted, and a booking's secondary mobile can't be the same number as its mobile (§7.1). |
+| **Mobile** | Every phone number is a mobile number: the customer's **Mobile**, required on every booking and every customer, and a booking's optional **Secondary mobile**. Landlines are not accepted, and a booking's secondary mobile can't be the same number as its mobile (§7.1). |
 | **Secondary mobile** | An optional mobile number held on a **booking**, not on the customer: usually a second person travelling or a contact for that stay. Staff enter it, and changing it affects only that booking (§7.3). |
 
 **Overlap rules.** Every overlap check in the system compares **nights**:
@@ -119,7 +119,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 26. **Booking references** are `LASTNAME-YYMMDDX` (§7.3). They are assigned when an online booking's deposit is paid or a staff booking is created, and never change afterwards.
 27. Customers have separate **first name** and **last name** fields everywhere.
 28. **Frequent Floaters** (repeat customers) are flagged to staff. The perk is decided by staff, never by the system (§7.8).
-29. Every phone number must be a **mobile** number. The **secondary mobile** belongs to the booking, not the customer, because it is usually a different person and changing it must not alter other bookings. It can't be the same number as the booking's mobile.
+29. Every phone number must be a **mobile** number, and every booking and every customer has one: no booking is created or saved without the customer's mobile, online or by staff. The **secondary mobile** belongs to the booking, not the customer, because it is usually a different person and changing it must not alter other bookings. It can't be the same number as the booking's mobile.
 30. **Nothing is saved until the user saves.** A form, including the add-on lines and payments of a booking, is saved only by its main button. While any backend request runs, the button that started it is disabled and shows progress (§6.1).
 31. Customers can go **back from the Payment step**. Doing so releases their hold.
 32. **Fields are validated as soon as they lose focus**, in every form of both apps (§6.1). The server repeats every check on save.
@@ -262,7 +262,7 @@ firestore.indexes.json
   - `BookingValidationContext` holds everything the rules need. The calling application service loads it before validating: the boat, `BusinessSettings`, blocked periods, add-on definitions, today (Australia/Sydney) and the scope. Online it also holds the booking draft and the remaining capacity of each capacity-limited add-on for the stay (§7.5).
   - `BookingValidationScope` is `Quote` or `Submit`. `Quote` skips the draft, terms, rooming acceptance and contact details.
   - `OnlineBookingValidationStrategy` is registered in `PublicApi`. It enforces the rules in §7.7: period shape, lead time, open-until, blocked periods, adult/child limits, rooming warning acceptance, terms acceptance, allowed add-ons, add-on capacity and a valid booking draft.
-  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, an optional `SecondaryMobileNumber` that is a valid mobile number and not the same as the mobile in the booking's contact details, and a valid customer: first name, last name and a valid email are required; Mobile is optional but must be a valid mobile number; the address follows the `Address` rules (§7.3). It applies on create and on every update.
+  - `InternalBookingValidationStrategy` is registered in `AdminApi`. It enforces only `StartDate < EndDate`, `NumberOfAdults >= 1`, `NumberOfChildren >= 0`, an optional `SecondaryMobileNumber` that is a valid mobile number and not the same as the mobile in the booking's contact details, and a valid customer: first name, last name, a valid email and a valid mobile number are required (a missing mobile is a field error on `mobile`: "Mobile is required."); the address follows the `Address` rules (§7.3). It applies on create and on every update.
   - Strategies return errors only. Staff's non-blocking warnings come from `StaffBookingWarnings`, a separate class that is not a strategy: guests above berth, guests above beds, add-on capacity exceeded, and a custom time clashing with a same-day changeover. It is pure too and works on data the application service has loaded.
   - Both strategies are always followed by the availability invariant (decision 15), which is not part of either strategy.
 - **Money:** `decimal` AUD in the domain, stored as integer cents. All amounts include GST.
@@ -322,7 +322,7 @@ Any write that can create or move occupancy for a boat (create or update a booki
 **Ordering (boat order):** everywhere boats are listed (both `GET /api/boats`, admin timeline rows, Fleet grid, every boat dropdown, and the booking app's "Other boats available" list), boats are sorted by their **Normal season Week rate** descending, then `Name`. Boats without that rate come after every boat that has one, by `Name`. The order never depends on a selected period or its prices.
 
 #### Customer (aggregate)
-`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile; required for online bookings, optional for staff-created), `Address` (optional `Address` value object, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
+`Id`, `FirstName` (required), `LastName` (required), `Email` (required, stored normalised to lower-case trimmed, **unique**), `MobileNumber` (E.164 mobile, required), `Address` (optional `Address` value object, staff-entered only, empty when the customer is created), `Comments` (optional), `CreatedDate`, `ModifiedDate`, `Version`.
 
 - The customer's name is displayed everywhere as `FirstName LastName`.
 - `Address` has the parts `Line1`, `Line2`, `Locality` (City/Locality), `State`, `Postcode` and `Country`:
@@ -393,7 +393,7 @@ Creating or editing one that overlaps an Active or PendingPayment non-stand-by b
 - **Removing:** staff may remove any payment, Stripe or manual, e.g. after refunding it in the Stripe dashboard. A removed Stripe payment's PaymentIntent id is added to `RemovedStripePaymentIntentIds`.
 - Adding or removing a payment never changes the booking's status; `AmountPaid` and `PaymentStatus` follow from the payments that remain.
 - Payments can be added and removed on a new staff booking and on `Active`, `Cancelled`, `Superseded` and `Expired` bookings, including in a save that changes the status. `PendingPayment` bookings take no payment changes.
-- On an `Expired` booking the payments a save leaves it with (kept plus added) must total either nothing or at least the checkout amount (§7.6), so it never holds a part-payment. A smaller total is rejected with a field error on `amount`: "To activate this booking, record at least {amount}." Nothing is saved.
+- On an `Expired` booking the payments a save leaves it with (kept plus added) must total either nothing or at least the checkout amount (§7.6), so it never holds a part-payment. A smaller total is rejected with a field error on `payments`: "To activate this booking, record at least {amount}." Nothing is saved.
 
 **Deposit** (`DepositAmount`):
 - It is set to the boat's effective deposit when the booking is created (online, when the hold is created).
@@ -688,7 +688,7 @@ All routes are under `/api`. JSON uses camelCase, dates are `yyyy-MM-dd`, times 
 **Customer fields on staff bookings:** `POST` and `PUT` carry the contact details (first name, last name, email, mobile), `address` (`{ line1, line2, locality, state, postcode, country }`, or `null` for no address) and `customerComments`. They are saved to the booking's Customer in the same request. `secondaryMobile` is a separate top-level booking field, saved with the booking and never to the Customer; `GET /api/bookings/{id}` returns it. Only `PendingPayment` and `Expired` bookings lack a Customer. A `PendingPayment` booking cannot be updated. For an `Expired` booking these fields are saved to its `CustomerDetails` snapshot, and to the Customer only when the save confirms it (§7.3).
 
 Staff-created bookings (`POST /api/bookings`):
-- Email, first name and last name are required. The email and any mobile numbers must be valid, and the secondary mobile can't be the same as the mobile in the contact details (§7.1), on create and on update. The customer is matched or created by email.
+- Email, first name, last name and mobile are required. The email and the mobile numbers must be valid, and the secondary mobile can't be the same as the mobile in the contact details (§7.1), on create and on update. The customer is matched or created by email.
 - Manual payments in `payments` are recorded with it, dated today (§7.3).
 - Status is `Active` immediately. `CreatedBy = SystemUser`. The reference and `ActivatedAt` are set at creation.
 - Validated by `InternalBookingValidationStrategy` plus the availability invariant.
@@ -1005,7 +1005,7 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
   - **Email** (required, §7.1). On blur it is validated. When it is valid, it looks up an existing customer; when a customer is found, the names, mobile, address and customer comments are **always** filled from that customer, replacing what was typed. When it is invalid, the error shows and no lookup is made. If the email is changed to another existing customer, those fields reload from that customer. The secondary mobile is a booking field, so a lookup never fills, replaces or clears it. When no customer is found, the fields keep what was typed.
     - **While the lookup runs** (on a new or an existing booking), a small `Spinner` shows immediately to the right of the email input, on the same line, so the field doesn't move or resize. It has no visible text; its accessible label "Looking up customer…" is announced (`role="status"`). First name, last name, Mobile, the address fields and Customer comments are disabled, and so is Create booking / Save changes, until it finishes.
   - **First name** and **Last name** (required).
-  - **Mobile** (optional) and **Secondary mobile** (optional, empty by default, saved with the booking, not the customer). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1). The secondary mobile can't be the same number as the mobile; the error shows on Secondary mobile when either field loses focus (§6.1).
+  - **Mobile** (required: leaving it empty shows "Mobile is required.", §6.1) and **Secondary mobile** (optional, empty by default, saved with the booking, not the customer). Both use the same `MobileInput` (country code selector) as the booking app and only accept mobile numbers (§7.1). The secondary mobile can't be the same number as the mobile; the error shows on Secondary mobile when either field loses focus (§6.1).
   - **Address**, below Secondary mobile: **Address line 1**, **Address line 2**, **City/Locality**, **State**, **Postcode** and **Country**. None is required (§7.3).
     - **Country** is a dropdown of ISO 3166-1 alpha-2 countries (the same hard-coded list the server validates against, with names from `Intl.DisplayNames`), defaulting to Australia, or the customer's stored address country.
     - For Australia, **State** is a dropdown (NSW, VIC, QLD, SA, WA, TAS, NT, ACT) and **Postcode** must be 4 digits. For other countries both are free text. Switching Country to Australia clears a State that isn't one of these.
@@ -1023,7 +1023,7 @@ Behind Cloudflare Access. There is a top menu bar: **Bookings · Fleet · Custom
 - **Expired is edited like any booking:** every field, the add-on lines, Recalculate from rates, Add manual payment and Remove are enabled, and the main button is **Save changes**. Send payment link stays Active non-stand-by only. The customer section starts from the booking's `CustomerDetails` snapshot (§7.3). Status shows "Expired" and is locked. The Stand-by checkbox is editable.
   - **Expired, without payments:** a banner reads "This hold expired without payment. Record a manual payment of at least {checkout amount} to activate the booking." The amount is `min(deposit, hire price)` calculated live from the form (the deposit as in the price breakdown, §7.3 **Deposit**, and the hire price in it), so it follows the boat and price staff pick. The manual payment dialog shows it as help text on the amount and suggests it as the amount. Its date can't be before the hold was created (§7.3). The payment dialog accepts any amount above 0. The save is what checks the total.
   - Save changes sends `PUT /api/bookings/{id}` as for any booking. Payments totalling at least the checkout amount confirm the booking (§7.3), and the dialog reloads as an ordinary Active booking with the customer section filled from the new Customer. A toast confirms "Booking {reference} confirmed." Without payments it stays Expired and the toast is the usual one.
-  - A smaller total shows the error on the payment amount ("To activate this booking, record at least {amount}."). A `409` (the new boat or dates, or the booking's dates when it is being confirmed, are taken) shows the conflicting references, and nothing is saved (§7.3).
+  - A smaller total shows the error in the Payments section ("To activate this booking, record at least {amount}."). A `409` (the new boat or dates, or the booking's dates when it is being confirmed, are taken) shows the conflicting references, and nothing is saved (§7.3).
 - **Expired, with a payment** (paid-but-expired, §8.3): the dialog is edited the same way, and Remove works on the payment. A banner reads "Paid online after the hold expired. Move the booking to free dates and save to activate it, or refund in Stripe and remove the payment."
 
 **Superseded stand-bys (decision 40):**
@@ -1240,7 +1240,7 @@ Sections:
   - Staff bookings with `addonLines`: new lines added, edited lines updated, left-out lines deleted; `POST /api/bookings/quote` pre-fill and recalculation prices (null for price on request, LongWeekend and Custom).
   - Customer comments are saved from staff booking create/update and from `PUT /api/customers/{id}/comments`; the address (every part, including a partial address) is saved from staff booking create/update; online activation never changes comments or the address and never sets a booking's secondary mobile; a staff save that confirms an Expired booking writes the comments and address the dialog saved to the Customer.
   - A booking's secondary mobile is saved from staff booking create/update, returned by `GET /api/bookings/{id}`, and kept through status changes. Changing it on one booking leaves the Customer and the customer's other bookings unchanged, and a later online booking by the same customer never alters it.
-  - Staff booking create **and update** reject an invalid email or mobile with a field error (e.g. changing an existing booking's email to `jane@gmail`), and a secondary mobile equal to the mobile with a field error on `secondaryMobile`.
+  - Staff booking create **and update** reject a missing mobile ("Mobile is required." on `mobile`), and an invalid email or mobile with a field error (e.g. changing an existing booking's email to `jane@gmail`), and a secondary mobile equal to the mobile with a field error on `secondaryMobile`.
   - Email #2 renders `{{FrequentFloaterNotice}}` only for a Frequent Floater booking; the bank placeholders render the Settings values (BSB as `123-456`) or empty.
 - **Integration tests (Firestore emulator):**
   - Repositories round-trip.
@@ -1292,11 +1292,12 @@ Sections:
     - New lines are pre-filled with the Settings price.
     - Per-line totals update as quantity and unit price change.
     - The live price breakdown (Total, Paid, Owing, the unpriced-line note) and the "Schedule updates when you save" note.
-    - The breakdown's Deposit: "—" on a new booking before a boat is chosen; the chosen boat's effective deposit, following boat changes, while the form has no saved payment rows (including an unsaved row only, and after removing all the saved ones); the stored deposit, unchanged by a boat change, while a saved payment row remains, and on holds.
+    - The breakdown's Deposit: "—" on a new booking before a boat is chosen; the chosen boat's effective deposit, following boat changes, while the form has no saved payment rows (including an unsaved row only, and after removing all the saved ones); the stored deposit, unchanged by a boat change, while a saved payment row remains, and on a PendingPayment hold.
     - The Frequent Floater badge.
     - Address and customer comments: always filled from the customer on an email lookup that finds one, and kept as typed when none is found.
     - Address fields: none required; Country defaulting to Australia or the stored country; the Australian State dropdown and 4-digit postcode; free text for other countries.
     - No customer lookup for an invalid email. While a lookup runs, the spinner shows to the right of the email field, labelled "Looking up customer…", and the other customer fields and the main button are disabled.
+    - The mobile is required: leaving it empty shows "Mobile is required." on blur, and the booking can't be saved without it.
     - The secondary mobile error when it matches the mobile.
     - An email lookup never fills, replaces or clears the secondary mobile, and it stays enabled while the lookup runs.
     - Check-in/check-out times: typed 24-hour values formatted on blur (`930` → `09:30`, `1730` → `17:30`, `9:30` → `09:30`), and the error for anything else.

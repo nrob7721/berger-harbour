@@ -124,27 +124,25 @@ public class StaffBookingPaymentsTests
     }
 
     [Fact]
-    public async Task Staff_confirmation_follows_the_date_rule()
+    public async Task Payments_on_an_Expired_booking_follow_the_date_rule()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(TimeSpan.FromDays(1));
         var expired = await h.Staff.GetAsync(created.BookingId);
-        var before = await Assert.ThrowsAsync<DomainValidationException>(() =>
-            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-08"), null, expired.Version)));
-        Assert.True(before.Errors.Has("date"));
-        var future = await Assert.ThrowsAsync<DomainValidationException>(() =>
-            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-11"), null, expired.Version)));
-        Assert.True(future.Errors.Has("date"));
+        var before = await Assert.ThrowsAsync<DomainValidationException>(() => h.SaveWithPaymentAsync(expired, 1000, "2026-11-08"));
+        Assert.True(before.Errors.Has("payments"));
+        var future = await Assert.ThrowsAsync<DomainValidationException>(() => h.SaveWithPaymentAsync(expired, 1000, "2026-11-11"));
+        Assert.True(future.Errors.Has("payments"));
         Assert.Empty(h.Booking(created.BookingId).Payments);
-        Assert.Equal(BookingStatus.Active, (await h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version))).Status);
+        Assert.Equal(BookingStatus.Active, (await h.SaveWithPaymentAsync(expired, 1000, "2026-11-09")).Status);
     }
 
     [Fact]
-    public async Task Confirmation_is_rejected_for_every_booking_but_an_Expired_one_without_payments()
+    public async Task Payment_changes_are_rejected_on_a_PendingPayment_hold()
     {
-        var active = (await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19"))).Booking;
-        await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            h.Staff.ConfirmAsync(active.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, active.Version)));
-        Assert.Empty(h.Booking(active.Id).Payments);
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        var pending = await h.Staff.GetAsync(created.BookingId);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => h.SaveWithPaymentAsync(pending, 1000, "2026-11-09"));
+        Assert.Empty(h.Booking(created.BookingId).Payments);
     }
 }

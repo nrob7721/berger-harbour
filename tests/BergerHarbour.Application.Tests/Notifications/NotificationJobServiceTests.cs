@@ -168,7 +168,7 @@ public class NotificationJobServiceTests
         var due = CheckIn("2027-02-15") - TimeSpan.FromDays(30);
         h.Clock.UtcNow = due - TimeSpan.FromDays(6);
         var expired = await h.Staff.GetAsync(created.BookingId);
-        await h.Staff.ConfirmAsync(expired.Id, new Application.Bookings.Dtos.ManualPaymentRequest(1000, Sydney.DateOf(h.Clock.UtcNow), null, expired.Version));
+        await h.SaveWithPaymentAsync(expired, 1000, Sydney.DateOf(h.Clock.UtcNow).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
         await Job.RunAsync();
         Assert.Equal(0, h.CountEmails("Payment due"));
         h.Clock.UtcNow = due;

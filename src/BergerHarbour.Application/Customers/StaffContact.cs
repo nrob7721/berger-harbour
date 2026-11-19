@@ -8,6 +8,6 @@ public sealed record StaffContact(
     string FirstName,
     string LastName,
     EmailAddress Email,
-    MobileNumber? Mobile,
+    MobileNumber Mobile,
     Address? Address,
     string? Comments);

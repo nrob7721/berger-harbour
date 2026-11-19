@@ -834,51 +834,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/bookings/{id}/confirmation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ManualPaymentRequest"];
-                    "text/json": components["schemas"]["ManualPaymentRequest"];
-                    "application/*+json": components["schemas"]["ManualPaymentRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["AdminBookingDetail"];
-                        "application/json": components["schemas"]["AdminBookingDetail"];
-                        "text/json": components["schemas"]["AdminBookingDetail"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/bookings/{id}/send-payment-link": {
         parameters: {
             query?: never;
@@ -1515,8 +1470,6 @@ export interface components {
             roomingWarningAcceptance: null | components["schemas"]["RoomingAcceptanceDto"];
             /** Format: date-time */
             holdExpiresAt: null | string;
-            /** Format: double */
-            checkoutAmount: null | number;
             /** Format: date-time */
             createdDate: string;
             /** Format: date-time */
@@ -1529,7 +1482,7 @@ export interface components {
             firstName: string;
             lastName: string;
             email: string;
-            mobile: null | string;
+            mobile: string;
             address: null | components["schemas"]["AddressDto"];
             comments: null | string;
             /** Format: date-time */
@@ -1661,6 +1614,8 @@ export interface components {
             lastName: string;
             email: string;
             mobileNumber: string;
+            address: null | components["schemas"]["AddressDto"];
+            customerComments: null | string;
         };
         CustomerLookupResponse: {
             customer: components["schemas"]["AdminCustomer"];
@@ -1683,15 +1638,6 @@ export interface components {
             isFrequentFloater: boolean;
             /** Format: int32 */
             otherBookingCount: number;
-        };
-        ManualPaymentRequest: {
-            /** Format: double */
-            amount: number;
-            /** Format: date */
-            date: string;
-            note: null | string;
-            /** Format: int32 */
-            version: number;
         };
         /** @enum {unknown} */
         MilestoneKind: "Deposit" | "Balance" | "First" | "Final";

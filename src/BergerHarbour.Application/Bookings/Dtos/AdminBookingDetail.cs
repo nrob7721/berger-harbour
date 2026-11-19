@@ -40,7 +40,6 @@ public sealed record AdminBookingDetail(
     DateTimeOffset? TermsAcceptedAt,
     RoomingAcceptanceDto? RoomingWarningAcceptance,
     DateTimeOffset? HoldExpiresAt,
-    decimal? CheckoutAmount,
     DateTimeOffset CreatedDate,
     DateTimeOffset ModifiedDate,
     int Version);

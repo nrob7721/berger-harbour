@@ -15,7 +15,7 @@ public class InternalBookingValidationStrategyTests
     private readonly InternalBookingValidationStrategy strategy = new();
 
     private static BookingRequest Request() => new(PeriodType.Custom, D("2026-12-24"), D("2026-12-31"), 2, 0, "John", "Smith", "john@example.com",
-        null, null, null, [], false, null, false, null);
+        "+61412000111", null, null, [], false, null, false, null);
 
     [Fact]
     public void Staff_may_book_inside_the_lead_time_over_blocked_periods_and_above_berth() =>
@@ -31,7 +31,7 @@ public class InternalBookingValidationStrategyTests
     }
 
     [Fact]
-    public void Customer_names_and_a_valid_email_are_required_mobiles_optional_but_valid_and_the_address_follows_its_rules()
+    public void Customer_names_a_valid_email_and_a_valid_mobile_are_required_the_secondary_mobile_is_optional_and_the_address_follows_its_rules()
     {
         var errors = strategy.Validate(Request() with
         {
@@ -39,6 +39,8 @@ public class InternalBookingValidationStrategyTests
             Address = new AddressDto(new string('a', 101), null, null, "Sydney", null, "AU"),
         }, Context);
         Assert.Equal(["address.line1", "address.state", "email", "firstName", "lastName", "mobile", "secondaryMobile"], errors.ByField.Keys.Order());
-        Assert.True(strategy.Validate(Request() with { Mobile = null, SecondaryMobile = "" }, Context).IsEmpty);
+        Assert.True(strategy.Validate(Request() with { SecondaryMobile = "" }, Context).IsEmpty);
+        var missing = strategy.Validate(Request() with { Mobile = null }, Context);
+        Assert.Equal("Mobile is required.", missing.ByField["mobile"][0]);
     }
 }

@@ -15,7 +15,7 @@ using BergerHarbour.Domain.Unavailabilities;
 namespace BergerHarbour.Application.Bookings;
 
 /// <summary>
-/// Staff bookings: timeline, search, the booking dialog (including its payments), staff confirmation and payment links
+/// Staff bookings: timeline, search, the booking dialog (including its payments and staff confirmation) and payment links
 /// (admin <c>BookingsController</c>).
 /// </summary>
 public sealed class StaffBookingService
@@ -181,7 +181,8 @@ public sealed class StaffBookingService
     /// Saves every field of the booking dialog, including the full add-on line and payment lists and the customer's details.
     /// Each payment added to an Active non-stand-by booking sends one #5. Changing a Superseded booking's boat or dates
     /// reactivates it as a stand-by (§7.3). The deposit is set again from the boat unless the save keeps a payment the booking
-    /// already had (§7.3).
+    /// already had (§7.3). An Expired booking is edited the same way, its contact details going to its snapshot, and a save
+    /// whose payments reach the checkout amount <b>confirms</b> it (<see cref="BookingActivator"/>).
     /// </summary>
     public async Task<BookingSaveResponse> UpdateAsync(string id, UpdateStaffBookingRequest request, CancellationToken ct = default)
     {
@@ -216,22 +217,61 @@ public sealed class StaffBookingService
         var scheduleType = input.Stay == booking.Stay ? booking.PaymentSchedule : schedule.ScheduleFor(input.Stay, reference.BlockedPeriods);
         var details = new StaffBookingDetails(boat!.Id, request.PeriodType, input.Stay, request.NumberOfAdults, request.NumberOfChildren, input.CheckIn,
             input.CheckOut, request.IsStandby, request.BookingComments, input.HirePrice, scheduleType, input.Lines, secondaryMobile);
-        var (saved, superseded) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
+        var boatDeposit = boat.EffectiveDeposit(reference.Settings);
+        var snapshot = new CustomerDetails(contact!.FirstName, contact.LastName, contact.Email, contact.Mobile, contact.Address, contact.Comments);
+
+        // An Expired booking: try the edits on the loaded copy first, so a part-payment fails before a reference suffix is
+        // used up, and a confirming save gets its reference from the name and start date it saves.
+        BookingReference? confirmationReference = null;
+        if (booking.Status == BookingStatus.Expired)
+        {
+            ApplyStaffEdits(booking, details, snapshot, boatDeposit, keptPayments, addedPayments, now);
+            if (booking.IsReadyForStaffConfirmation)
+            {
+                confirmationReference = await activator.ReferenceForAsync(booking, ct);
+            }
+        }
+
+        var (saved, superseded, confirmed) = await scheduleLock.RunExclusiveAsync(boat.Id, async session =>
         {
             var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
             current.EnsureVersion(request.Version);
             current.ExpireIfLapsed(now);
-            var reactivated = current.UpdateByStaff(details, now);
+            var wasExpired = current.Status == BookingStatus.Expired;
+            var moved = details.BoatId != current.BoatId || details.Stay != current.Stay;
+            var reactivated = ApplyStaffEdits(current, details, snapshot, boatDeposit, keptPayments, addedPayments, now);
             if (!reactivated && current.Status is BookingStatus.Active or BookingStatus.Cancelled)
             {
                 current.ChangeStatusByStaff(request.Status, now);
             }
 
-            current.ResetDepositUnlessPaid(boat.EffectiveDeposit(reference.Settings), keptPayments);
-            current.ChangePaymentsByStaff(keptPayments, addedPayments, now);
-
             IReadOnlyList<Booking> supersededHere = [];
-            if (current.Status == BookingStatus.Active)
+            var confirmedHere = false;
+            if (wasExpired && current.IsReadyForStaffConfirmation)
+            {
+                // Staff confirmation (§7.3): activated exactly as if the deposit had been paid online, on free dates only.
+                // The version check makes it the booking checked before the lock, so its reference was prepared there.
+                current.AssignReference(confirmationReference ?? throw new InvalidOperationException("A confirmation needs its reference."));
+                var attempt = await activator.TryActivateAsync(session, current, now);
+                if (!attempt.Activated)
+                {
+                    throw new ConflictException(ConflictException.DatesTaken, attempt.Check.References);
+                }
+
+                supersededHere = attempt.Superseded;
+                confirmedHere = true;
+            }
+            else if (wasExpired)
+            {
+                // It blocks nothing itself, but its boat and dates can never be set to unavailable ones. An edit that
+                // leaves them alone saves even when another booking took them.
+                if (moved)
+                {
+                    availability.EnsureAvailable(current.Stay, await session.ListOverlappingBookingsAsync(current.Stay),
+                        await session.ListOverlappingUnavailabilitiesAsync(current.Stay), now, current.Id);
+                }
+            }
+            else if (current.Status == BookingStatus.Active)
             {
                 var overlapping = await session.ListOverlappingBookingsAsync(current.Stay);
                 availability.EnsureAvailable(current.Stay, overlapping, await session.ListOverlappingUnavailabilitiesAsync(current.Stay), now, current.Id);
@@ -239,10 +279,18 @@ public sealed class StaffBookingService
             }
 
             session.SaveBooking(current);
-            return (current, supersededHere);
+            return (current, supersededHere, confirmedHere);
         });
 
-        if (contact is not null)
+        if (confirmed)
+        {
+            // The Customer is written from the snapshot as the dialog saved it, then the draft is converted.
+            var customer = await customers.SaveFromStaffAsync(null, contact, ct);
+            saved.AttachCustomer(customer.Id, clock.UtcNow);
+            await bookings.SaveAsync(saved, ct);
+            await activator.CompleteAsync(saved, ct);
+        }
+        else if (saved.Status != BookingStatus.Expired)
         {
             var customer = await customers.SaveFromStaffAsync(saved.CustomerId, contact, ct);
             if (customer.Id != saved.CustomerId)
@@ -253,29 +301,16 @@ public sealed class StaffBookingService
         }
 
         await AfterSaveAsync(saved, superseded, ct);
-        foreach (var payment in addedPayments)
+        if (!confirmed)
         {
-            await notifier.SendPaymentReceivedAsync(saved, payment, ct);
+            // #1 covers the payments saved in the save that confirms an Expired booking.
+            foreach (var payment in addedPayments)
+            {
+                await notifier.SendPaymentReceivedAsync(saved, payment, ct);
+            }
         }
 
         return new BookingSaveResponse(await DetailAsync(saved, ct), await WarningsAsync(boat, saved, reference, ct));
-    }
-
-    /// <summary>
-    /// Staff confirmation (§7.3): a manual payment of at least the checkout amount on an Expired booking without payments.
-    /// Every other booking rejects it.
-    /// </summary>
-    public async Task<AdminBookingDetail> ConfirmAsync(string id, ManualPaymentRequest request, CancellationToken ct = default)
-    {
-        var booking = await LoadAsync(id, ct);
-        booking.EnsureVersion(request.Version);
-        if (booking.Status == BookingStatus.PendingPayment)
-        {
-            throw new BusinessRuleException("This booking is waiting for the customer's online payment and can't be confirmed yet.");
-        }
-
-        var payment = Payment.Manual(request.Amount, request.Date, request.Note, clock.UtcNow);
-        return await ConfirmAsync(booking, request.Version, payment, ct);
     }
 
     /// <summary>Sends #4 now for the amount due now. Manual sends are not deduplicated.</summary>
@@ -305,34 +340,23 @@ public sealed class StaffBookingService
     }
 
     /// <summary>
-    /// Staff confirmation of an Expired hold: the payment (at least the checkout amount) is recorded and the booking
-    /// activated in one transaction, exactly as if the deposit had been paid online. Sends #1 (and #8), never #2 or #5.
+    /// The dialog's edits applied to <paramref name="booking"/>: its details, an Expired booking's contact details snapshot,
+    /// the deposit and the payments, then the Expired part-payment rule. Returns whether a Superseded booking was reactivated.
     /// </summary>
-    private async Task<AdminBookingDetail> ConfirmAsync(Booking booking, int version, Payment payment, CancellationToken ct)
+    private static bool ApplyStaffEdits(
+        Booking booking, StaffBookingDetails details, CustomerDetails snapshot, decimal boatDeposit, IReadOnlyCollection<string> keptPayments,
+        IReadOnlyList<Payment> addedPayments, DateTimeOffset now)
     {
-        booking.RecordStaffConfirmation(payment, clock.UtcNow); // fails fast before a reference suffix is used up
-        var bookingReference = await activator.ReferenceForAsync(booking, ct);
-        var now = clock.UtcNow;
-        var (confirmed, superseded) = await scheduleLock.RunExclusiveAsync(booking.BoatId, async session =>
+        var reactivated = booking.UpdateByStaff(details, now);
+        if (booking.Status == BookingStatus.Expired)
         {
-            var current = await session.GetBookingAsync(booking.Id) ?? throw new NotFoundException("We couldn't find that booking.");
-            current.EnsureVersion(version);
-            current.ExpireIfLapsed(now);
-            current.RecordStaffConfirmation(payment, now);
-            current.AssignReference(bookingReference);
-            var attempt = await activator.TryActivateAsync(session, current, now);
-            if (!attempt.Activated)
-            {
-                throw new ConflictException(ConflictException.DatesTaken, attempt.Check.References);
-            }
+            booking.UpdateCustomerDetailsByStaff(snapshot, now);
+        }
 
-            session.SaveBooking(current);
-            return (current, attempt.Superseded);
-        });
-
-        await activator.CompleteAsync(confirmed, ct);
-        await AfterSaveAsync(confirmed, superseded, ct);
-        return await DetailAsync(confirmed, ct);
+        booking.ResetDepositUnlessPaid(boatDeposit, keptPayments);
+        booking.ChangePaymentsByStaff(keptPayments, addedPayments, now);
+        booking.EnsureNoExpiredPartPayment();
+        return reactivated;
     }
 
     /// <summary>
@@ -389,14 +413,14 @@ public sealed class StaffBookingService
         ValidationErrors errors)
     {
         var e = errors.Capture(() => EmailAddress.Create(email));
-        var m = errors.Capture(() => MobileNumber.CreateOptional(mobile, "mobile"));
+        var m = errors.Capture(() => MobileNumber.Create(mobile, "mobile"));
         var a = errors.Capture(() => address.ToAddress());
         if (comments?.Trim().Length > Customer.MaxCommentsLength)
         {
             errors.Add("customerComments", "Comments must be 5000 characters or fewer.");
         }
 
-        return e is null || string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName)
+        return e is null || m is null || string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName)
             ? null
             : new StaffContact(firstName.Trim(), lastName.Trim(), e, m, a, comments);
     }
@@ -529,12 +553,13 @@ public sealed class StaffBookingService
             b.TotalPrice, b.AmountPaid, b.AmountOwing, schedule.AmountDueNow(milestones, b.AmountPaid, b.AmountOwing, now), b.PaymentStatus,
             milestones.Select(m => new AdminScheduleItem(m.Kind, m.Label, m.RequiredCumulative, m.DueDate, m.ShortfallFor(b.AmountPaid))).ToList(),
             customer?.ToDto(),
-            b.CustomerDetails is { } d ? new CustomerDetailsDto(d.FirstName, d.LastName, d.Email.Value, d.MobileNumber.Value) : null,
+            b.CustomerDetails is { } d
+                ? new CustomerDetailsDto(d.FirstName, d.LastName, d.Email.Value, d.MobileNumber.Value, d.Address.ToDto(), d.CustomerComments)
+                : null,
             new FrequentFloaterDto(frequent.IsFrequentFloater, frequent.OtherBookingCount),
             b.TermsAcceptedAt,
             b.RoomingWarningAcceptance is { } r ? new RoomingAcceptanceDto(r.AcceptedAt, r.WarningTextShown) : null,
             b.Status == BookingStatus.PendingPayment ? b.HoldExpiresAt : null,
-            b.Status == BookingStatus.Expired ? b.CheckoutAmount : null,
             b.CreatedDate, b.ModifiedDate, b.Version);
     }
 

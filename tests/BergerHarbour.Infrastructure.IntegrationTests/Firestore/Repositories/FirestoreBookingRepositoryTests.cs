@@ -36,6 +36,26 @@ public class FirestoreBookingRepositoryTests(EmulatorFixture fx)
     }
 
     [Fact]
+    public async Task An_Expired_bookings_contact_details_snapshot_round_trips_with_its_address_and_comments()
+    {
+        var boat = await fx.BoatAsync("pacific-blue");
+        var hold = Booking.CreateOnlineHold(BookingId.New(), new OnlineHold(boat.Id, Domain.BookingDrafts.BookingDraftId.New(), PeriodType.Midweek,
+            StayRange.Create(D("2029-06-04"), D("2029-06-08")), 2, 0,
+            new CustomerDetails("Jane", "Smith", EmailAddress.Create("snapshot@example.com"), MobileNumber.Create("0412345678")), [], 4060, 1000,
+            PaymentScheduleType.Standard, null, fx.Clock.UtcNow, fx.Clock.UtcNow.AddMinutes(40), "hash-snapshot"), fx.Clock.UtcNow);
+        hold.Expire(fx.Clock.UtcNow);
+        var address = Domain.Customers.Address.Create("1 Wharf St", null, "Paradise Point", "QLD", "4216", "AU");
+        hold.UpdateCustomerDetailsByStaff(new CustomerDetails("Janet", "Jones", EmailAddress.Create("janet@example.com"),
+            MobileNumber.Create("0412000999"), address, "Likes the top deck"), fx.Clock.UtcNow);
+        await Repository.SaveAsync(hold);
+
+        var loaded = (await Repository.GetAsync(hold.Id))!.CustomerDetails!;
+        Assert.Equal(("Janet", "Jones", "janet@example.com", "+61412000999"), (loaded.FirstName, loaded.LastName, loaded.Email.Value, loaded.MobileNumber.Value));
+        Assert.Equal(address, loaded.Address);
+        Assert.Equal("Likes the top deck", loaded.CustomerComments);
+    }
+
+    [Fact]
     public async Task Removed_stripe_payment_intent_ids_round_trip()
     {
         var saved = await fx.Staff().CreateAsync(await fx.StaffRequestAsync("2028-08-07", "2028-08-11", email: "removed@example.com"));

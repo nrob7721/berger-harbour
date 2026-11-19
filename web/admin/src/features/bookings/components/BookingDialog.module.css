@@ -283,3 +283,10 @@
   justify-content: center;
   width: 18px;
 }
+
+/* The server's error for the payments, e.g. a part-payment on an Expired booking (§12.1 Holds). */
+.paymentsError {
+  margin: 0 0 8px;
+  color: var(--c-danger);
+  font-size: 14px;
+}

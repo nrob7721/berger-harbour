@@ -22,11 +22,12 @@ import { api, keys } from '@/lib/api';
 import type { BookingDetail, CustomerLookup } from '@/lib/types';
 import { addressSchema, toAddressForm, toAddressRequest, type AddressForm } from '@/utils/address';
 import {
-  changeoverWarnings, defaultEndDate, guestWarnings, newBookingPeriod, parseTime24, PERIOD_TYPES, TIME_ERROR, type LineForm, type PaymentForm,
+  changeoverWarnings, checkoutAmount, defaultEndDate, guestWarnings, newBookingPeriod, parseTime24, PERIOD_TYPES, TIME_ERROR, type LineForm,
+  type PaymentForm,
 } from '../utils/bookingForm';
 import { AddonLinesSection } from './AddonLinesSection';
 import { PaymentsSection } from './PaymentsSection';
-import { PriceBreakdown } from './PriceBreakdown';
+import { PriceBreakdown, useFormDeposit } from './PriceBreakdown';
 import styles from './BookingDialog.module.css';
 
 const optionalNumber = z.number().nullable();
@@ -53,7 +54,7 @@ const schema = z.object({
   email: z.string().trim().min(1, 'Email is required.').refine(isValidEmail, EMAIL_ERROR),
   firstName: z.string().trim().min(1, 'First name is required.'),
   lastName: z.string().trim().min(1, 'Last name is required.'),
-  mobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
+  mobile: z.string().min(1, 'Mobile is required.').refine((v) => isValidMobile(v), MOBILE_ERROR),
   secondaryMobile: z.string().refine((v) => !v || isValidMobile(v), MOBILE_ERROR),
   address: addressSchema,
   addonLines: z.array(z.object({
@@ -95,21 +96,23 @@ export function BookingDialog({ bookingId, initial, onClose }: BookingDialogProp
       </Dialog>
     );
   }
-  // A confirmed hold reloads as an ordinary Active booking: a new status remounts the form with the new Customer.
+  // A confirmed Expired booking reloads as an ordinary Active booking: a new status remounts the form with the new Customer.
   return <BookingForm key={bookingId ? `${bookingId}:${detail.data?.status}` : 'new'} detail={detail.data ?? null} initial={initial} onClose={onClose} title={title} />;
 }
 
 function defaults(detail: BookingDetail | null, initial: BookingDialogProps['initial']): BookingFormValues {
   if (detail) {
+    // Bookings without a Customer (holds) show their contact details snapshot, which staff edit while it is Expired (§7.3).
     const c = detail.customer;
     const snapshot = detail.customerDetails;
     return {
       boatId: detail.boatId, periodType: detail.periodType, startDate: detail.startDate, endDate: detail.endDate,
       numberOfAdults: detail.numberOfAdults, numberOfChildren: detail.numberOfChildren, checkInTime: detail.checkInTime, checkOutTime: detail.checkOutTime,
-      isStandby: detail.isStandby, bookingComments: detail.bookingComments ?? '', customerComments: c?.comments ?? '', hirePrice: detail.hirePrice,
+      isStandby: detail.isStandby, bookingComments: detail.bookingComments ?? '',
+      customerComments: (c ? c.comments : snapshot?.customerComments) ?? '', hirePrice: detail.hirePrice,
       status: detail.status, email: c?.email ?? snapshot?.email ?? '', firstName: c?.firstName ?? snapshot?.firstName ?? '',
       lastName: c?.lastName ?? snapshot?.lastName ?? '', mobile: c?.mobile ?? snapshot?.mobileNumber ?? '', secondaryMobile: detail.secondaryMobile ?? '',
-      address: toAddressForm(c?.address),
+      address: toAddressForm(c ? c.address : (snapshot?.address ?? null)),
       addonLines: detail.addonLines.map((l) => ({ id: l.id, addonId: l.addonId, name: l.name, quantity: l.quantity, unitPrice: l.unitPrice })),
       payments: detail.payments.map((p) => ({
         id: p.id, amount: p.amount, date: todayInSydney(new Date(p.paidAt)), note: p.note ?? '', method: p.method,
@@ -136,19 +139,20 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
   const baseId = useId();
   const ids = Object.fromEntries(FIELDS.map((f) => [f, `${baseId}-${f}`])) as Record<(typeof FIELDS)[number], string>;
   const [formError, setFormError] = useState<string | null>(null);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<CustomerLookup | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
-  const lastLookup = useRef<string>((detail?.customer?.email ?? '').toLowerCase());
+  const lastLookup = useRef<string>((detail?.customer?.email ?? detail?.customerDetails?.email ?? '').toLowerCase());
 
   // Each field is validated when it loses focus (§6.1).
   const form = useAppForm<BookingFormValues>({ resolver: zodResolver(schema) as never, defaultValues: defaults(detail, initial) });
-  const { register, control, setValue, getValues, handleSubmit, setError, trigger, formState: { errors, isDirty } } = form;
+  const { register, control, setValue, getValues, handleSubmit, setError, trigger, resetField, formState: { errors, isDirty } } = form;
   const values = useWatch({ control }) as BookingFormValues;
   const boat = boats.data?.find((b) => b.id === values.boatId);
-  /** PendingPayment and Expired holds are read-only (decision 36). */
-  const isHold = detail?.status === 'PendingPayment' || detail?.status === 'Expired';
-  /** An Expired hold without payments is confirmed by staff with one manual payment (§7.3). */
-  const confirming = detail?.status === 'Expired' && detail.payments.length === 0;
+  /** A PendingPayment hold is read-only, because the customer may still pay online (decision 36). */
+  const isPendingHold = detail?.status === 'PendingPayment';
+  /** An Expired booking is edited like any other; a save whose payments reach the checkout amount activates it (§7.3). */
+  const isExpired = detail?.status === 'Expired';
   /** A superseded stand-by is reactivated by moving it; its status and stand-by flag are locked (decision 40). */
   const isSuperseded = detail?.status === 'Superseded';
   const createdOn = detail ? todayInSydney(new Date(detail.createdDate)) : todayInSydney();
@@ -189,7 +193,7 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
   /** On blur, after the email is validated: an invalid email shows its error and is never looked up. */
   const lookupEmail = async () => {
     const email = normaliseEmail(getValues('email'));
-    if (!isValidEmail(email) || email === lastLookup.current || isHold) return;
+    if (!isValidEmail(email) || email === lastLookup.current || isPendingHold) return;
     lastLookup.current = email;
     setLookingUp(true);
     try {
@@ -207,7 +211,33 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
       setLookingUp(false);
     }
   };
+  // An Expired booking's snapshot starts without an address or customer comments: they are pre-filled from the customer with
+  // its email, if there is one, without making the form dirty. The name and mobile stay as entered online (§7.3).
+  useEffect(() => {
+    const snapshot = detail?.customerDetails;
+    if (!isExpired || !snapshot || snapshot.address || snapshot.customerComments) return;
+    let cancelled = false;
+    setLookingUp(true);
+    api.customerByEmail(snapshot.email)
+      .then((found) => {
+        if (cancelled) return;
+        setLookup(found);
+        resetField('address', { defaultValue: toAddressForm(found.customer.address) });
+        resetField('customerComments', { defaultValue: found.customer.comments ?? '' });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled && !(e instanceof ApiError && e.status === 404)) setFormError(errorMessage(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLookingUp(false);
+      });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const frequentFloater = isNew ? lookup?.frequentFloater : (lookup?.frequentFloater ?? detail?.frequentFloater);
+
+  /** On an Expired booking: the checkout amount as the form stands, which its payments must reach to activate it (§12.1). */
+  const deposit = useFormDeposit(control, detail?.depositAmount ?? null, isPendingHold);
+  const activationAmount = isExpired ? checkoutAmount(deposit, values.hirePrice ?? null) : null;
 
   const save = useMutation({
     mutationFn: (v: BookingFormValues) => {
@@ -226,40 +256,29 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: keys.timelineRoot });
       void queryClient.invalidateQueries({ queryKey: keys.customers });
-      queryClient.removeQueries({ queryKey: keys.booking(result.booking.id) });
       const note = result.warnings.length > 0 ? ` Note: ${result.warnings.join(' ')}` : '';
+      if (isExpired && result.booking.status === 'Active') {
+        // Confirmed: the dialog stays open and reloads as an ordinary Active booking with the new Customer (§12.1 Holds).
+        toast.show(`Booking ${result.booking.reference} confirmed.${note}`);
+        queryClient.setQueryData(keys.booking(result.booking.id), result.booking);
+        return;
+      }
+      queryClient.removeQueries({ queryKey: keys.booking(result.booking.id) });
       if (isSuperseded && result.booking.status === 'Active') toast.show(`Booking ${result.booking.reference} reactivated as a stand-by.${note}`);
       else toast.show(`${isNew ? 'Booking created' : 'Changes saved'} (${result.booking.reference ?? 'pending payment'}).${note}`);
       onClose();
     },
     onError: (e) => {
-      const unmatched = applyServerErrors(e, setError, FIELDS, { boatId: 'boatId', hirePrice: 'hirePrice' });
+      // Payment errors (e.g. a part-payment on an Expired booking) show in the Payments section.
+      setPaymentsError(e instanceof ApiError ? (e.errors.payments?.[0] ?? null) : null);
+      const unmatched = applyServerErrors(e, setError, FIELDS, { boatId: 'boatId', hirePrice: 'hirePrice' })
+        .filter((m) => !(e instanceof ApiError && e.errors.payments?.includes(m)));
       const mapped = e instanceof ApiError && Object.keys(e.errors).length > 0 && unmatched.length === 0;
       setFormError(mapped ? 'Please fix the highlighted fields.' : (unmatched[0] ?? errorMessage(e)));
     },
   });
-  // Staff confirmation sends the one payment row added to an Expired hold; the dialog then reloads as an Active booking.
-  const unsavedPayment = (values.payments ?? []).find((p) => p.id === null);
-  const confirm = useMutation({
-    mutationFn: (p: PaymentForm) => api.confirmBooking(detail!.id, { amount: p.amount, date: p.date, note: p.note || null, version: detail!.version }),
-    onSuccess: (updated) => {
-      void queryClient.invalidateQueries({ queryKey: keys.timelineRoot });
-      void queryClient.invalidateQueries({ queryKey: keys.customers });
-      toast.show(`Booking ${updated.reference} confirmed.`);
-      queryClient.setQueryData(keys.booking(updated.id), updated);
-    },
-    onError: (e) => {
-      const fieldErrors = e instanceof ApiError ? Object.values(e.errors).flat() : [];
-      const conflict = e instanceof ApiError && e.status === 409;
-      setFormError(`${fieldErrors[0] ?? errorMessage(e)}${conflict ? ' Nothing was recorded.' : ''}`);
-    },
-  });
-  const saving = save.isPending || confirm.isPending;
-  const submit = handleSubmit((v) => { setFormError(null); save.mutate(v); }, () => setFormError('Please fix the highlighted fields.'));
-  const confirmBooking = () => {
-    setFormError(null);
-    if (unsavedPayment) confirm.mutate(unsavedPayment);
-  };
+  const saving = save.isPending;
+  const submit = handleSubmit((v) => { setFormError(null); setPaymentsError(null); save.mutate(v); }, () => setFormError('Please fix the highlighted fields.'));
 
   /** Time fields are formatted as HH:mm when they lose focus (`930` → `09:30`). */
   const formatTimeOnBlur = (name: 'checkInTime' | 'checkOutTime') => () => {
@@ -289,27 +308,21 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
         <>
           {formError && <span className={styles.footerError} role="alert">{formError}</span>}
           <Button onClick={onClose} disabled={saving}>Cancel</Button>
-          {confirming ? (
-            <Button variant="primary" onClick={confirmBooking} busy={confirm.isPending} busyLabel="Confirming…" disabled={!unsavedPayment}>
-              Confirm booking
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={submit} busy={save.isPending} busyLabel={isNew ? 'Creating…' : 'Saving…'} disabled={isHold || lookingUp}>
-              {isNew ? 'Create booking' : 'Save changes'}
-            </Button>
-          )}
+          <Button variant="primary" onClick={submit} busy={save.isPending} busyLabel={isNew ? 'Creating…' : 'Saving…'} disabled={isPendingHold || lookingUp}>
+            {isNew ? 'Create booking' : 'Save changes'}
+          </Button>
         </>
       }
     >
       <FormProvider {...form}>
-        {detail && isHold && <HoldBanner detail={detail} />}
+        {detail && (isPendingHold || isExpired) && <HoldBanner detail={detail} activationAmount={activationAmount} />}
         {isSuperseded && (
           <p className={styles.holdBanner} role="status">
             This stand-by booking was superseded by another booking. Change its boat or dates to reactivate it as a stand-by booking.
           </p>
         )}
         <form onSubmit={submit} noValidate>
-          <fieldset className={styles.fieldset} disabled={saving || isHold}>
+          <fieldset className={styles.fieldset} disabled={saving || isPendingHold}>
             <div className={styles.grid}>
               <Field label="Boat" htmlFor={ids.boatId} error={errors.boatId?.message}>
                 <select id={ids.boatId} className={inputClass} {...register('boatId')}>
@@ -386,13 +399,13 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
                   <Field label="Mobile" htmlFor={ids.mobile} error={errors.mobile?.message}>
                     <Controller control={control} name="mobile" render={({ field }) => (
                       <MobileInput id={ids.mobile} ref={field.ref} value={field.value} onChange={field.onChange}
-                        onBlur={() => { field.onBlur(); recheckSecondaryMobile(); }} invalid={!!errors.mobile} disabled={isHold || saving || lookingUp} />
+                        onBlur={() => { field.onBlur(); recheckSecondaryMobile(); }} invalid={!!errors.mobile} disabled={isPendingHold || saving || lookingUp} />
                     )} />
                   </Field>
                   <Field label="Secondary mobile" htmlFor={ids.secondaryMobile} error={errors.secondaryMobile?.message}>
                     <Controller control={control} name="secondaryMobile" render={({ field }) => (
                       <MobileInput id={ids.secondaryMobile} ref={field.ref} value={field.value} onChange={field.onChange} onBlur={field.onBlur}
-                        invalid={!!errors.secondaryMobile} disabled={isHold || saving} />
+                        invalid={!!errors.secondaryMobile} disabled={isPendingHold || saving} />
                     )} />
                   </Field>
                 </div>
@@ -436,9 +449,10 @@ function BookingForm({ detail, initial, onClose, title }: { detail: BookingDetai
           </fieldset>
         </form>
 
-        <PriceBreakdown storedDeposit={detail?.depositAmount ?? null} isHold={isHold} />
+        <PriceBreakdown storedDeposit={detail?.depositAmount ?? null} isPendingHold={isPendingHold} />
 
-        <PaymentsSection detail={detail} createdOn={createdOn} dirty={isDirty} saving={saving} />
+        <PaymentsSection detail={detail} createdOn={createdOn} dirty={isDirty} saving={saving} activationAmount={activationAmount}
+          error={paymentsError} />
         {detail && detail.createdBy === 'Customer' && <OnlineInfo detail={detail} />}
       </FormProvider>
     </Dialog>
@@ -490,13 +504,14 @@ function AddressFields({ ids }: { ids: Record<(typeof FIELDS)[number], string> }
   );
 }
 
-/** Why a hold is read-only, and what staff can do about it (§12.1 Holds). */
-function HoldBanner({ detail }: { detail: BookingDetail }) {
+/** Why a PendingPayment hold is read-only, or how an Expired booking is activated (§12.1 Holds). */
+function HoldBanner({ detail, activationAmount }: { detail: BookingDetail; activationAmount: number | null }) {
   let text: string;
   if (detail.status === 'PendingPayment')
     text = `Waiting for the customer's online payment. The hold expires at ${formatTimestamp(detail.holdExpiresAt)}.`;
-  else if (detail.payments.length > 0) text = 'Paid online after the hold expired — refund in Stripe.';
-  else text = `This hold expired without payment. Record a manual payment of at least ${formatMoney(detail.checkoutAmount ?? 0)} to confirm the booking.`;
+  else if (detail.payments.length > 0)
+    text = 'Paid online after the hold expired. Move the booking to free dates and save to activate it, or refund in Stripe and remove the payment.';
+  else text = `This hold expired without payment. Record a manual payment of at least ${formatMoney(activationAmount ?? 0)} to activate the booking.`;
   return <p className={styles.holdBanner} role="status">{text}</p>;
 }
 

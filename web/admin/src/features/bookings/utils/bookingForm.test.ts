@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultEndDate, newBookingPeriod, parseTime24, paymentDateError } from './bookingForm';
+import { breakdownDeposit, checkoutAmount, defaultEndDate, newBookingPeriod, parseTime24, paymentDateError } from './bookingForm';
 
 describe('new booking pre-fill', () => {
   // Week of Mon 12/10/2026 – Sun 18/10/2026.
@@ -34,5 +34,21 @@ describe('paymentDateError', () => {
     expect(paymentDateError('2026-11-17', '2026-08-01', '2026-11-17')).toBeNull();
     expect(paymentDateError('2026-07-31', '2026-08-01', '2026-11-17')).toBe("The payment date can't be before the booking was created (01/08/2026).");
     expect(paymentDateError('2026-11-18', '2026-08-01', '2026-11-17')).toBe("The payment date can't be in the future.");
+  });
+});
+
+describe('deposit and checkout amount', () => {
+  it('the deposit follows the boat until a saved payment or a PendingPayment hold fixes it', () => {
+    expect(breakdownDeposit({ boatDeposit: 1500, storedDeposit: 1000, hasSavedPayment: false, isPendingHold: false })).toBe(1500);
+    expect(breakdownDeposit({ boatDeposit: 1500, storedDeposit: 1000, hasSavedPayment: true, isPendingHold: false })).toBe(1000);
+    expect(breakdownDeposit({ boatDeposit: 1500, storedDeposit: 1000, hasSavedPayment: false, isPendingHold: true })).toBe(1000);
+    expect(breakdownDeposit({ boatDeposit: null, storedDeposit: null, hasSavedPayment: false, isPendingHold: false })).toBeNull();
+  });
+
+  it('the checkout amount is min(deposit, hire price)', () => {
+    expect(checkoutAmount(1000, 4000)).toBe(1000);
+    expect(checkoutAmount(1000, 800)).toBe(800);
+    expect(checkoutAmount(1000, null)).toBe(0);
+    expect(checkoutAmount(null, 4000)).toBeNull();
   });
 });

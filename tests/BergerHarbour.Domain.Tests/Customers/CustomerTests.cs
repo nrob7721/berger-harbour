@@ -19,12 +19,12 @@ public class CustomerTests
     [Fact]
     public void Booking_again_updates_names_and_mobile_but_not_address_or_comments()
     {
-        var c = Customer.Create(CustomerId.New(), "Jane", "Smith", EmailAddress.Create("jane@example.com"), null, Now);
-        c.UpdateByStaff("Jane", "Smith", c.Email, null,
+        var c = Customer.Create(CustomerId.New(), "Jane", "Smith", EmailAddress.Create("jane@example.com"), MobileNumber.Create("0412000999"), Now);
+        c.UpdateByStaff("Jane", "Smith", c.Email, c.MobileNumber,
             Address.Create("1 River Rd", null, "Brooklyn", "NSW", "2083", "AU"), "Likes Misty Blue", Now);
         c.UpdateFromBooking("Janet", "Smith-Jones", MobileNumber.Create("0412345678"), Now);
         Assert.Equal("Janet", c.FirstName);
-        Assert.Equal("+61412345678", c.MobileNumber!.Value);
+        Assert.Equal("+61412345678", c.MobileNumber.Value);
         Assert.Equal("1 River Rd", c.Address!.Line1);
         Assert.Equal("Likes Misty Blue", c.Comments);
     }

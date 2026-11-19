@@ -199,7 +199,6 @@ public class StaffBookingServiceTests
         var detail = await h.Staff.GetAsync(created.BookingId);
         Assert.Equal(BookingStatus.Expired, detail.Status);
         Assert.Null(detail.HoldExpiresAt);
-        Assert.Equal(1000m, detail.CheckoutAmount);
         Assert.Equal(BookingStatus.Expired, (await h.Staff.SearchAsync("zoe@")).Single().Status);
         Assert.Empty((await h.Staff.GetTimelineAsync(D("2027-03-01"), D("2027-03-31"), false)).Bookings);
         Assert.Equal(BookingStatus.Expired, (await h.Staff.GetTimelineAsync(D("2027-03-01"), D("2027-03-31"), true)).Bookings.Single().Status);
@@ -207,24 +206,73 @@ public class StaffBookingServiceTests
     }
 
     [Fact]
-    public async Task Holds_are_read_only_and_take_no_manual_payment_or_payment_link_while_pending()
+    public async Task A_PendingPayment_hold_is_read_only_and_a_staff_save_of_a_lapsed_one_stores_it_as_Expired()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         var detail = await h.Staff.GetAsync(created.BookingId);
         Assert.Equal(h.Booking(created.BookingId).HoldExpiresAt, detail.HoldExpiresAt);
         await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.UpdateAsync(detail.Id, UpdateRequest(detail)));
-        await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            h.Staff.ConfirmAsync(detail.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, detail.Version)));
         await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.SendPaymentLinkAsync(detail.Id));
 
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        Assert.Equal(BookingStatus.PendingPayment, h.Booking(created.BookingId).Status);
         var expired = await h.Staff.GetAsync(created.BookingId);
-        await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired)));
-        Assert.Empty(h.Booking(created.BookingId).Payments);
+        var saved = await h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r => r with { BookingComments = "Called back" }));
+        Assert.Equal(BookingStatus.Expired, saved.Booking.Status);
+        Assert.Equal(BookingStatus.Expired, h.Booking(created.BookingId).Status);
+        Assert.Equal("Called back", h.Booking(created.BookingId).BookingComments);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => h.Staff.SendPaymentLinkAsync(expired.Id));
     }
 
     [Fact]
-    public async Task Staff_confirmation_records_the_payment_and_activates_the_booking_sending_only_1()
+    public async Task Every_field_of_an_Expired_booking_is_saved_and_it_stays_Expired_without_a_reference_customer_or_email()
+    {
+        h.Activate("misty-blue");
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+        Assert.Null(expired.Customer);
+        Assert.Null(expired.CustomerDetails!.Address);
+        h.Emails.Sent.Clear();
+
+        var saved = (await h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r => r with
+        {
+            BoatId = h.Boat("misty-blue").Id.Value, PeriodType = PeriodType.Custom, StartDate = D("2027-04-05"), EndDate = D("2027-04-08"),
+            NumberOfAdults = 3, NumberOfChildren = 1, CheckInTime = "12:00", CheckOutTime = "09:00", IsStandby = true, BookingComments = "Phoned",
+            HirePrice = 2500, AddonLines = [new StaffAddonLineInput(null, "ice", 2, 10)], FirstName = "Janet", LastName = "Jones",
+            Email = "janet@example.com", Mobile = "0412 000 999", Address = new AddressDto("1 Wharf St", null, "Paradise Point", "QLD", "4216", "AU"),
+            CustomerComments = "Likes the top deck",
+        }))).Booking;
+
+        Assert.Equal(BookingStatus.Expired, saved.Status);
+        Assert.Equal((h.Boat("misty-blue").Id.Value, D("2027-04-05"), D("2027-04-08")), (saved.BoatId, saved.StartDate, saved.EndDate));
+        Assert.Equal((3, 1, "12:00", "09:00", true, "Phoned"), (saved.NumberOfAdults, saved.NumberOfChildren, saved.CheckInTime, saved.CheckOutTime,
+            saved.IsStandby, saved.BookingComments));
+        Assert.Equal(2520m, saved.TotalPrice);
+        Assert.Null(saved.Reference);
+        Assert.Null(saved.Customer);
+        Assert.Equal(new CustomerDetailsDto("Janet", "Jones", "janet@example.com", "+61412000999",
+            new AddressDto("1 Wharf St", null, "Paradise Point", "QLD", "4216", "AU"), "Likes the top deck"), saved.CustomerDetails);
+        Assert.Empty(h.Db.Customers.All);
+        Assert.Empty(h.References.Counters);
+        Assert.Empty(h.Emails.Sent);
+    }
+
+    [Fact]
+    public async Task A_status_change_is_rejected_on_an_Expired_booking()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+        var e = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r => r with { Status = BookingStatus.Active })));
+        Assert.True(e.Errors.Has("status"));
+        Assert.Equal(BookingStatus.PendingPayment, h.Booking(created.BookingId).Status); // lapsed, but nothing was saved
+        Assert.Null(h.Booking(created.BookingId).Reference);
+    }
+
+    [Fact]
+    public async Task Staff_confirmation_saves_the_edits_and_payments_and_activates_the_booking_sending_only_1()
     {
         var standby = await h.Staff.CreateAsync(h.StaffRequest("2027-03-09", "2027-03-11", standby: true, email: "credit@example.com"));
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
@@ -232,56 +280,96 @@ public class StaffBookingServiceTests
         var expired = await h.Staff.GetAsync(created.BookingId);
         h.Emails.Sent.Clear();
 
-        var confirmed = await h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-12"), "Phoned in", expired.Version));
+        var confirmed = await h.SaveWithPaymentAsync(expired, 1000, "2026-11-12", r => r with
+        {
+            LastName = "Jones", BookingComments = "Paid by phone", CustomerComments = "Regular", Address = new AddressDto("1 Wharf St", null, null, null, null, "AU"),
+        });
 
         Assert.Equal(BookingStatus.Active, confirmed.Status);
-        Assert.Equal("SMITH-2703080", confirmed.Reference);
+        Assert.Equal("JONES-2703080", confirmed.Reference);
         Assert.Equal(h.Clock.UtcNow, confirmed.ActivatedAt);
         Assert.Equal(BookingCreator.Customer, confirmed.CreatedBy);
         Assert.Equal(1000m, confirmed.AmountPaid);
-        Assert.Equal("jane@example.com", confirmed.Customer!.Email);
+        Assert.Equal("Paid by phone", confirmed.BookingComments);
+        Assert.Equal(("jane@example.com", "Jones", "Regular"), (confirmed.Customer!.Email, confirmed.Customer.LastName, confirmed.Customer.Comments));
+        Assert.Equal("1 Wharf St", h.Db.Customers.All.Single(c => c.Email.Value == "jane@example.com").Address!.Line1);
         Assert.True(h.Db.Drafts.Get(h.Booking(created.BookingId).BookingDraftId!.Value)!.IsConverted);
         Assert.Equal(BookingStatus.Superseded, h.Booking(standby.Booking.Id).Status);
         Assert.Single(h.EmailsTo("jane@example.com"), m => m.Subject.Contains("is confirmed", StringComparison.Ordinal));
         Assert.Equal(0, h.CountEmails("Payment received"));
         Assert.Equal(0, h.CountEmails("New online booking"));
         Assert.Equal(1, h.CountEmails("Stand-by booking superseded"));
-        Assert.Null(h.Db.Customers.All.Single(c => c.Email.Value == "jane@example.com").Address);
     }
 
     [Fact]
-    public async Task Staff_confirmation_needs_at_least_the_checkout_amount_and_records_nothing_otherwise()
+    public async Task Staff_confirmation_writes_the_saved_address_and_comments_over_an_existing_customers()
+    {
+        var existing = await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19", email: "jane@example.com", customerComments: "Old note",
+            address: new AddressDto("9 Old Rd", null, null, null, null, "AU")));
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+
+        var confirmed = await h.SaveWithPaymentAsync(expired, 1000, "2026-11-09", r => r with { CustomerComments = "New note", Address = null });
+
+        Assert.Equal(existing.Booking.Customer!.Id, confirmed.Customer!.Id);
+        Assert.Equal("New note", confirmed.Customer.Comments);
+        Assert.Null(confirmed.Customer.Address);
+        Assert.Single(h.Db.Customers.All);
+    }
+
+    [Fact]
+    public async Task A_part_payment_on_an_Expired_booking_is_rejected_and_saves_nothing()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
         var expired = await h.Staff.GetAsync(created.BookingId);
         var e = await Assert.ThrowsAsync<DomainValidationException>(() =>
-            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(999.99m, D("2026-11-09"), null, expired.Version)));
-        Assert.Equal("To confirm this booking, record at least $1,000.00.", e.Errors.ByField["amount"][0]);
+            h.SaveWithPaymentAsync(expired, 999.99m, "2026-11-09", r => r with { BookingComments = "Partial" }));
+        Assert.Equal("To activate this booking, record at least $1,000.00.", e.Errors.ByField["payments"][0]);
         var stored = h.Booking(created.BookingId);
         Assert.Empty(stored.Payments);
         Assert.Null(stored.Reference);
+        Assert.Null(stored.BookingComments);
         Assert.Empty(h.References.Counters);
     }
 
     [Fact]
-    public async Task Staff_confirmation_of_taken_dates_is_409_naming_the_conflict_and_records_nothing()
+    public async Task An_Expired_booking_moved_onto_taken_dates_is_409_but_edits_that_leave_taken_dates_alone_save()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(h.BookingOptions.HoldLifetime);
         var other = await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12", email: "other@example.com", lastName: "Jones"));
+        var later = await h.Staff.CreateAsync(h.StaffRequest("2027-04-05", "2027-04-09", email: "later@example.com", lastName: "Later"));
         var expired = await h.Staff.GetAsync(created.BookingId);
-        var e = await Assert.ThrowsAsync<ConflictException>(() =>
-            h.Staff.ConfirmAsync(expired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, expired.Version)));
-        Assert.Equal([other.Booking.Reference!], e.ConflictingReferences);
+
+        var moved = await Assert.ThrowsAsync<ConflictException>(() => h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r => r with
+        {
+            StartDate = D("2027-04-06"), EndDate = D("2027-04-08"),
+        })));
+        Assert.Equal([later.Booking.Reference!], moved.ConflictingReferences);
+        Assert.Equal(D("2027-03-08"), h.Booking(created.BookingId).StartDate);
+
+        var edited = await h.Staff.UpdateAsync(expired.Id, UpdateRequest(expired, r => r with { BookingComments = "Dates taken" }));
+        Assert.Equal(BookingStatus.Expired, edited.Booking.Status);
+
+        var confirming = await Assert.ThrowsAsync<ConflictException>(() => h.SaveWithPaymentAsync(edited.Booking, 1000, "2026-11-09"));
+        Assert.Equal([other.Booking.Reference!], confirming.ConflictingReferences);
         var stored = h.Booking(created.BookingId);
         Assert.Empty(stored.Payments);
-        Assert.Null(stored.Reference);
         Assert.Null(stored.CustomerId);
+        Assert.Equal(BookingStatus.Expired, stored.Status);
+
+        var confirmed = await h.SaveWithPaymentAsync(edited.Booking, 1000, "2026-11-09", r => r with
+        {
+            StartDate = D("2027-05-03"), EndDate = D("2027-05-07"),
+        });
+        Assert.Equal(BookingStatus.Active, confirmed.Status);
+        Assert.Equal("SMITH-2705030", confirmed.Reference);
     }
 
     [Fact]
-    public async Task A_paid_but_expired_booking_cannot_be_confirmed_by_staff()
+    public async Task A_paid_but_expired_booking_is_confirmed_by_saving_it_on_free_dates_and_stays_Expired_without_its_payment()
     {
         var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
         h.Clock.Advance(TimeSpan.FromHours(1));
@@ -289,9 +377,67 @@ public class StaffBookingServiceTests
         await h.PayDepositAsync(created.BookingId);
         var paidButExpired = await h.Staff.GetAsync(created.BookingId);
         Assert.Equal(BookingStatus.Expired, paidButExpired.Status);
-        await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            h.Staff.ConfirmAsync(paidButExpired.Id, new ManualPaymentRequest(1000, D("2026-11-09"), null, paidButExpired.Version)));
-        Assert.Single(h.Booking(created.BookingId).Payments);
+        Assert.Equal("SMITH-2703080", paidButExpired.Reference);
+
+        // Saving it where it is would confirm it on taken dates.
+        await Assert.ThrowsAsync<ConflictException>(() => h.Staff.UpdateAsync(paidButExpired.Id, UpdateRequest(paidButExpired)));
+
+        var refunded = await h.Staff.UpdateAsync(paidButExpired.Id, UpdateRequest(paidButExpired, r => r with { Payments = [] }));
+        Assert.Equal(BookingStatus.Expired, refunded.Booking.Status);
+        Assert.Empty(refunded.Booking.Payments);
+        Assert.Single(h.Booking(created.BookingId).RemovedStripePaymentIntentIds);
+    }
+
+    [Fact]
+    public async Task A_paid_but_expired_booking_moved_to_free_dates_is_confirmed_with_its_payment_and_keeps_its_reference()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(TimeSpan.FromHours(1));
+        await h.Staff.CreateAsync(h.StaffRequest("2027-03-08", "2027-03-12", email: "other@example.com", lastName: "Jones"));
+        await h.PayDepositAsync(created.BookingId);
+        var paidButExpired = await h.Staff.GetAsync(created.BookingId);
+        h.Emails.Sent.Clear();
+
+        var confirmed = (await h.Staff.UpdateAsync(paidButExpired.Id, UpdateRequest(paidButExpired, r => r with
+        {
+            StartDate = D("2027-04-05"), EndDate = D("2027-04-09"),
+        }))).Booking;
+
+        Assert.Equal(BookingStatus.Active, confirmed.Status);
+        Assert.Equal("SMITH-2703080", confirmed.Reference);
+        Assert.Equal("jane@example.com", confirmed.Customer!.Email);
+        Assert.Single(h.EmailsTo("jane@example.com"), m => m.Subject.Contains("is confirmed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_Expired_stand_by_confirmed_becomes_an_Active_stand_by_and_sends_no_email()
+    {
+        var created = await h.Online.CreateAsync(BookingRequest(await h.CreateDraftAsync()));
+        h.Clock.Advance(h.BookingOptions.HoldLifetime);
+        var expired = await h.Staff.GetAsync(created.BookingId);
+        h.Emails.Sent.Clear();
+
+        var confirmed = await h.SaveWithPaymentAsync(expired, 1000, "2026-11-09", r => r with { IsStandby = true });
+
+        Assert.Equal(BookingStatus.Active, confirmed.Status);
+        Assert.True(confirmed.IsStandby);
+        Assert.NotNull(confirmed.Reference);
+        Assert.Empty(h.Emails.Sent);
+    }
+
+    [Fact]
+    public async Task Create_and_update_require_a_mobile()
+    {
+        var create = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19") with { Mobile = null }));
+        Assert.Equal("Mobile is required.", create.Errors.ByField["mobile"][0]);
+        Assert.Empty(h.Db.Customers.All);
+
+        var saved = await h.Staff.CreateAsync(h.StaffRequest("2027-01-15", "2027-01-19"));
+        var update = await Assert.ThrowsAsync<DomainValidationException>(() =>
+            h.Staff.UpdateAsync(saved.Booking.Id, UpdateRequest(saved.Booking, r => r with { Mobile = " " })));
+        Assert.Equal("Mobile is required.", update.Errors.ByField["mobile"][0]);
+        Assert.Equal("+61412000111", h.Db.Customers.All.Single().MobileNumber.Value);
     }
 
     [Fact]
