@@ -66,6 +66,8 @@ Berger Houseboats hires out 14 house boats and 5 BBQ boats.
 | **Frequent Floater** | A customer who makes a booking while they have at least one other booking starting within a year either side of it (§7.8). Staff decide the perk; the system only flags it. |
 | **Mobile** | Every phone number is a mobile number: the customer's **Mobile**, required on every booking and every customer, and a booking's optional **Secondary mobile**. Landlines are not accepted, and a booking's secondary mobile can't be the same number as its mobile (§7.1). |
 | **Secondary mobile** | An optional mobile number held on a **booking**, not on the customer: usually a second person travelling or a contact for that stay. Staff enter it, and changing it affects only that booking (§7.3). |
+| **Small screen** | A booking app viewport at most **768px** wide. It is the booking app's only breakpoint; wider viewports, including the WordPress modal, use the desktop layout (§11.2). |
+| **Step action bar** | The bar fixed to the bottom of a small screen on the Dates & boat, Your details, Add-ons and Summary steps. It holds the step's buttons and, on Dates & boat and Add-ons, the selected boat and the price (§11.2). |
 
 **Overlap rules.** Every overlap check in the system compares **nights**:
 - Booking vs booking: `a.Start < b.End && b.Start < a.End`.
@@ -132,6 +134,7 @@ All dates are **Australia/Sydney local dates**. "Today" always means today in Au
 39. **Boats are listed in boat order everywhere:** by the Normal season Week rate, highest first, then name (§7.3).
 40. A **superseded stand-by is reactivated by moving it.** When staff change its boat or dates and the new stay is free, it becomes an Active stand-by again (§7.3).
 41. The booking app's **progress steps are clickable.** A customer can go back to any earlier step, and forward to any step up to the furthest reached; a forward jump repeats each step's checks on the way (§11.2).
+42. **On a small screen** (≤ 768px, the booking app's only breakpoint) the steps before Payment keep their buttons in a **step action bar** fixed to the bottom of the screen. On Dates & boat it also shows the selected boat and the Base hire rate, and the boat cards open from it in an expander; on Add-ons it shows the Booking price. Wider screens and the WordPress modal use the two-column desktop layout with no bar (§11.2).
 
 ## 5. Architecture overview
 
@@ -215,6 +218,9 @@ firestore.indexes.json
   ```
   - **Booking app features:**
     - `dates-and-boat`, `details`, `addons`, `summary`.
+    - `BoatCards` is its own component in `dates-and-boat`. The step renders it in the right column on desktop and inside the boat expander of the step action bar on a small screen (§11.2).
+    - `StepActionBar` lives in the app's `src/components`. Each step that has the bar passes it its buttons and, optionally, the content shown above them.
+    - `useSmallScreen()` lives in the app's `src/hooks`. It tracks `matchMedia('(max-width: 768px)')`, so a step renders the bar or its inline layout, not both.
     - `deposit-checkout`: the Payment step, which creates the hold, mounts Embedded Checkout for the deposit with the hold countdown, and handles leaving it (Back or an earlier progress step) and the hold running out.
     - Each step's Continue checks live in a function outside its component, so a forward jump on the progress steps can run them for steps that are not on screen (§11.2).
     - `complete`.
@@ -230,7 +236,7 @@ firestore.indexes.json
     - A feature never imports from another feature, and `shared` never imports from an app.
     - Imports flow `shared` → app `components/hooks/lib/utils` → `features` → `app`.
     - When a page needs another feature's component (the Customers page opens the booking dialog), the two are put together in the `app` layer (the route), not through a cross-feature import.
-- **Styling:** every component has its own co-located CSS Module (e.g. `BoatCard.tsx` + `BoatCard.module.css`). The only global CSS is `shared/styles/tokens.css` (design tokens) and a small reset, loaded once per app. No Tailwind, no CSS-in-JS.
+- **Styling:** every component has its own co-located CSS Module (e.g. `BoatCard.tsx` + `BoatCard.module.css`). The only global CSS is `shared/styles/tokens.css` (design tokens) and a small reset, loaded once per app. No Tailwind, no CSS-in-JS. Every media query in the booking app uses the small-screen breakpoint, `@media (max-width: 768px)` (§11.2); there are no other widths.
 - **Icons:** standard [Lucide](https://lucide.dev) icons (ISC licence), pasted in as inline SVG. There is no icon package.
 - **Busy states (both apps):**
   - Every button that sends a backend request is disabled while the request runs and shows a spinner with a progress label ("Creating…", "Saving…", "Sending…"). An icon-only button shows the spinner in place of its icon, and its accessible label carries the progress text. It can never be submitted twice.
@@ -838,14 +844,26 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
   - browser storage is unavailable or unreadable (no error is shown).
 - Pay stays the authoritative check: `POST /api/bookings` re-runs every rule and the availability check, however the customer got to the Summary.
 
+**Small screens** (decision 42):
+- A **small screen** is a viewport at most 768px wide (`max-width: 768px`). It is the booking app's only breakpoint: every responsive change in the app uses it, in CSS and through `useSmallScreen()` (§6.1). Wider viewports, including the ~900×700 WordPress modal, use the desktop layout.
+- On a small screen, Dates & boat, Your details, Add-ons and Summary show the **step action bar**:
+  - It is fixed to the bottom of the viewport, full width, on the surface background with a top border and a shadow. Its bottom padding adds `env(safe-area-inset-bottom)`.
+  - The page gets bottom padding equal to the bar's height, so nothing is hidden behind it.
+  - The step's buttons are in the bar and not in the page. They follow the busy states in §6.1, and Continue runs the same checks as on desktop, including the rooming warning.
+  - Dates & boat: the selected boat, with the boat expander, then Base hire rate with Continue to its right (step 2).
+  - Your details: Back on the left, Continue on the right.
+  - Add-ons: the Booking price, with Back on the left and Continue on the right underneath (step 4).
+  - Summary: Back on the left, **Pay ${amount}** on the right (step 5).
+- Payment, Complete and the pay page have no bar. Their layout is the same on every screen, and Payment's Back stays in the page.
+
 1. **Load:** read the optional `?boat=`. Show a skeleton while `GET /api/boats` and, when a boat is requested, `GET /api/boats/{slug}` load. Then resume any saved progress (above).
    - Unknown slug → friendly error.
    - No `?boat=` → there is no requested boat and no boat is selected.
    - Active requested boat → it becomes the selected boat, so the calendar starts with that boat's availability only.
    - Inactive requested boat → its card is greyed (see Boat cards below) and no boat is selected.
-2. **Dates & boat:** the customer chooses the period, guests and filters, and the boat. On desktop and in the modal the controls are in a left column and the boat cards in a right column. At ≤ 768px everything stacks: the left column's controls in order, then the cards.
+2. **Dates & boat:** the customer chooses the period, guests and filters, and the boat. On desktop and in the modal the controls are in a left column and the boat cards in a right column. On a small screen the left column's controls are the whole page, and the boat cards, Base hire rate and Continue are in the step action bar (see **On a small screen** below).
 
-   **Left column, top to bottom,** under the step heading "Choose your dates and boat": filters (Adults, Children, Spa, Pet friendly) · **Type of stay** radio buttons · custom-dates message · check-in/check-out times line · calendar and legend · "Selected: …" line · selected-boat message · Base hire rate · **Continue**.
+   **Left column, top to bottom,** under the step heading "Choose your dates and boat": filters (Adults, Children, Spa, Pet friendly) · **Type of stay** radio buttons · custom-dates message · check-in/check-out times line · calendar and legend · "Selected: …" line · selected-boat message · Base hire rate · **Continue**. On a small screen the last two are in the bar instead.
 
    **Calendar in view:** opened directly (not in the modal) on a 1920×1080 screen, i.e. a browser viewport of about 1920×950, the whole calendar, from its month header to its last week row, is visible without scrolling. The legend, the "Selected: …" line, the Base hire rate and Continue may be below the fold. The left column's vertical spacing is kept compact to achieve this, starting with the single low row of type-of-stay options. In the ~900×700 WordPress modal the step may scroll.
 
@@ -853,7 +871,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
    - Radio buttons, in one group, shown as four equal option boxes in one row: **Mid-week (Mon–Fri)**, **Weekend (Fri–Mon)**, **Week (Fri–Fri)** and **Week (Mon–Mon)**. Mid-week is chosen by default. Nothing groups or frames the two Week options; their labels tell them apart.
    - Each box holds its radio and, next to it, the name in bold (e.g. **Week**) with the days stacked underneath in smaller muted grey text, without brackets (e.g. Mon–Mon). Each radio's accessible name is the full label, e.g. "Week (Mon–Mon)".
    - The checked box has a 1px brand border and the light brand tint (`--c-brand-tint`).
-   - At ≤ 768px the boxes wrap into a 2×2 grid.
+   - On a small screen the boxes wrap into a 2×2 grid.
    - Both Week options book the `Week` period type; they differ only in the weekday the week starts on.
    - **Custom-dates message**, an info line underneath: "For custom date periods, call {ContactPhone} to arrange." The phone (from the `settings` returned by `GET /api/boats`) is a `tel:` link. The line is hidden when no contact phone is set.
 
@@ -915,6 +933,24 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
    - When a change to the period, guests, Spa or Pet friendly makes the selected boat ineligible (not free for the period, too small for the guests, or missing a ticked feature), it is deselected, and the calendar shows all candidate boats.
    - Changing a filter never clears the selected period, even when no candidate boat is free for it any more.
 
+   **On a small screen** the step action bar has two rows:
+   - **Selected boat row:** the selected boat's image as a 48×36 thumbnail (the card placeholder when it has none or it fails to load), its name and "{n} berth", and a **See other boats** button. It shows no price; the Base hire rate does.
+     - With no selected boat, the row shows the placeholder, "No boat selected" and a **Choose a boat** button, unless there is a **deselected boat** to show (below).
+   - **Bottom row:** the Base hire rate, with **Continue** to its right.
+   - **Deselected boat:** the boat most recently deselected because it became ineligible, whether by a change to the period, guests, Spa or Pet friendly (Keeping the selection valid, above), a `409` at Payment, or resuming saved progress. When there is none, it is the requested boat while its card is greyed.
+     - The row shows it greyed like a greyed card, with its reason underneath and the **Choose a boat** button. The reason is the first that applies, in the requested boat's order: "Not available for online booking", "Not available for selected dates", "Too small for {n} guests", "Doesn't match your filters". It is worked out live from the current period, guests and filters.
+     - When no reason applies any more (e.g. the filter is unticked again), the row shows "No boat selected". The boat is not selected again.
+     - Selecting a boat, or deselecting one by hand (clicking the selected card or the "Click here" link), clears it.
+   - **Boat expander:**
+     - See other boats / Choose a boat toggles it, with `aria-expanded` and `aria-controls`. While it is open the toggle reads **Hide boats**.
+     - It opens upward from the bar and reaches the top of the viewport. It holds the boat cards, the same `BoatCards` as the desktop right column (requested boat, "Other boats available" and the empty-list messages), and scrolls inside itself.
+     - The bar's rows stay visible below it, and the Base hire rate updates live. The page behind it doesn't scroll.
+     - Esc or the toggle closes it, and focus returns to the toggle.
+     - Selecting a card closes it, so the customer sees the calendar switch to that boat. Deselecting the selected card keeps it open.
+     - Pressing Continue while it is open closes it first.
+     - It never opens by itself. Messages such as "Sorry, those dates were just taken.", the saved-progress messages and a forward jump stopping on this step show in the page as on desktop; the bar's deselected boat or "No boat selected" is the cue to choose a boat.
+   - The boat cards appear only in the expander; they are not in the page.
+
    **Continue** is enabled only when a period and a selected boat are chosen. The selected boat's details come from `GET /api/boats/{slug}`.
    - If `adults + children > AdultBeds + KidsBeds` of the selected boat, Continue first shows a modal **rooming warning** with the bedding description, e.g. "This boat has {AdultBeds} adult beds and {KidsBeds} children's beds ({BeddingDescription}). With {n} guests, some guests will need to share beds. Please make sure your group's sleeping arrangements suit this layout." It has an **Accept** button, which continues, and a **Cancel** button, which stays on this step. The booking cannot continue without accepting. The exact text shown is sent with the booking.
    - An acceptance holds while the selected boat and guest numbers stay the same. If either changes, the warning is shown again on the next Continue when it still applies.
@@ -932,7 +968,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
    - If the customer went back and selected a different boat, requested add-ons the new boat does not allow are removed, with the notice "Some add-ons you chose aren't offered on {Boat} and have been removed."
    - **Capacity-limited add-ons:** call `GET /api/addons/{addonId}/availability` for the selected dates **every time the Add-ons step is shown** (never cache it: going back to change the dates, or returning from the Summary, must show current figures). Show "{X} {CapacityUnitLabel} remaining" under the add-on (e.g. "6 car spots remaining"). The quantity input cannot go above X. When X is 0, the add-on is **not shown at all**.
    - Notice: "Add-ons are requests and will be confirmed by our staff. Confirmed add-ons are added to your balance. Add-on prices are subject to change during peak periods."
-   - **Booking price** at the bottom of the step:
+   - **Booking price** at the bottom of the step, or in the step action bar on a small screen (above Back and Continue):
      - It shows the Base hire rate plus every ticked add-on that has a price (quantity × its price for the selected period type), so the customer sees the total before the Summary.
      - It is calculated in the browser from the prices already loaded, and updates as soon as add-ons are ticked or quantities change.
      - When any ticked add-on is price on request, "Excludes price-on-request add-ons" is shown underneath.
@@ -940,7 +976,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 5. **Summary:**
    - Server quote showing boat, a **Check-in** row and a **Check-out** row, each with its date, time and the time zone label (§3) for that date (e.g. "Check-in: Fri 16/10/2026, 11am – 2pm AEDT/NSW" and "Check-out: Fri 23/10/2026, from 8am AEDT/NSW"; across a daylight-saving change each row shows its own label), adults and children, season, hire price, requested add-ons (with price or "price on request"), **amount payable now** (the deposit), the balance schedule with due dates, and the security bond notice ("A ${bond} security bond applies — details will be provided").
    - Terms checkbox: "I accept the [Hire Terms and Procedures]" (link opens in a new tab).
-   - Button: **Pay ${amount}**, enabled only once the terms are accepted.
+   - Button: **Pay ${amount}**, enabled only once the terms are accepted. On a small screen it is in the step action bar, and the terms checkbox stays in the page.
 6. **Payment:** `POST /api/bookings` → mount Stripe Embedded Checkout.
    - **Hold countdown:** an info tag above Checkout reads "Dates are guaranteed for the next {n} minutes", where `n` is the whole minutes left until `checkoutExpiresAt`, rounded up and updated as time passes. It says "the next 1 minute" in the last minute.
    - **When the time runs out** (`checkoutExpiresAt` passes), Checkout is replaced by "Your dates are no longer held. Go back to try again." with a button that returns to the Summary, the same as Back. Paying again creates a new hold.
@@ -953,7 +989,7 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
 
 **Pay page** `/pay/?token=`: shows the booking summary, total, paid, owing and amount due now, with a **Pay** button that mounts Embedded Checkout. If nothing is owing, show a "Nothing to pay" state.
 
-Accessibility: keyboard-operable calendar (arrow keys, Enter), boat cards (toggle buttons: Tab, Enter/Space) and progress steps, visible focus, ARIA labels and live region for the selected period and boat, contrast AA.
+Accessibility: keyboard-operable calendar (arrow keys, Enter), boat cards (toggle buttons: Tab, Enter/Space), progress steps and the boat expander (Esc closes it and focus returns to its toggle), visible focus, ARIA labels and live region for the selected period and boat, contrast AA.
 
 ## 12. Admin app (`berger-admin.pages.dev`)
 
@@ -1279,6 +1315,12 @@ Sections:
   - the Close button: posts `bh-booking:close` inside an iframe, and falls back to the WordPress page outside one when the window stays open;
   - busy states in both apps: a button is disabled and labelled while its request runs and can't submit twice; a dialog closes only on success and keeps the user's input on error;
   - Dates & boat step: calendar greying with no boat selected (a period is free when any candidate boat is free, after the guest, Spa and Pet friendly filters) and with a boat selected (that boat only); the selected-boat message shown only while a boat is selected, and its "Click here" link deselecting the boat and keeping the period; clicking the selected card again deselecting it; the cards as toggle buttons with at most one pressed; deselecting the selected boat when the period or a filter makes it ineligible, without clearing the period; the requested boat always first; the requested boat's reason precedence (inactive → dates → too small → filters); hiding other boats not free for the period and the two empty-list messages; Base hire rate states; the rooming warning on Continue and re-showing it after the boat or guests change; add-ons removed after changing boat;
+  - small screens (`matchMedia` mocked):
+    - the step action bar on Dates & boat, Your details, Add-ons and Summary with each step's buttons and content, the buttons not repeated in the page, and no bar on Payment or above 768px;
+    - the Dates & boat bar: the selected boat's thumbnail, name and berth; "No boat selected" with Choose a boat; a boat deselected by a filter, guests or period change shown greyed with its reason, dropping to "No boat selected" once no reason applies, and cleared by a manual deselect; the greyed requested boat with its reason;
+    - the boat expander: opening and closing with the toggle and with Esc (focus back on the toggle), selecting a card closing it, deselecting keeping it open, Continue closing it, the Base hire rate updating while it is open, and never opening by itself;
+    - the boat cards not in the page;
+    - the Add-ons bar's Booking price updating as add-ons are ticked;
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;
   - admin timeline loading: the large spinner in the cell area while a range with no data loads, with the day headers and boat names still shown; a loaded range showing without the large spinner while the refresh button shows its spinner during the background refresh; the refresh button refetching the displayed range, disabled with its spinner while any fetch runs, and showing its icon otherwise; a slower, older response never replacing a newer range; the error state with Retry;
   - admin timeline bar positioning from check-in/check-out times (default and custom), and unavailability block positioning;
