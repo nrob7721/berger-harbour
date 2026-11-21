@@ -47,7 +47,7 @@ describe('resuming saved progress', () => {
     apiState.unavailable['pacific-blue'] = [{ start: '2026-10-13', end: '2026-10-14' }];
     const resumed = await resumeProgress(saved({ draftId: null, furthestStep: 'dates' }), boats);
     expect(resumed).toMatchObject({
-      step: 'dates', period: { start: '2026-10-12' }, selectedSlug: null, notice: boatNoLongerAvailable('Pacific Blue'),
+      step: 'dates', period: { start: '2026-10-12' }, selectedSlug: null, deselectedSlug: 'pacific-blue', notice: boatNoLongerAvailable('Pacific Blue'),
     });
   });
 

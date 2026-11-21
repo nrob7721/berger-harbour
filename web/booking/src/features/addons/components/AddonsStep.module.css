@@ -88,6 +88,13 @@
   background: var(--c-brand-tint);
 }
 
+/* In the step action bar: on the bar's surface, without the tint. */
+.totalInBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .totalLabel {
   font-weight: 700;
 }

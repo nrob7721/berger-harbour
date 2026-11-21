@@ -95,6 +95,7 @@ export function DetailsStep({ onContinued }: { onContinued: (changes: Partial<Bo
   return (
     <StepLayout
       title="Your details"
+      bar
       error={formError ?? state.notice}
       back={<Button onClick={() => dispatch({ type: 'goto', step: 'dates' })} disabled={save.isPending}>Back</Button>}
       action={

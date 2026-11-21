@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { apiState, server } from '@/testing/server';
 import { currentState, renderWithBooking } from '@/testing/render';
 import { DetailsStepInApp } from '@/testing/steps';
+import { setSmallScreen } from '@/testing/screen-size';
 
 const base = { period: { start: '2026-10-12', end: '2026-10-16' }, selectedSlug: 'pacific-blue', adults: 2, children: 0 } as const;
 
@@ -124,5 +125,16 @@ describe('Your details', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(currentState().step).toBe('addons'));
     expect(apiState.calls.find((c) => c.method === 'PUT')?.path).toBe('/api/booking-drafts/draft-9');
+  });
+
+  it('keeps Back, Continue and the error in the step action bar on a small screen', async () => {
+    setSmallScreen(true);
+    renderWithBooking(<DetailsStepInApp />, { ...base, draftId: null, notice: 'Please check your details.' });
+    const bar = within(screen.getByTestId('step-action-bar'));
+    expect(bar.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(bar.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(bar.getByRole('alert')).toHaveTextContent('Please check your details.');
+    expect(screen.getAllByRole('button', { name: 'Continue' })).toHaveLength(1);
+    await waitFor(() => expect(bar.getByRole('button', { name: 'Continue' })).toBeEnabled()); // the security check has passed
   });
 });

@@ -6,6 +6,7 @@ import { formatMoney } from '@shared/utils/money';
 import { Notice } from '@/components/Notice/Notice';
 import { StepLayout } from '@/components/StepLayout/StepLayout';
 import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
+import { useSmallScreen } from '@/hooks/useSmallScreen';
 import { api, keys } from '@/lib/api';
 import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
 import { draftBody } from '@/lib/draft';
@@ -16,6 +17,7 @@ import styles from './AddonsStep.module.css';
 /** Add-ons. `onContinued` runs once the draft is updated, so a progress-step jump can carry on from here. */
 export function AddonsStep({ onContinued }: { onContinued: () => void }) {
   const { state, dispatch } = useBooking();
+  const small = useSmallScreen();
   const boat = useBoatDetails(state.selectedSlug);
   const period = usePeriodAvailability(periodTypeOfState(state), state.period);
   const [removedNotice, setRemovedNotice] = useState<string | null>(null);
@@ -87,6 +89,16 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
   return (
     <StepLayout
       title="Add-ons"
+      bar
+      barContent={
+        <div className={small ? styles.totalInBar : styles.total} data-testid="booking-price">
+          <div>
+            <div className={styles.totalLabel}>Booking price</div>
+            {price.hasPriceOnRequest && <div className={styles.totalNote}>Excludes price-on-request add-ons</div>}
+          </div>
+          <div className={styles.totalValue}>{hire === null ? '' : formatMoney(price.total)}</div>
+        </div>
+      }
       error={save.isError ? errorMessage(save.error) : null}
       back={<Button onClick={() => dispatch({ type: 'goto', step: 'details' })} disabled={save.isPending}>Back</Button>}
       action={<Button variant="primary" onClick={() => save.mutate()} busy={save.isPending} busyLabel="Saving…" disabled={capacityLoading}>Continue</Button>}
@@ -140,13 +152,6 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
           );
         })}
       </ul>
-      <div className={styles.total} data-testid="booking-price">
-        <div>
-          <div className={styles.totalLabel}>Booking price</div>
-          {price.hasPriceOnRequest && <div className={styles.totalNote}>Excludes price-on-request add-ons</div>}
-        </div>
-        <div className={styles.totalValue}>{hire === null ? '' : formatMoney(price.total)}</div>
-      </div>
     </StepLayout>
   );
 }

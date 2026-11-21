@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { apiState, boats, details, settings } from '@/testing/server';
 import { currentState, renderWithBooking } from '@/testing/render';
+import { setSmallScreen } from '@/testing/screen-size';
 import type { BookingState } from '@/lib/booking-state';
 import type { BoatDetails } from '@/lib/types';
 import { DatesAndBoatStep } from './DatesAndBoatStep';
@@ -326,5 +327,130 @@ describe('Dates & boat: base hire rate and continue', () => {
   it('is disabled until a period and a boat are chosen', async () => {
     renderStep({ selectedSlug: 'kalinda' });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+});
+
+describe('Dates & boat: small screen', () => {
+  const period = { start: '2026-10-12', end: '2026-10-16' };
+  const bar = () => within(screen.getByTestId('step-action-bar'));
+  const barBoat = () => screen.getByTestId('bar-boat');
+  const expander = () => screen.getByTestId('boat-expander');
+  const toggle = () => bar().getByRole('button', { name: /See other boats|Choose a boat|Hide boats/ });
+
+  it('has no bar above 768px', () => {
+    renderStep();
+    expect(screen.queryByTestId('step-action-bar')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Boats' })).toBeInTheDocument();
+  });
+
+  it('shows the selected boat, Base hire rate and Continue in the bar, and the boat cards only in the expander', async () => {
+    setSmallScreen(true);
+    renderStep({ selectedSlug: 'kalinda', period });
+    expect(barBoat()).toHaveTextContent('Kalinda12 berth');
+    expect(within(barBoat()).getByRole('button', { name: 'See other boats' })).toBeInTheDocument();
+    await waitFor(() => expect(bar().getByTestId('base-hire-rate')).toHaveTextContent('$2,535.00'));
+    expect(bar().getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Continue', hidden: true })).toHaveLength(1);
+    expect(screen.getAllByTestId('base-hire-rate')).toHaveLength(1);
+    for (const card of screen.getAllByTestId(/^boat-(?!expander)/)) expect(expander()).toContainElement(card);
+    expect(screen.queryByRole('heading', { name: 'Boats' })).not.toBeInTheDocument(); // the closed expander is hidden
+  });
+
+  it('says "No boat selected" with Choose a boat when nothing is selected', () => {
+    setSmallScreen(true);
+    renderStep();
+    expect(barBoat()).toHaveTextContent('No boat selected');
+    expect(within(barBoat()).getByRole('button', { name: 'Choose a boat' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('shows a boat deselected by a guests change greyed with its reason, until no reason applies', async () => {
+    setSmallScreen(true);
+    renderStep({ selectedSlug: 'runaway-bear', period });
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Adults'), '3');
+    await waitFor(() => expect(currentState().selectedSlug).toBeNull());
+    expect(barBoat()).toHaveTextContent('Runaway Bear');
+    expect(barBoat()).toHaveTextContent('Too small for 3 guests');
+    expect(within(barBoat()).getByRole('button', { name: 'Choose a boat' })).toBeInTheDocument();
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false'); // never opens by itself
+    await user.selectOptions(screen.getByLabelText('Adults'), '2');
+    expect(barBoat()).toHaveTextContent('No boat selected');
+    expect(currentState().selectedSlug).toBeNull();
+  });
+
+  it('shows a boat deselected by a feature change, cleared once a boat is deselected by hand', async () => {
+    setSmallScreen(true);
+    renderStep({ selectedSlug: 'kalinda', period });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('checkbox', { name: 'Spa' }));
+    await waitFor(() => expect(barBoat()).toHaveTextContent("KalindaDoesn't match your filters"));
+    await user.click(toggle());
+    await user.click(screen.getByTestId('boat-pacific-blue'));
+    expect(barBoat()).toHaveTextContent('Pacific Blue');
+    await user.click(toggle());
+    await user.click(screen.getByTestId('boat-pacific-blue')); // deselect by hand
+    expect(currentState().deselectedSlug).toBeNull();
+    expect(barBoat()).toHaveTextContent('No boat selected');
+  });
+
+  it('shows the boat taken at Payment as not available for the dates', async () => {
+    apiState.unavailable = { kalinda: [period] };
+    setSmallScreen(true);
+    renderStep({ deselectedSlug: 'kalinda', period });
+    await waitFor(() => expect(barBoat()).toHaveTextContent('KalindaNot available for selected dates'));
+  });
+
+  it('shows a greyed requested boat with its reason', () => {
+    setSmallScreen(true);
+    renderStep({}, details('old-boat', { name: 'Old Boat', isActive: false, berth: 10 }));
+    expect(barBoat()).toHaveTextContent('Old BoatNot available for online booking');
+  });
+
+  it('opens the expander with the toggle, focusing its heading, and closes it with the toggle and Esc', async () => {
+    setSmallScreen(true);
+    renderStep();
+    const user = userEvent.setup();
+    await user.click(toggle());
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle()).toHaveTextContent('Hide boats');
+    expect(toggle()).toHaveAttribute('aria-controls', expander().id);
+    expect(screen.getByRole('heading', { name: 'Boats' })).toHaveFocus();
+    expect(document.body.style.overflow).toBe('hidden');
+    await user.click(toggle());
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle()).toHaveFocus();
+    expect(document.body.style.overflow).toBe('');
+    await user.click(toggle());
+    await user.keyboard('{Escape}');
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle()).toHaveFocus();
+  });
+
+  it('closes when a card selects a boat, and stays open when the selected card is deselected', async () => {
+    setSmallScreen(true);
+    renderStep({ selectedSlug: 'kalinda', period });
+    const user = userEvent.setup();
+    await waitFor(() => expect(bar().getByTestId('base-hire-rate')).toHaveTextContent('$2,535.00'));
+    await user.click(toggle());
+    await user.click(screen.getByTestId('boat-kalinda'));
+    expect(currentState().selectedSlug).toBeNull();
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(bar().getByTestId('base-hire-rate')).toHaveTextContent('Select dates and a boat'); // live while open
+    await user.click(screen.getByTestId('boat-misty-blue'));
+    expect(currentState().selectedSlug).toBe('misty-blue');
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle()).toHaveTextContent('See other boats');
+    expect(toggle()).toHaveFocus();
+  });
+
+  it('closes the expander when Continue is pressed', async () => {
+    setSmallScreen(true);
+    const { onContinue } = renderStep({ selectedSlug: 'kalinda', adults: 2, period });
+    const user = userEvent.setup();
+    await waitFor(() => expect(bar().getByRole('button', { name: 'Continue' })).toBeEnabled());
+    await user.click(toggle());
+    await user.click(bar().getByRole('button', { name: 'Continue' }));
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    expect(onContinue).toHaveBeenCalledTimes(1);
   });
 });

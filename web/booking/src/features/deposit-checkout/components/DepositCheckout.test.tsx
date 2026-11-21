@@ -5,11 +5,19 @@ import { http, HttpResponse, delay } from 'msw';
 import { server } from '@/testing/server';
 import { currentState, filledState, renderWithBooking } from '@/testing/render';
 import { minutesLeft, PayButton, PaymentStep } from './DepositCheckout';
+import { setSmallScreen } from '@/testing/screen-size';
 
 const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
 const hold = { bookingId: 'b-1', clientSecret: 'cs_1_secret', sessionId: 'cs_1', checkoutExpiresAt: inMinutes(30) };
 
 describe('Payment step', () => {
+  it('has no step action bar on a small screen: Back stays in the page', () => {
+    setSmallScreen(true);
+    renderWithBooking(<PaymentStep />, { ...filledState, step: 'payment', hold });
+    expect(screen.queryByTestId('step-action-bar')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+  });
+
   it('Back releases the hold and returns to the Summary', async () => {
     let released: unknown;
     server.use(http.post('*/api/bookings/:id/release', async ({ request }) => {
@@ -97,6 +105,7 @@ describe('Pay button', () => {
     await waitFor(() => expect(currentState().step).toBe('dates'));
     expect(currentState().notice).toBe('Sorry, those dates were just taken.');
     expect(currentState().selectedSlug).toBeNull();
+    expect(currentState().deselectedSlug).toBe('pacific-blue');
     expect(currentState().period).toEqual(filledState.period);
   });
 

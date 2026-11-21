@@ -36,6 +36,7 @@ export function SummaryStep({ hireTermsUrl, renderPay }: SummaryStepProps) {
   return (
     <StepLayout
       title="Summary"
+      bar
       error={quote.isError ? errorMessage(quote.error) : null}
       back={<Button onClick={() => dispatch({ type: 'goto', step: 'addons' })}>Back</Button>}
       action={q ? renderPay({ quote: q, termsAccepted: terms }) : null}

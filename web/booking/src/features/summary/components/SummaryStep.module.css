@@ -14,7 +14,7 @@
   margin: 0;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .rows {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;

@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
+import { installMatchMedia, resetScreenSize } from './screen-size';
 import { resetApi, server } from './server';
 
 vi.mock('@marsidev/react-turnstile', () => ({
@@ -19,10 +20,12 @@ vi.mock('@/components/EmbeddedCheckout/EmbeddedCheckout', () => ({
 }));
 
 Object.defineProperty(window, 'scrollTo', { value: () => {}, writable: true });
+installMatchMedia();
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
   cleanup();
+  resetScreenSize();
   server.resetHandlers();
   resetApi();
   window.sessionStorage.clear();

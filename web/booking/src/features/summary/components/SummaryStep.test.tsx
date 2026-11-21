@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '@/testing/server';
 import { filledState, renderWithBooking } from '@/testing/render';
+import { setSmallScreen } from '@/testing/screen-size';
 import type { Quote } from '@/lib/types';
 import { checkInRow, checkOutRow } from '../utils/rows';
 import { SummaryStep } from './SummaryStep';
@@ -41,5 +42,20 @@ describe('Summary', () => {
     expect(screen.getByRole('button', { name: 'Pay 1000' })).toBeDisabled();
     await userEvent.setup().click(screen.getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'Pay 1000' })).toBeEnabled();
+  });
+
+  it('puts Back and Pay in the step action bar on a small screen, keeping the terms in the page', async () => {
+    server.use(http.post('*/api/boats/:slug/quote', () => HttpResponse.json(quote)));
+    setSmallScreen(true);
+    renderWithBooking(
+      <SummaryStep hireTermsUrl="https://example.com/terms" renderPay={({ quote: q, termsAccepted }) => <button disabled={!termsAccepted}>Pay {q.amountDueAtCheckout}</button>} />,
+      filledState,
+    );
+    const bar = within(screen.getByTestId('step-action-bar'));
+    expect(await bar.findByRole('button', { name: 'Pay 1000' })).toBeDisabled();
+    expect(bar.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(bar.queryByRole('checkbox')).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('checkbox'));
+    expect(bar.getByRole('button', { name: 'Pay 1000' })).toBeEnabled();
   });
 });

@@ -11,7 +11,7 @@
   gap: var(--space-4);
 }
 
-@media (max-width: 560px) {
+@media (max-width: 768px) {
   .fields {
     grid-template-columns: minmax(0, 1fr);
   }

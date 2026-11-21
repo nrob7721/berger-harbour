@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { apiState, details, server } from '@/testing/server';
 import { currentState, filledState, renderWithBooking } from '@/testing/render';
 import { AddonsStepInApp } from '@/testing/steps';
+import { setSmallScreen } from '@/testing/screen-size';
 
 const itemFor = (name: string) => screen.getByText(name).closest('li')!;
 
@@ -79,5 +80,17 @@ describe('Add-ons step', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await waitFor(() => expect(currentState().step).toBe('summary'));
     expect(body).toMatchObject({ lastStepReached: 'Summary', addons: [{ addonId: 'ice', quantity: 2 }] });
+  });
+
+  it('shows the Booking price in the step action bar on a small screen, updating as add-ons are ticked', async () => {
+    setSmallScreen(true);
+    renderWithBooking(<AddonsStepInApp />, filledState);
+    const bar = within(screen.getByTestId('step-action-bar'));
+    await waitFor(() => expect(bar.getByTestId('booking-price')).toHaveTextContent('$4,060.00'));
+    expect(screen.getAllByTestId('booking-price')).toHaveLength(1);
+    expect(bar.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(bar.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    await userEvent.setup().click(within(itemFor('Outboard motor')).getByRole('checkbox'));
+    expect(bar.getByTestId('booking-price')).toHaveTextContent('$4,155.00');
   });
 });

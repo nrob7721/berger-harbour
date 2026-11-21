@@ -50,6 +50,12 @@ export interface BookingState {
   pets: boolean;
   /** While a boat is selected, the calendar shows only that boat's availability. */
   selectedSlug: string | null;
+  /**
+   * The boat most recently deselected because it became ineligible (a period, guests or feature change, a 409 at Payment, or
+   * resuming saved progress). The small-screen step action bar shows it greyed with its reason (§11.2). Selecting or deselecting
+   * a boat by hand clears it. Not kept as saved progress.
+   */
+  deselectedSlug: string | null;
   rooming: RoomingAcceptance | null;
   /**
    * The details as entered on Your details, kept when it is left backwards even if invalid or unsaved; the step's Continue
@@ -85,6 +91,7 @@ export type BookingAction =
   | { type: 'guests'; adults: number; children: number }
   | { type: 'filter'; spa?: boolean; pets?: boolean }
   | { type: 'selectBoat'; slug: string | null }
+  | { type: 'boatIneligible' }
   | { type: 'acceptRooming'; acceptance: RoomingAcceptance }
   | { type: 'details'; details: ContactDetails }
   | { type: 'draft'; draftId: string }
@@ -102,7 +109,7 @@ export type BookingAction =
 export function initialState(requestedSlug: string | null, overrides: Partial<BookingState> = {}): BookingState {
   return {
     step: 'dates', furthestStep: 'dates', requestedSlug, typeOfStay: 'Midweek', period: null, adults: 1, children: 0, spa: false, pets: false,
-    selectedSlug: null, rooming: null, details: null, addons: {}, draftId: null, hold: null,
+    selectedSlug: null, deselectedSlug: null, rooming: null, details: null, addons: {}, draftId: null, hold: null,
     completed: null, reachedPayment: false, notice: null, jumpTarget: null, showErrors: false, ...overrides,
   };
 }
@@ -119,7 +126,9 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
     case 'filter':
       return { ...state, spa: action.spa ?? state.spa, pets: action.pets ?? state.pets };
     case 'selectBoat':
-      return { ...state, selectedSlug: action.slug };
+      return { ...state, selectedSlug: action.slug, deselectedSlug: null };
+    case 'boatIneligible':
+      return state.selectedSlug ? { ...state, selectedSlug: null, deselectedSlug: state.selectedSlug } : state;
     case 'acceptRooming':
       return { ...state, rooming: action.acceptance };
     case 'details':
@@ -154,7 +163,7 @@ export function bookingReducer(state: BookingState, action: BookingAction): Book
     case 'datesTaken':
       // Back to Dates & boat with the period, guests and filters kept; the boat (now unavailable) is deselected.
       return {
-        ...state, step: 'dates', hold: null, selectedSlug: null, reachedPayment: true, jumpTarget: null,
+        ...state, step: 'dates', hold: null, selectedSlug: null, deselectedSlug: state.selectedSlug, reachedPayment: true, jumpTarget: null,
         notice: 'Sorry, those dates were just taken.',
       };
     case 'cachesCleared':

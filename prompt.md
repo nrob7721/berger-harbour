@@ -219,7 +219,7 @@ firestore.indexes.json
   - **Booking app features:**
     - `dates-and-boat`, `details`, `addons`, `summary`.
     - `BoatCards` is its own component in `dates-and-boat`. The step renders it in the right column on desktop and inside the boat expander of the step action bar on a small screen (§11.2).
-    - `StepActionBar` lives in the app's `src/components`. Each step that has the bar passes it its buttons and, optionally, the content shown above them.
+    - `StepActionBar` lives in the app's `src/components`. Each step that has the bar passes it its buttons and, optionally, the content shown above them. `StepLayout` renders it in place of its inline action row when a step opts in and the screen is small; Dates & boat, which has its own layout, renders it directly. The bar's measured height sets the page's bottom padding.
     - `useSmallScreen()` lives in the app's `src/hooks`. It tracks `matchMedia('(max-width: 768px)')`, so a step renders the bar or its inline layout, not both.
     - `deposit-checkout`: the Payment step, which creates the hold, mounts Embedded Checkout for the deposit with the hold countdown, and handles leaving it (Back or an earlier progress step) and the hold running out.
     - Each step's Continue checks live in a function outside its component, so a forward jump on the progress steps can run them for steps that are not on screen (§11.2).
@@ -850,6 +850,8 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
   - It is fixed to the bottom of the viewport, full width, on the surface background with a top border and a shadow. Its bottom padding adds `env(safe-area-inset-bottom)`.
   - The page gets bottom padding equal to the bar's height, so nothing is hidden behind it.
   - The step's buttons are in the bar and not in the page. They follow the busy states in §6.1, and Continue runs the same checks as on desktop, including the rooming warning.
+  - The step's error (e.g. a failed Pay) is in the bar, above the buttons, instead of in the page. Dates & boat's notices and messages stay in the page (step 2).
+  - A price in the bar (Base hire rate, Booking price) has no tinted background; it sits on the bar's surface.
   - Dates & boat: the selected boat, with the boat expander, then Base hire rate with Continue to its right (step 2).
   - Your details: Back on the left, Continue on the right.
   - Add-ons: the Booking price, with Back on the left and Continue on the right underneath (step 4).
@@ -933,20 +935,22 @@ The app is a single page with steps, in this order: **Dates & boat → Your deta
    - When a change to the period, guests, Spa or Pet friendly makes the selected boat ineligible (not free for the period, too small for the guests, or missing a ticked feature), it is deselected, and the calendar shows all candidate boats.
    - Changing a filter never clears the selected period, even when no candidate boat is free for it any more.
 
-   **On a small screen** the step action bar has two rows:
-   - **Selected boat row:** the selected boat's image as a 48×36 thumbnail (the card placeholder when it has none or it fails to load), its name and "{n} berth", and a **See other boats** button. It shows no price; the Base hire rate does.
+   **On a small screen** the step action bar has two rows, separated by a thin divider:
+   - **Selected boat row:** the selected boat's image as a 48×36 thumbnail (the card placeholder when it has none or it fails to load), then its name with "{n} berth" underneath (a long name is cut short with an ellipsis), and a **See other boats** button on the right. It shows no price; the Base hire rate does.
      - With no selected boat, the row shows the placeholder, "No boat selected" and a **Choose a boat** button, unless there is a **deselected boat** to show (below).
-   - **Bottom row:** the Base hire rate, with **Continue** to its right.
+   - **Bottom row:** the Base hire rate ("Base hire rate" with "Excludes add-ons" underneath, and the value), with **Continue** to its right.
    - **Deselected boat:** the boat most recently deselected because it became ineligible, whether by a change to the period, guests, Spa or Pet friendly (Keeping the selection valid, above), a `409` at Payment, or resuming saved progress. When there is none, it is the requested boat while its card is greyed.
      - The row shows it greyed like a greyed card, with its reason underneath and the **Choose a boat** button. The reason is the first that applies, in the requested boat's order: "Not available for online booking", "Not available for selected dates", "Too small for {n} guests", "Doesn't match your filters". It is worked out live from the current period, guests and filters.
      - When no reason applies any more (e.g. the filter is unticked again), the row shows "No boat selected". The boat is not selected again.
      - Selecting a boat, or deselecting one by hand (clicking the selected card or the "Click here" link), clears it.
    - **Boat expander:**
      - See other boats / Choose a boat toggles it, with `aria-expanded` and `aria-controls`. While it is open the toggle reads **Hide boats**.
-     - It opens upward from the bar and reaches the top of the viewport. It holds the boat cards, the same `BoatCards` as the desktop right column (requested boat, "Other boats available" and the empty-list messages), and scrolls inside itself.
+     - It opens upward from the bar and reaches the top of the viewport. It is a region labelled "Boats", not a dialog. Its top is a **Boats** heading that stays in place while the cards scroll; there is no close button besides the toggle. Below the heading are the boat cards, the same `BoatCards` as the desktop right column (requested boat, "Other boats available" and the empty-list messages), and they scroll inside the expander.
+     - It slides up from the bar as it opens and slides back down as it closes, however it closes, in about 200ms. With `prefers-reduced-motion: reduce` it opens and closes without moving.
+     - Opening it moves focus to its Boats heading. Focus is not trapped: the bar's rows stay usable.
      - The bar's rows stay visible below it, and the Base hire rate updates live. The page behind it doesn't scroll.
      - Esc or the toggle closes it, and focus returns to the toggle.
-     - Selecting a card closes it, so the customer sees the calendar switch to that boat. Deselecting the selected card keeps it open.
+     - Selecting a card closes it, so the customer sees the calendar switch to that boat, and focus returns to the toggle. Deselecting the selected card keeps it open.
      - Pressing Continue while it is open closes it first.
      - It never opens by itself. Messages such as "Sorry, those dates were just taken.", the saved-progress messages and a forward jump stopping on this step show in the page as on desktop; the bar's deselected boat or "No boat selected" is the cue to choose a boat.
    - The boat cards appear only in the expander; they are not in the page.
@@ -1317,8 +1321,9 @@ Sections:
   - Dates & boat step: calendar greying with no boat selected (a period is free when any candidate boat is free, after the guest, Spa and Pet friendly filters) and with a boat selected (that boat only); the selected-boat message shown only while a boat is selected, and its "Click here" link deselecting the boat and keeping the period; clicking the selected card again deselecting it; the cards as toggle buttons with at most one pressed; deselecting the selected boat when the period or a filter makes it ineligible, without clearing the period; the requested boat always first; the requested boat's reason precedence (inactive → dates → too small → filters); hiding other boats not free for the period and the two empty-list messages; Base hire rate states; the rooming warning on Continue and re-showing it after the boat or guests change; add-ons removed after changing boat;
   - small screens (`matchMedia` mocked):
     - the step action bar on Dates & boat, Your details, Add-ons and Summary with each step's buttons and content, the buttons not repeated in the page, and no bar on Payment or above 768px;
+    - a step's error shown in the bar above its buttons, not in the page;
     - the Dates & boat bar: the selected boat's thumbnail, name and berth; "No boat selected" with Choose a boat; a boat deselected by a filter, guests or period change shown greyed with its reason, dropping to "No boat selected" once no reason applies, and cleared by a manual deselect; the greyed requested boat with its reason;
-    - the boat expander: opening and closing with the toggle and with Esc (focus back on the toggle), selecting a card closing it, deselecting keeping it open, Continue closing it, the Base hire rate updating while it is open, and never opening by itself;
+    - the boat expander: opening it moving focus to its Boats heading; closing with the toggle and with Esc (focus back on the toggle), selecting a card closing it (focus back on the toggle), deselecting keeping it open, Continue closing it, the Base hire rate updating while it is open, and never opening by itself;
     - the boat cards not in the page;
     - the Add-ons bar's Booking price updating as add-ons are ticked;
   - admin timeline week view date ranges (Mon–Sun, Prev/Next, Today) and the Month ↔ Week switching rules;

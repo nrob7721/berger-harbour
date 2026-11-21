@@ -58,7 +58,7 @@
   opacity: 0.7;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .label {
     font-size: 12px;
   }

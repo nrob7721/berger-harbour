@@ -52,7 +52,7 @@ export async function resumeProgress(saved: SavedProgress, fleet: BoatSummary[])
       const selected = saved.selectedSlug ? result.boats.find((b) => b.slug === saved.selectedSlug) : undefined;
       if (saved.selectedSlug && !selected?.available) {
         const name = fleet.find((b) => b.slug === saved.selectedSlug)?.name ?? 'Your boat';
-        return { ...base, details, selectedSlug: null, step: 'dates', notice: boatNoLongerAvailable(name) };
+        return { ...base, details, selectedSlug: null, deselectedSlug: saved.selectedSlug, step: 'dates', notice: boatNoLongerAvailable(name) };
       }
     } catch (e) {
       if (isStatus(e, 400)) return { ...base, details, period: null, step: 'dates', notice: DATES_NO_LONGER_BOOKABLE };

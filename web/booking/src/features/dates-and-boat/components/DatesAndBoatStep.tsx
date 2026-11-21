@@ -7,6 +7,7 @@ import { formatMoney } from '@shared/utils/money';
 import { TYPE_OF_STAY_LABELS, TYPES_OF_STAY, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import { Notice } from '@/components/Notice/Notice';
 import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
+import { useSmallScreen } from '@/hooks/useSmallScreen';
 import { keys } from '@/lib/api';
 import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
 import type { BoatDetails, BoatSummary, BookingSettings } from '@/lib/types';
@@ -16,6 +17,7 @@ import {
   selectedBoatEligible, selectedLine, type CardBoat,
 } from '../utils/availability';
 import { CHOOSE_DATES_AND_BOAT, datesContinue } from '../utils/continue';
+import { BoatBar } from './BoatBar';
 import { BoatCards } from './BoatCards';
 import { Calendar } from './Calendar';
 import styles from './DatesAndBoatStep.module.css';
@@ -30,6 +32,7 @@ export interface DatesAndBoatStepProps {
 
 export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }: DatesAndBoatStepProps) {
   const { state, dispatch } = useBooking();
+  const small = useSmallScreen();
   const queryClient = useQueryClient();
   const ids = { adults: useId(), children: useId() };
   const filters = { adults: state.adults, children: state.children, spa: state.spa, pets: state.pets };
@@ -59,7 +62,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   // Keep the selection valid: a boat that no longer fits the period, guests or features is deselected (the period is kept).
   useEffect(() => {
     if (state.selectedSlug && !selectedBoatEligible(state.selectedSlug, fleet, filters, periodResult.data)) {
-      dispatch({ type: 'selectBoat', slug: null });
+      dispatch({ type: 'boatIneligible' });
     }
   }, [state.selectedSlug, state.adults, state.children, state.spa, state.pets, periodResult.data, fleet]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,6 +84,21 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const prices = Object.fromEntries((periodResult.data?.boats ?? []).map((b) => [b.slug, b.hirePrice]));
   const selectedBoat = fleet.find((b) => b.slug === state.selectedSlug) ?? null;
   const hirePrice = state.selectedSlug && periodResult.data ? prices[state.selectedSlug] : undefined;
+  const rate = hirePrice !== undefined && hirePrice !== null && state.period ? formatMoney(hirePrice) : 'Select dates and a boat';
+  const continueDisabled = !state.period || !state.selectedSlug || !selectedDetails.data;
+
+  // The small-screen bar's boat with no selection: the boat deselected because it became ineligible, else a greyed requested
+  // boat, while a reason still applies (§11.2).
+  const deselectedCard: CardBoat | null = (() => {
+    if (state.selectedSlug) return null;
+    if (state.deselectedSlug) {
+      if (requested?.slug === state.deselectedSlug) return requested;
+      const boat = fleet.find((b) => b.slug === state.deselectedSlug);
+      return boat ? { ...boat, isActive: true } : null;
+    }
+    return requested && requestedReason ? requested : null;
+  })();
+  const deselectedReason = deselectedCard ? requestedBoatReason(deselectedCard, filters, periodResult.data) : null;
 
   const maxGuests = maxBerth(fleet);
   const setAdults = (adults: number) => dispatch({ type: 'guests', adults, children: Math.min(state.children, maxGuests - adults) });
@@ -118,6 +136,22 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : 'No boat selected.']
     .filter(Boolean).join(' ');
   const deselect = () => dispatch({ type: 'selectBoat', slug: null });
+  /** The boat cards, in the right column or the boat expander. `picked` runs when a card selects a boat (not on a deselect). */
+  const boatCards = (picked?: () => void) => (
+    <BoatCards
+      requested={requested}
+      requestedReason={requestedReason}
+      others={others}
+      emptyMessage={emptyMessage}
+      selectedSlug={state.selectedSlug}
+      prices={state.period ? prices : {}}
+      onToggle={(slug) => {
+        const deselecting = slug === state.selectedSlug;
+        dispatch({ type: 'selectBoat', slug: deselecting ? null : slug });
+        if (!deselecting) picked?.();
+      }}
+    />
+  );
   /** One type-of-stay box: the name in bold with the days stacked underneath; the radio's name is the full label (§11.2). */
   const typeRadio = (t: TypeOfStay) => {
     const { name, days } = TYPE_OF_STAY_LABELS[t];
@@ -203,37 +237,42 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             </p>
           )}
 
-          <div className={styles.rate} data-testid="base-hire-rate">
-            <div>
-              <div className={styles.rateLabel}>Base hire rate</div>
-              <div className={styles.rateSub}>Excludes add-ons</div>
+          {!small && (
+            <div className={styles.rate} data-testid="base-hire-rate">
+              <div>
+                <div className={styles.rateLabel}>Base hire rate</div>
+                <div className={styles.rateSub}>Excludes add-ons</div>
+              </div>
+              <div className={styles.rateValue}>{rate}</div>
             </div>
-            <div className={styles.rateValue}>
-              {hirePrice !== undefined && hirePrice !== null && state.period ? formatMoney(hirePrice) : 'Select dates and a boat'}
-            </div>
-          </div>
+          )}
 
           {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
-          <div className={styles.actions}>
-            <Button variant="primary" onClick={continueClicked} disabled={!state.period || !state.selectedSlug || !selectedDetails.data}>
-              Continue
-            </Button>
-          </div>
+          {!small && (
+            <div className={styles.actions}>
+              <Button variant="primary" onClick={continueClicked} disabled={continueDisabled}>Continue</Button>
+            </div>
+          )}
         </div>
 
-        <div className={styles.right}>
-          <h3 className={styles.label}>Boats</h3>
-          <BoatCards
-            requested={requested}
-            requestedReason={requestedReason}
-            others={others}
-            emptyMessage={emptyMessage}
-            selectedSlug={state.selectedSlug}
-            prices={state.period ? prices : {}}
-            onToggle={(slug) => dispatch({ type: 'selectBoat', slug: slug === state.selectedSlug ? null : slug })}
-          />
-        </div>
+        {!small && (
+          <div className={styles.right}>
+            <h3 className={styles.label}>Boats</h3>
+            {boatCards()}
+          </div>
+        )}
       </div>
+
+      {small && (
+        <BoatBar
+          selected={selectedBoat && { ...selectedBoat, isActive: true }}
+          deselected={deselectedCard && deselectedReason ? { boat: deselectedCard, reason: deselectedReason } : null}
+          rate={rate}
+          continueDisabled={continueDisabled}
+          onContinue={continueClicked}
+          cards={boatCards}
+        />
+      )}
 
       <Dialog open={!!enquire} title="Please call or email us" onClose={() => setEnquire(null)} size="sm"
         footer={<Button variant="primary" onClick={() => setEnquire(null)}>OK</Button>}>

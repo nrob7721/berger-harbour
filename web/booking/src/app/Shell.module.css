@@ -1,7 +1,8 @@
+/* The step action bar's height is added at the bottom, so nothing in the page is hidden behind it (§11.2). */
 .page {
   max-width: 1040px;
   margin: 0 auto;
-  padding: 20px 16px 32px;
+  padding: 20px 16px calc(32px + var(--action-bar-height, 0px));
 }
 
 .header {
@@ -32,9 +33,9 @@
   padding: 20px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .page {
-    padding: 12px 16px 24px;
+    padding: 12px 16px calc(24px + var(--action-bar-height, 0px));
   }
 
   .card {
