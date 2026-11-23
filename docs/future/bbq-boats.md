@@ -31,3 +31,15 @@ AI - DO NOT IMPLEMENT YET
 1. Should the data be stored separately e.g. separate firestore collection for BBQ boats and House Boats? This naturally implies there could be a separate bookings document as well. Inheritance should be avoided
     1. Different validation for BBQ and House Boats
 1. Domain logic may need to be encapsulated in domain services with different interfaces e.g. Booking Availability service might need an interface with separate concrete classes for BBQ and House boat implementations
+
+# Architectural Ideas
+
+## Interface Segregation
+
+- Bookable items inherit from a common IBooking interface. BbqBoatBooking and HouseBoatBooking? How much logic is already shared? Should the collection remains a single booking collection with Type field to indicate?
+- IBooking can work with IBookable which HouseBoat and BBQ would both inherit from. Is there value for IBoat encapsulation?
+- Entities would be loaded depending on the repository injected I.e. single common interface with the concrete injected depending on the URL path i.e. bbq or house boats route? Or just separate interfaces I.e. IBbqBoatRepository and IHouseBoatRepository?
+- Validation and app services work with the IBookable interface to make bookings.
+- Visitor pattern considerations? Need to check how much behaviour is booking type specific or generic?
+- Composite pattern for the BBQ boats? I.e. 1 boat item is a composite of 4 boats each individually bookable. The composite is an aggregate?
+
