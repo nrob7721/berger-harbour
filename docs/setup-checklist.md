@@ -25,10 +25,10 @@ The booking address, CORS origin, sender name and subject prefix are already set
 
 ## 1. Booking subdomain (prod only)
 
-- [ ] Do step 5 (Cloudflare Pages) first, so the `berger-booking` project exists.
-- [ ] In Cloudflare → **Workers & Pages → berger-booking → Custom domains → Set up a custom domain**, enter `bookings.bergerhouseboats.com.au`. Cloudflare shows the CNAME target `berger-booking.pages.dev`.
-- [ ] At the existing DNS host (partnerconsole.net) add **one** record: `CNAME  bookings  →  berger-booking.pages.dev`. Change nothing else; WordPress and email stay where they are.
-- [ ] Check for CAA records on `bergerhouseboats.com.au`. If there are any, add CAA records allowing Cloudflare's certificate authorities (`letsencrypt.org`, `pki.goog`, `ssl.com`).
+- [X] Do step 5 (Cloudflare Pages) first, so the `berger-booking` project exists.
+- [X] In Cloudflare → **Workers & Pages → berger-booking → Custom domains → Set up a custom domain**, enter `bookings.bergerhouseboats.com.au`. Cloudflare shows the CNAME target `berger-booking.pages.dev`.
+- [X] At the existing DNS host (partnerconsole.net) add **one** record: `CNAME  bookings  →  berger-booking.pages.dev`. Change nothing else; WordPress and email stay where they are.
+- [X] Check for CAA records on `bergerhouseboats.com.au`. If there are any, add CAA records allowing Cloudflare's certificate authorities (`letsencrypt.org`, `pki.goog`, `ssl.com`).
 - [ ] Wait until the custom domain shows **Active** in Cloudflare (usually minutes, up to 24 hours).
 - [ ] Fallback if the DNS host can't add a CNAME: buy a separate domain, add it to Cloudflare (free plan), use `bookings.<that domain>` instead, and update `PUBLIC_BOOKING_BASE_URL` and `CORS_ALLOWED_ORIGIN` in `appsettings.Production.json`, the CSP in `web/booking/public/_headers` (frame-ancestors stay the WordPress site), the `BOOKING_ORIGIN` in `wordpress/book-now-block.html`, and the Turnstile hostname.
 
@@ -130,7 +130,7 @@ In GitHub → Settings → Environments create `dev` and `production` (productio
   - booking: `API_ORIGIN` = public-api Cloud Run URL; `EDGE_PROXY_SECRET` (encrypted) = the `edge-proxy-secret-public` value.
   - admin: `API_ORIGIN` = admin-api Cloud Run URL; `EDGE_PROXY_SECRET` (encrypted) = the `edge-proxy-secret-admin` value.
 - [ ] The `_headers` files are deployed with the apps (booking: CSP allowing Stripe and Turnstile and framing only by the WordPress site; admin: no framing).
-- [ ] The admin app has **no custom domain**: it is served at `https://berger-admin.pages.dev`.
+- [X] The admin app has **no custom domain**: it is served at `https://berger-admin.pages.dev`.
 
 ### 5.2 Access (admin app only)
 - [X] Zero Trust → Settings → Authentication: add **Google Workspace** as a login method (domain `bergerhouseboats.com.au`).
