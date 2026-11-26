@@ -34,8 +34,12 @@ public sealed class BoatDocument : IVersionedDocument
     [FirestoreProperty("depositAmountCents")]
     public long? DepositAmountCents { get; set; }
 
-    [FirestoreProperty("imageUrl")]
-    public string? ImageUrl { get; set; }
+    /// <summary>The photos in staff order. Boats saved before v1.5 had a single <c>imageUrl</c> instead; it is ignored (the seed fills photos in, §13).</summary>
+    [FirestoreProperty("images")]
+    public List<BoatImageDocument> Images { get; set; } = [];
+
+    [FirestoreProperty("tags")]
+    public List<string> Tags { get; set; } = [];
 
     [FirestoreProperty("hasSpa")]
     public bool HasSpa { get; set; }
@@ -72,7 +76,8 @@ public sealed class BoatDocument : IVersionedDocument
         BeddingDescription = b.BeddingDescription,
         SecurityBondCents = FirestoreValues.Cents(b.SecurityBond),
         DepositAmountCents = FirestoreValues.Cents(b.DepositAmount),
-        ImageUrl = b.ImageUrl,
+        Images = b.Images.Select(BoatImageDocument.From).ToList(),
+        Tags = b.Tags.ToList(),
         HasSpa = b.HasSpa,
         IsPetFriendly = b.IsPetFriendly,
         IsActive = b.IsActive,
@@ -86,7 +91,7 @@ public sealed class BoatDocument : IVersionedDocument
     public Boat ToDomain(string id) => Boat.Rehydrate(
         new BoatId(id),
         new BoatDetails(Name, Slug, Enum.Parse<BoatType>(Type), Berth, AdultBeds, KidsBeds, BeddingDescription, FirestoreValues.Money(SecurityBondCents),
-            FirestoreValues.Money(DepositAmountCents), ImageUrl, HasSpa, IsPetFriendly, Rates.Select(r => r.ToDomain()).ToList(),
+            FirestoreValues.Money(DepositAmountCents), Images.Select(i => i.ToDomain()).ToList(), Tags.ToList(), HasSpa, IsPetFriendly, Rates.Select(r => r.ToDomain()).ToList(),
             AllowedAddonIds.Select(a => new AddonId(a)).ToList()),
         IsActive,
         FirestoreValues.Instant(CreatedDate),

@@ -11,7 +11,7 @@ namespace BergerHarbour.Application.Tests.Fakes;
 public static class AggregateCopies
 {
     public static Boat Copy(Boat b) => Boat.Rehydrate(b.Id, new BoatDetails(b.Name, b.Slug, b.Type, b.Berth, b.AdultBeds, b.KidsBeds, b.BeddingDescription,
-        b.SecurityBond, b.DepositAmount, b.ImageUrl, b.HasSpa, b.IsPetFriendly, b.Rates.ToList(), b.AllowedAddonIds.ToList()), b.IsActive, b.CreatedDate,
+        b.SecurityBond, b.DepositAmount, b.Images.ToList(), b.Tags.ToList(), b.HasSpa, b.IsPetFriendly, b.Rates.ToList(), b.AllowedAddonIds.ToList()), b.IsActive, b.CreatedDate,
         b.ModifiedDate, b.Version);
 
     public static Booking Copy(Booking b) => Booking.Rehydrate(new BookingState(b.Id, b.Reference, b.CreatedBy, b.IsStandby, b.Status, b.ActivatedAt,

@@ -1,10 +1,12 @@
-import type { KeyboardEvent } from 'react';
-import { formatMoney } from '@shared/utils/money';
-import { BoatImage } from '@/components/BoatImage/BoatImage';
 import type { CardBoat } from '../utils/availability';
+import { BoatCard, type BoatCardLayout } from './BoatCard';
+import type { MoreDetailsState } from './BoatDetails';
 import styles from './BoatCards.module.css';
 
 export interface BoatCardsProps {
+  /** `compact` in the Booking details view; `detailed` in the Boats view and the small-screen expander (§6.1). */
+  layout: BoatCardLayout;
+  small: boolean;
   requested: CardBoat | null;
   /** The requested boat's grey reason, or null when it can be selected. */
   requestedReason: string | null;
@@ -12,56 +14,35 @@ export interface BoatCardsProps {
   emptyMessage: string | null;
   selectedSlug: string | null;
   prices: Record<string, number | null | undefined>;
+  /** The boats whose More details are open. */
+  openDetails: ReadonlySet<string>;
+  detailsFor: (slug: string) => MoreDetailsState;
   /** A card was clicked: it selects that boat, or deselects it when it was the selected one. */
   onToggle: (slug: string) => void;
+  onToggleDetails: (slug: string) => void;
 }
 
 /**
- * The boat cards: toggle buttons, at most one pressed (§11.2). Clicking the selected card again deselects it. The requested
- * boat is always first.
+ * The boat cards (§11.2): at most one is selected, and clicking the selected card again deselects it. The requested boat is
+ * always first, then "Other boats available".
  */
-export function BoatCards({ requested, requestedReason, others, emptyMessage, selectedSlug, prices, onToggle }: BoatCardsProps) {
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>, slug: string) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onToggle(slug);
-    }
-  };
-
-  const card = (boat: CardBoat, reason: string | null) => {
-    const selected = boat.slug === selectedSlug;
-    const price = prices[boat.slug];
-    return (
-      <div
-        key={boat.slug}
-        data-slug={boat.slug}
-        data-testid={`boat-${boat.slug}`}
-        role="button"
-        aria-pressed={selected}
-        aria-disabled={reason ? true : undefined}
-        aria-label={boat.name}
-        aria-describedby={reason ? `${boat.slug}-reason` : undefined}
-        tabIndex={reason ? -1 : 0}
-        className={[styles.card, selected ? styles.selected : '', reason ? styles.greyed : ''].join(' ')}
-        onClick={() => !reason && onToggle(boat.slug)}
-        onKeyDown={(e) => !reason && onKeyDown(e, boat.slug)}
-      >
-        <BoatImage src={boat.imageUrl} alt="" className={styles.image} />
-        <div className={styles.info}>
-          <div className={styles.name}>{boat.name}</div>
-          <div className={styles.berth}>{boat.berth} berth</div>
-          {(boat.hasSpa || boat.isPetFriendly) && (
-            <div className={styles.badges}>
-              {boat.hasSpa && <span className={styles.badge}>Spa</span>}
-              {boat.isPetFriendly && <span className={styles.badge}>Pet friendly</span>}
-            </div>
-          )}
-          {price !== undefined && price !== null && !reason && <div className={styles.price}>{formatMoney(price)}</div>}
-          {reason && <div className={styles.reason} id={`${boat.slug}-reason`}>{reason}</div>}
-        </div>
-      </div>
-    );
-  };
+export function BoatCards(props: BoatCardsProps) {
+  const { requested, requestedReason, others, emptyMessage, selectedSlug, prices } = props;
+  const card = (boat: CardBoat, reason: string | null) => (
+    <BoatCard
+      key={boat.slug}
+      boat={boat}
+      layout={props.layout}
+      small={props.small}
+      selected={boat.slug === selectedSlug}
+      reason={reason}
+      price={prices[boat.slug]}
+      detailsOpen={props.openDetails.has(boat.slug)}
+      details={props.detailsFor(boat.slug)}
+      onToggle={() => props.onToggle(boat.slug)}
+      onToggleDetails={() => props.onToggleDetails(boat.slug)}
+    />
+  );
 
   return (
     <div className={styles.cards} role="group" aria-label="Boats">

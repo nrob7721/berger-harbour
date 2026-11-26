@@ -65,7 +65,7 @@ public class PricingServiceTests
             new(s.Id, PeriodType.Weekend, w), new(s.Id, PeriodType.Midweek, m), new(s.Id, PeriodType.LongWeekend, lw), new(s.Id, PeriodType.Week, wk),
         ];
         return Boat.Create(new BoatId("pacific-blue"), new BoatDetails("Pacific Blue", "pacific-blue", BoatType.House, 12, 6, 2, "4 queen bedrooms", 2000,
-            null, null, true, false, [.. Rates(Normal, 4060, 4060, 4620, 5850), .. Rates(OffPeak, 3570, 3570, 4050, 5250), .. Rates(Peak, 4500, 4500, 5100, 6200)],
+            null, [], [], true, false, [.. Rates(Normal, 4060, 4060, 4620, 5850), .. Rates(OffPeak, 3570, 3570, 4050, 5250), .. Rates(Peak, 4500, 4500, 5100, 6200)],
             []), DateTimeOffset.UnixEpoch);
     }
 }

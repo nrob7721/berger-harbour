@@ -1,0 +1,80 @@
+.pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-muted);
+  cursor: default;
+}
+
+.failed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.failed p {
+  margin: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bedding {
+  margin: 0;
+  font-size: 14px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.prices {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.prices th,
+.prices td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--c-border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.prices th:first-child {
+  text-align: left;
+  white-space: normal;
+}
+
+.prices thead th {
+  font-weight: 700;
+  color: var(--c-text-muted);
+}
+
+.season {
+  display: block;
+  font-weight: 700;
+}
+
+.dates {
+  display: block;
+  font-weight: 400;
+  color: var(--c-text-muted);
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--c-text-muted);
+}

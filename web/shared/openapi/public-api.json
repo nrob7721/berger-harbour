@@ -153,6 +153,35 @@
         }
       }
     },
+    "/api/boat-details": {
+      "get": {
+        "tags": [
+          "BoatDetails"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetDetailsResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetDetailsResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetDetailsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/boats/{slug}/quote": {
       "post": {
         "tags": [
@@ -672,6 +701,44 @@
           }
         }
       },
+      "BoatImageDto": {
+        "required": [
+          "url",
+          "description"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "BoatRateDto": {
+        "required": [
+          "seasonId",
+          "periodType",
+          "price"
+        ],
+        "type": "object",
+        "properties": {
+          "seasonId": {
+            "type": "string"
+          },
+          "periodType": {
+            "$ref": "#/components/schemas/PeriodType"
+          },
+          "price": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "BookingStatus": {
         "enum": [
           "PendingPayment",
@@ -968,6 +1035,69 @@
           }
         }
       },
+      "FleetBoatDetails": {
+        "required": [
+          "slug",
+          "images",
+          "beddingDescription",
+          "securityBond",
+          "depositAmount",
+          "rates"
+        ],
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatImageDto"
+            }
+          },
+          "beddingDescription": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "securityBond": {
+            "type": "number",
+            "format": "double"
+          },
+          "depositAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "rates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatRateDto"
+            }
+          }
+        }
+      },
+      "FleetDetailsResponse": {
+        "required": [
+          "boats",
+          "seasons"
+        ],
+        "type": "object",
+        "properties": {
+          "boats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FleetBoatDetails"
+            }
+          },
+          "seasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicSeason"
+            }
+          }
+        }
+      },
       "MilestoneKind": {
         "enum": [
           "Deposit",
@@ -1165,7 +1295,9 @@
         "required": [
           "slug",
           "name",
-          "imageUrl",
+          "thumbnailUrl",
+          "images",
+          "tags",
           "berth",
           "hasSpa",
           "isPetFriendly",
@@ -1174,6 +1306,7 @@
           "beddingDescription",
           "securityBond",
           "depositAmount",
+          "rates",
           "isActive",
           "addons"
         ],
@@ -1185,11 +1318,20 @@
           "name": {
             "type": "string"
           },
-          "imageUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "thumbnailUrl": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatImageDto"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "berth": {
             "type": "integer",
@@ -1222,6 +1364,12 @@
           "depositAmount": {
             "type": "number",
             "format": "double"
+          },
+          "rates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatRateDto"
+            }
           },
           "isActive": {
             "type": "boolean"
@@ -1256,10 +1404,11 @@
         "required": [
           "slug",
           "name",
-          "imageUrl",
+          "thumbnailUrl",
           "berth",
           "hasSpa",
-          "isPetFriendly"
+          "isPetFriendly",
+          "tags"
         ],
         "type": "object",
         "properties": {
@@ -1269,11 +1418,8 @@
           "name": {
             "type": "string"
           },
-          "imageUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "thumbnailUrl": {
+            "type": "string"
           },
           "berth": {
             "type": "integer",
@@ -1284,6 +1430,12 @@
           },
           "isPetFriendly": {
             "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1324,6 +1476,28 @@
           },
           "hireTermsUrl": {
             "type": "string"
+          }
+        }
+      },
+      "PublicSeason": {
+        "required": [
+          "id",
+          "name",
+          "ranges"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ranges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeasonRangeDto"
+            }
           }
         }
       },
@@ -1533,6 +1707,21 @@
           }
         }
       },
+      "SeasonRangeDto": {
+        "required": [
+          "start",
+          "end"
+        ],
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          }
+        }
+      },
       "StayRangeDto": {
         "required": [
           "start",
@@ -1618,6 +1807,9 @@
     },
     {
       "name": "Availability"
+    },
+    {
+      "name": "BoatDetails"
     },
     {
       "name": "BoatQuotes"

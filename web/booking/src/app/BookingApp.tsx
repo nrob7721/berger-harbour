@@ -8,7 +8,7 @@ import { DatesAndBoatStep } from '@/features/dates-and-boat/components/DatesAndB
 import { PayButton, PaymentStep } from '@/features/deposit-checkout/components/DepositCheckout';
 import { DetailsStep } from '@/features/details/components/DetailsStep';
 import { SummaryStep } from '@/features/summary/components/SummaryStep';
-import { useBoatDetails, useFleet } from '@/hooks/useFleet';
+import { useBoatDetails, useFleet, useFleetDetails } from '@/hooks/useFleet';
 import { BookingProvider, initialState, useBooking, type BookingState } from '@/lib/booking-state';
 import { resumeProgress } from '@/lib/resume-progress';
 import { clearSavedProgress, readSavedProgress } from '@/lib/saved-progress';
@@ -53,6 +53,8 @@ function Flow({ fleet, requested, requestedSlug, returnedBooking }: {
   returnedBooking: BookingAppProps['returnedBooking'];
 }) {
   const [initial, setInitial] = useState<BookingState | null>(() => (returnedBooking ? fresh() : null));
+  // The boat cards' More details come in the background once the boats have loaded; nothing waits for them (§8.1).
+  useFleetDetails(!returnedBooking);
 
   function fresh(): BookingState {
     const activeRequested = requested?.isActive ? requested.slug : null;

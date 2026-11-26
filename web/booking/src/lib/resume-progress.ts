@@ -46,7 +46,7 @@ export async function resumeProgress(saved: SavedProgress, fleet: BoatSummary[])
   if (!details && STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf('details')) step = 'details';
 
   // 3. A saved period is checked again against the online rules and the selected boat's availability.
-  if (saved.period) {
+  if (saved.period && saved.typeOfStay) {
     try {
       const result = await api.periodAvailability(periodTypeOf(saved.typeOfStay), saved.period.start);
       const selected = saved.selectedSlug ? result.boats.find((b) => b.slug === saved.selectedSlug) : undefined;

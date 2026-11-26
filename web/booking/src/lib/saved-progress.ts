@@ -4,12 +4,14 @@ import type { BookingState, RoomingAcceptance, Step } from './booking-state';
 /**
  * Saved progress (§11.2, decision 37): the step state kept in `localStorage` so a refresh or a later visit resumes the booking.
  * It never holds the first name, last name, email or mobile (they are read back from the draft), nor the terms tick. Version 2
- * (v1.4) keeps the type of stay; an older record is discarded.
+ * (v1.4) keeps the type of stay, which is null until one is picked (v1.5); an older record is discarded. A record with a period but
+ * no type of stay is unreadable.
  */
 export interface SavedProgress {
   version: 2;
   requestedSlug: string | null;
-  typeOfStay: TypeOfStay;
+  /** Null before the customer has picked one (v1.5, decision 44). */
+  typeOfStay: TypeOfStay | null;
   period: Stay | null;
   adults: number;
   children: number;
@@ -50,7 +52,7 @@ function isSavedProgress(v: unknown): v is SavedProgress {
   const rooming = p.rooming as Record<string, unknown> | null;
   return p.version === 2
     && isNullableText(p.requestedSlug) && isNullableText(p.selectedSlug) && isNullableText(p.draftId)
-    && TYPES_OF_STAY.includes(p.typeOfStay as TypeOfStay)
+    && (p.typeOfStay === null ? period === null : TYPES_OF_STAY.includes(p.typeOfStay as TypeOfStay))
     && (period === null || (typeof period === 'object' && isText(period.start) && isText(period.end)))
     && isCount(p.adults) && isCount(p.children) && typeof p.spa === 'boolean' && typeof p.pets === 'boolean'
     && (rooming === null || (typeof rooming === 'object' && isText(rooming.slug) && isCount(rooming.adults) && isCount(rooming.children)

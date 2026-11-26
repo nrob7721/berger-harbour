@@ -14,7 +14,7 @@ public class StaffBookingWarningsTests
         AddonDefinition.Create(new AddonId("car-parking"), "Car parking", null, true, AddonPrices.None, true, 11, "car spots", 0);
 
     private static readonly Boat Boat = Boat.Create(new BoatId("pacific-blue"), new BoatDetails("Pacific Blue", "pacific-blue", BoatType.House, 12, 6, 2,
-        "4 queens", 2000, null, null, false, false, [], []), Start);
+        "4 queens", 2000, null, [], [], false, false, [], []), Start);
 
     private readonly StaffBookingWarnings warnings = new(new AddonCapacityService());
 

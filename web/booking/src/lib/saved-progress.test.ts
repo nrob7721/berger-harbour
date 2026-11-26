@@ -3,7 +3,7 @@ import { initialState } from './booking-state';
 import { clearSavedProgress, readSavedProgress, SAVED_PROGRESS_KEY, toSavedProgress, writeSavedProgress } from './saved-progress';
 
 const state = initialState('pacific-blue', {
-  step: 'payment', furthestStep: 'payment', period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue',
+  typeOfStay: 'Midweek', step: 'payment', furthestStep: 'payment', period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue',
   details: { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', mobile: '+61412345678' }, draftId: 'draft-1', addons: { ice: 2 },
   rooming: { slug: 'pacific-blue', adults: 8, children: 2, text: 'Some guests will share.' },
   hold: { bookingId: 'b-1', clientSecret: 'cs_1_secret', sessionId: 'cs_1', checkoutExpiresAt: '2026-10-01T00:30:00Z' },
@@ -47,6 +47,15 @@ describe('saved progress', () => {
 
   it('keeps the type of stay', () => {
     expect(toSavedProgress({ ...state, typeOfStay: 'WeekMon' })).toMatchObject({ version: 2, typeOfStay: 'WeekMon' });
+  });
+
+  it('keeps no type of stay before one is chosen, but never a period without one', () => {
+    const fresh = initialState(null);
+    expect(fresh.typeOfStay).toBeNull();
+    writeSavedProgress(fresh);
+    expect(readSavedProgress()).toMatchObject({ version: 2, typeOfStay: null, period: null });
+    window.localStorage.setItem(SAVED_PROGRESS_KEY, JSON.stringify({ ...toSavedProgress(state), typeOfStay: null }));
+    expect(readSavedProgress()).toBeNull();
   });
 
   it('works without browser storage', () => {

@@ -95,6 +95,10 @@
   align-items: center;
 }
 
+.barDivider {
+  border-top: 1px solid var(--c-border);
+}
+
 .totalLabel {
   font-weight: 700;
 }

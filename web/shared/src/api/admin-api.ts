@@ -1412,7 +1412,9 @@ export interface components {
             depositAmount: null | number;
             /** Format: double */
             effectiveDepositAmount: number;
-            imageUrl: null | string;
+            thumbnailUrl: null | string;
+            images: components["schemas"]["BoatImageDto"][];
+            tags: string[];
             hasSpa: boolean;
             isPetFriendly: boolean;
             isActive: boolean;
@@ -1522,6 +1524,10 @@ export interface components {
             usesExtendedPaymentSchedule: boolean;
             /** Format: int32 */
             version: number;
+        };
+        BoatImageDto: {
+            url: string;
+            description: null | string;
         };
         BoatRateDto: {
             seasonId: string;
@@ -1706,7 +1712,8 @@ export interface components {
             securityBond: number;
             /** Format: double */
             depositAmount: null | number;
-            imageUrl: null | string;
+            images: null | components["schemas"]["BoatImageDto"][];
+            tags: null | string[];
             hasSpa: boolean;
             isPetFriendly: boolean;
             isActive: boolean;

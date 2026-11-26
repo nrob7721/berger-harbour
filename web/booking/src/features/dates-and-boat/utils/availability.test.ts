@@ -50,12 +50,13 @@ describe('per-period greying', () => {
 });
 
 describe('check-in line and selected text', () => {
-  it('labels the zone of the selected dates, splitting across a daylight-saving change', () => {
+  it('labels the zone of the check-out date, also for a stay that crosses a daylight-saving change', () => {
     expect(checkInOutLine({ start: '2027-01-15', end: '2027-01-18' }, '2027-01-01')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)');
     expect(checkInOutLine({ start: '2027-07-05', end: '2027-07-09' }, '2027-07-01')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEST/NSW)');
-    expect(checkInOutLine({ start: '2027-04-02', end: '2027-04-05' }, '2027-04-01')).toBe(
-      'Check-in 11am – 2pm (AEDT/NSW) · Check-out from 8am (AEST/NSW)',
-    );
+    // Daylight saving ends on Sun 04/04/2027: one label at the end, the check-out date's.
+    expect(checkInOutLine({ start: '2027-04-02', end: '2027-04-09' }, '2027-04-01')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEST/NSW)');
+    expect(checkInOutLine({ start: '2026-03-27', end: '2026-04-03' }, '2026-03-01')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)');
+    expect(checkInOutLine({ start: '2026-10-02', end: '2026-10-09' }, '2026-10-01')).toBe('Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)');
   });
 
   it('uses the visible month when nothing is selected', () => {
@@ -69,7 +70,7 @@ describe('check-in line and selected text', () => {
 });
 
 describe("requested boat's reason", () => {
-  const boat = { slug: 'a', name: 'A', imageUrl: null, berth: 8, hasSpa: false, isPetFriendly: false, isActive: true };
+  const boat = { slug: 'a', name: 'A', thumbnailUrl: '', berth: 8, hasSpa: false, isPetFriendly: false, tags: [], isActive: true };
   const f = { adults: 2, children: 0, spa: false, pets: false };
   const unavailable: PeriodAvailability = { periodType: 'Midweek', startDate: '2026-10-12', endDate: '2026-10-16', boats: [{ slug: 'a', available: false, hirePrice: 1 }] };
 

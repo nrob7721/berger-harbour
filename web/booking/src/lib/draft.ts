@@ -6,7 +6,7 @@ export function draftBody(state: BookingState, lastStepReached: DraftStep): Upda
   if (!state.details || !state.period || !state.selectedSlug) return null;
   return {
     slug: state.selectedSlug,
-    periodType: periodTypeOfState(state),
+    periodType: periodTypeOfState(state)!,
     startDate: state.period.start,
     numberOfAdults: state.adults,
     numberOfChildren: state.children,

@@ -22,7 +22,7 @@ export function FleetPage() {
         {boats.data?.map((b) => (
           <li key={b.id}>
             <button type="button" className={styles.card} onClick={() => setOpen({ boat: b })} aria-label={`Edit ${b.name}`}>
-              <BoatThumb src={b.imageUrl} alt={b.name} className={styles.image} />
+              <BoatThumb src={b.thumbnailUrl} alt={b.name} className={styles.image} />
               <div className={styles.body}>
                 <div className={styles.titleRow}>
                   <span className={styles.name}>{b.name}</span>

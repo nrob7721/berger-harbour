@@ -16,7 +16,7 @@ export function PayButton({ amount, termsAccepted }: { amount: number; termsAcce
   const [error, setError] = useState<string | null>(null);
   const create = useMutation({
     mutationFn: () => api.createBooking({
-      draftId: state.draftId!, slug: state.selectedSlug!, periodType: periodTypeOfState(state), startDate: state.period!.start,
+      draftId: state.draftId!, slug: state.selectedSlug!, periodType: periodTypeOfState(state)!, startDate: state.period!.start,
       numberOfAdults: state.adults, numberOfChildren: state.children, firstName: state.details!.firstName, lastName: state.details!.lastName,
       email: state.details!.email, mobile: state.details!.mobile,
       addons: Object.entries(state.addons).map(([addonId, quantity]) => ({ addonId, quantity })),

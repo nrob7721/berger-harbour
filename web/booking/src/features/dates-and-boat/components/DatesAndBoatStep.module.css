@@ -8,11 +8,27 @@
   font-size: 22px;
 }
 
+/*
+ * The two views (decision 43). Booking details: the controls take most of the width and the compact cards a narrow column.
+ * Boats: the left column narrows to about 360px and the detailed cards take the rest. The columns resize over about 300ms, and
+ * the light brand border on the active column moves with its edge.
+ */
 .columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
-  gap: var(--space-6);
+  gap: var(--space-4);
   align-items: start;
+  transition: grid-template-columns 0.3s ease;
+}
+
+.columns.boatsView {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .columns {
+    transition: none;
+  }
 }
 
 .left {
@@ -27,6 +43,36 @@
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.activeColumn,
+.inactiveColumn {
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  transition: background 0.15s, box-shadow 0.3s ease;
+}
+
+.activeColumn {
+  box-shadow: inset 0 0 0 2px var(--c-brand-tint-strong);
+}
+
+.activeColumn:focus {
+  outline: none;
+}
+
+/* The inactive column: a light grey shade that darkens on hover; a click on its background switches view. */
+.inactiveColumn {
+  background: rgb(30 40 50 / 0.045);
+  cursor: pointer;
+}
+
+.inactiveColumn:hover {
+  background: rgb(30 40 50 / 0.085);
+}
+
+.inactiveColumn:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
 }
 
 @media (max-width: 768px) {
@@ -60,10 +106,15 @@
   gap: 8px;
 }
 
+/* On a small screen, and in the Boats view's narrow column (set by the view, not a width), the boxes wrap into a 2×2 grid. */
 @media (max-width: 768px) {
   .periods {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.boatsView .periods {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* One low box per type of stay, so the calendar stays in view (§11.2). */

@@ -42,6 +42,7 @@ public static class ApplicationServiceCollectionExtensions
 
         // Application services, one per controller.
         services.AddScoped<BoatCatalogueService>();
+        services.AddScoped<BoatDetailsService>();
         services.AddScoped<OnlineQuoteService>();
         services.AddScoped<AvailabilityService>();
         services.AddScoped<AddonAvailabilityService>();

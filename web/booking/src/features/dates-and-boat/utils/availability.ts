@@ -94,14 +94,12 @@ export function selectionMark(day: IsoDate, period: Stay | null): SelectionMark 
   return null;
 }
 
-/** "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)", with a label on each part when the stay crosses a daylight-saving change. */
+/**
+ * "Check-in 11am – 2pm · Check-out from 8am (AEDT/NSW)": one zone label, for the check-out date when a period is selected, or
+ * for the visible month (its 15th) when nothing is. A stay that crosses a daylight-saving change takes its check-out date's label.
+ */
 export function checkInOutLine(period: Stay | null, visibleMonth: IsoDate): string {
-  if (!period) return `Check-in 11am – 2pm · Check-out from 8am (${zoneLabel(addDays(visibleMonth, 14))})`;
-  const inZone = zoneLabel(period.start);
-  const outZone = zoneLabel(period.end);
-  return inZone === outZone
-    ? `Check-in 11am – 2pm · Check-out from 8am (${inZone})`
-    : `Check-in 11am – 2pm (${inZone}) · Check-out from 8am (${outZone})`;
+  return `Check-in 11am – 2pm · Check-out from 8am (${zoneLabel(period ? period.end : addDays(visibleMonth, 14))})`;
 }
 
 /** "Selected: check-in Fri 16/10/2026, check-out Fri 23/10/2026." */

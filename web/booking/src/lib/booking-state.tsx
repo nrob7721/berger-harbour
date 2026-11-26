@@ -42,7 +42,8 @@ export interface BookingState {
   /** The furthest step reached; a resumed booking opens it (at most the Summary). */
   furthestStep: Step;
   requestedSlug: string | null;
-  typeOfStay: TypeOfStay;
+  /** None until the customer picks one (decision 44); once picked it can be changed but not cleared. */
+  typeOfStay: TypeOfStay | null;
   period: Stay | null;
   adults: number;
   children: number;
@@ -82,8 +83,12 @@ export interface BookingState {
   showErrors: boolean;
 }
 
-/** The period type the booking is for (both Week options are `Week`). */
-export const periodTypeOfState = (state: Pick<BookingState, 'typeOfStay'>): OnlinePeriodType => periodTypeOf(state.typeOfStay);
+/**
+ * The period type the booking is for (both Week options are `Week`), or null before a type of stay is chosen. A selected period
+ * always has one.
+ */
+export const periodTypeOfState = (state: Pick<BookingState, 'typeOfStay'>): OnlinePeriodType | null =>
+  state.typeOfStay ? periodTypeOf(state.typeOfStay) : null;
 
 export type BookingAction =
   | { type: 'typeOfStay'; typeOfStay: TypeOfStay }
@@ -108,7 +113,7 @@ export type BookingAction =
 
 export function initialState(requestedSlug: string | null, overrides: Partial<BookingState> = {}): BookingState {
   return {
-    step: 'dates', furthestStep: 'dates', requestedSlug, typeOfStay: 'Midweek', period: null, adults: 1, children: 0, spa: false, pets: false,
+    step: 'dates', furthestStep: 'dates', requestedSlug, typeOfStay: null, period: null, adults: 1, children: 0, spa: false, pets: false,
     selectedSlug: null, deselectedSlug: null, rooming: null, details: null, addons: {}, draftId: null, hold: null,
     completed: null, reachedPayment: false, notice: null, jumpTarget: null, showErrors: false, ...overrides,
   };

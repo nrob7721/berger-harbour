@@ -4,7 +4,9 @@ namespace BergerHarbour.Application.Boats.Dtos;
 public sealed record PublicBoatDetails(
     string Slug,
     string Name,
-    string? ImageUrl,
+    string ThumbnailUrl,
+    IReadOnlyList<BoatImageDto> Images,
+    IReadOnlyList<string> Tags,
     int Berth,
     bool HasSpa,
     bool IsPetFriendly,
@@ -13,5 +15,6 @@ public sealed record PublicBoatDetails(
     string? BeddingDescription,
     decimal SecurityBond,
     decimal DepositAmount,
+    IReadOnlyList<BoatRateDto> Rates,
     bool IsActive,
     IReadOnlyList<PublicAddon> Addons);

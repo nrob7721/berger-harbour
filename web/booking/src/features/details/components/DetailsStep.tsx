@@ -48,7 +48,7 @@ export function DetailsStep({ onContinued }: { onContinued: (changes: Partial<Bo
         return state.draftId;
       }
       const { draftId } = await api.createDraft({
-        slug: state.selectedSlug!, periodType: periodTypeOfState(state), startDate: state.period!.start, numberOfAdults: state.adults,
+        slug: state.selectedSlug!, periodType: periodTypeOfState(state)!, startDate: state.period!.start, numberOfAdults: state.adults,
         numberOfChildren: state.children, ...details, turnstileToken: token,
       });
       return draftId;

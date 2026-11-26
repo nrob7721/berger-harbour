@@ -26,7 +26,7 @@ export function SummaryStep({ hireTermsUrl, renderPay }: SummaryStepProps) {
   const quote = useQuery({
     queryKey: ['quote', state.selectedSlug, state.typeOfStay, state.period?.start, state.adults, state.children, JSON.stringify(addons)],
     queryFn: () => api.quote(state.selectedSlug!, {
-      periodType: periodTypeOfState(state), startDate: state.period!.start, numberOfAdults: state.adults, numberOfChildren: state.children, addons,
+      periodType: periodTypeOfState(state)!, startDate: state.period!.start, numberOfAdults: state.adults, numberOfChildren: state.children, addons,
     }),
     staleTime: 0,
     retry: false,

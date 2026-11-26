@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
@@ -6,7 +6,7 @@ import { addDays, addMonths, monthGrid, startOfMonth, type IsoDate } from '@shar
 import { formatMoney } from '@shared/utils/money';
 import { TYPE_OF_STAY_LABELS, TYPES_OF_STAY, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import { Notice } from '@/components/Notice/Notice';
-import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
+import { useBoatDetails, useFleetDetails, usePeriodAvailability } from '@/hooks/useFleet';
 import { useSmallScreen } from '@/hooks/useSmallScreen';
 import { keys } from '@/lib/api';
 import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
@@ -18,6 +18,7 @@ import {
 } from '../utils/availability';
 import { CHOOSE_DATES_AND_BOAT, datesContinue } from '../utils/continue';
 import { BoatBar } from './BoatBar';
+import type { MoreDetailsState } from './BoatDetails';
 import { BoatCards } from './BoatCards';
 import { Calendar } from './Calendar';
 import styles from './DatesAndBoatStep.module.css';
@@ -29,6 +30,11 @@ export interface DatesAndBoatStepProps {
   onContinue: () => void;
 }
 
+/** The desktop layout of the step (decision 43). Local to the step: it is never saved and opens as `details` every time. */
+type View = 'details' | 'boats';
+
+/** A click on one of these in the inactive column does its job without switching view (§11.2). */
+const COLUMN_CONTROLS = 'button, a, input, select, textarea, label, [data-boat-card]';
 
 export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }: DatesAndBoatStepProps) {
   const { state, dispatch } = useBooking();
@@ -41,6 +47,11 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const [enquire, setEnquire] = useState<string | null>(null);
   const [rooming, setRooming] = useState<string | null>(null);
   const [continueError, setContinueError] = useState<string | null>(null);
+  const [view, setView] = useState<View>('details');
+  /** The column that switched view from the keyboard keeps focus, out of the tab order, until it loses it. */
+  const [focusedColumn, setFocusedColumn] = useState<View | null>(null);
+  const [openDetails, setOpenDetails] = useState<ReadonlySet<string>>(new Set());
+  const fleetDetails = useFleetDetails();
 
   // Coming back after the Payment step (or a 409) fetches availability again.
   useEffect(() => {
@@ -67,8 +78,8 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   }, [state.selectedSlug, state.adults, state.children, state.spa, state.pets, periodResult.data, fleet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const requested: CardBoat | null = requestedBoat
-    ? { slug: requestedBoat.slug, name: requestedBoat.name, imageUrl: requestedBoat.imageUrl, berth: requestedBoat.berth,
-        hasSpa: requestedBoat.hasSpa, isPetFriendly: requestedBoat.isPetFriendly, isActive: requestedBoat.isActive }
+    ? { slug: requestedBoat.slug, name: requestedBoat.name, thumbnailUrl: requestedBoat.thumbnailUrl, berth: requestedBoat.berth,
+        hasSpa: requestedBoat.hasSpa, isPetFriendly: requestedBoat.isPetFriendly, tags: requestedBoat.tags, isActive: requestedBoat.isActive }
     : null;
   const requestedReason = requested ? requestedBoatReason(requested, filters, periodResult.data) : null;
   const freeFor = (slug: string) => periodResult.data?.boats.find((b) => b.slug === slug)?.available ?? false;
@@ -84,7 +95,8 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const prices = Object.fromEntries((periodResult.data?.boats ?? []).map((b) => [b.slug, b.hirePrice]));
   const selectedBoat = fleet.find((b) => b.slug === state.selectedSlug) ?? null;
   const hirePrice = state.selectedSlug && periodResult.data ? prices[state.selectedSlug] : undefined;
-  const rate = hirePrice !== undefined && hirePrice !== null && state.period ? formatMoney(hirePrice) : 'Select dates and a boat';
+  // Until both are chosen the rate says what is missing (§11.2).
+  const rate = !state.period ? 'Select dates' : !state.selectedSlug ? 'Select a boat' : hirePrice !== undefined && hirePrice !== null ? formatMoney(hirePrice) : '';
   const continueDisabled = !state.period || !state.selectedSlug || !selectedDetails.data;
 
   // The small-screen bar's boat with no selection: the boat deselected because it became ineligible, else a greyed requested
@@ -136,9 +148,63 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : 'No boat selected.']
     .filter(Boolean).join(' ');
   const deselect = () => dispatch({ type: 'selectBoat', slug: null });
+
+  /** A card's More details: from `GET /api/boat-details`, or the boat's own data for an inactive requested boat (§11.2). */
+  const detailsFor = (slug: string): MoreDetailsState => {
+    if (fleetDetails.isError) return { status: 'error', retry: () => void fleetDetails.refetch() };
+    if (!fleetDetails.data) return { status: 'loading' };
+    const own = requestedBoat && !requestedBoat.isActive && requestedBoat.slug === slug ? requestedBoat : null;
+    const details = own ?? fleetDetails.data.boats.find((b) => b.slug === slug);
+    return details ? { status: 'ready', details, seasons: fleetDetails.data.seasons } : { status: 'loading' };
+  };
+  const toggleDetails = (slug: string) =>
+    setOpenDetails((open) => {
+      const next = new Set(open);
+      if (!next.delete(slug)) next.add(slug);
+      return next;
+    });
+
+  // Views (desktop and the modal, decision 43): a click on the inactive column's background, or Enter/Space on it, switches.
+  const switchView = (to: View) => {
+    setView(to);
+    if (to === 'details') setOpenDetails(new Set());
+  };
+  const boatsView = !small && view === 'boats';
+  const columnProps = (column: View, className: string) => {
+    if (small) return { className };
+    if (view === column) {
+      return {
+        className: `${className} ${styles.activeColumn}`,
+        tabIndex: focusedColumn === column ? -1 : undefined,
+        onBlur: () => setFocusedColumn(null),
+      };
+    }
+    return {
+      className: `${className} ${styles.inactiveColumn}`,
+      role: 'group',
+      tabIndex: 0,
+      'aria-label': column === 'boats' ? 'Show boat details' : 'Show booking details',
+      'data-testid': `inactive-${column}`,
+      onClick: (e: MouseEvent<HTMLDivElement>) => {
+        if (!(e.target as HTMLElement).closest(COLUMN_CONTROLS)) switchView(column);
+      },
+      onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        setFocusedColumn(column);
+        switchView(column);
+      },
+    };
+  };
+
   /** The boat cards, in the right column or the boat expander. `picked` runs when a card selects a boat (not on a deselect). */
   const boatCards = (picked?: () => void) => (
     <BoatCards
+      layout={small || boatsView ? 'detailed' : 'compact'}
+      small={small}
+      openDetails={openDetails}
+      detailsFor={detailsFor}
+      onToggleDetails={toggleDetails}
       requested={requested}
       requestedReason={requestedReason}
       others={others}
@@ -171,8 +237,8 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
     <section className={styles.step} aria-labelledby="dates-heading">
       <h2 id="dates-heading" className={styles.heading}>Choose your dates and boat</h2>
       {state.notice && <Notice tone="warning">{state.notice}</Notice>}
-      <div className={styles.columns}>
-        <div className={styles.left}>
+      <div className={`${styles.columns} ${boatsView ? styles.boatsView : ''}`} data-testid="dates-columns" data-view={small ? undefined : view}>
+        <div {...columnProps('details', styles.left)}>
           <div className={styles.filters}>
             <h3 className={styles.subheading}>Guests and features</h3>
             <div className={styles.guestRow}>
@@ -256,7 +322,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
         </div>
 
         {!small && (
-          <div className={styles.right}>
+          <div {...columnProps('boats', styles.right)}>
             <h3 className={styles.label}>Boats</h3>
             {boatCards()}
           </div>

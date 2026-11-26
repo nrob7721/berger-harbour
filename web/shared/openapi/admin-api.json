@@ -1936,7 +1936,9 @@
           "securityBond",
           "depositAmount",
           "effectiveDepositAmount",
-          "imageUrl",
+          "thumbnailUrl",
+          "images",
+          "tags",
           "hasSpa",
           "isPetFriendly",
           "isActive",
@@ -1998,11 +2000,23 @@
             "type": "number",
             "format": "double"
           },
-          "imageUrl": {
+          "thumbnailUrl": {
             "type": [
               "null",
               "string"
             ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoatImageDto"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "hasSpa": {
             "type": "boolean"
@@ -2424,6 +2438,24 @@
           "version": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "BoatImageDto": {
+        "required": [
+          "url",
+          "description"
+        ],
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3119,7 +3151,8 @@
           "beddingDescription",
           "securityBond",
           "depositAmount",
-          "imageUrl",
+          "images",
+          "tags",
           "hasSpa",
           "isPetFriendly",
           "isActive",
@@ -3170,11 +3203,23 @@
             ],
             "format": "double"
           },
-          "imageUrl": {
+          "images": {
             "type": [
               "null",
-              "string"
-            ]
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/BoatImageDto"
+            }
+          },
+          "tags": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           },
           "hasSpa": {
             "type": "boolean"

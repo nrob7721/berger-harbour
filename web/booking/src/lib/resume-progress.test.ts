@@ -9,7 +9,7 @@ const jane = { firstName: 'Jane', lastName: 'Smith', email: 'jane@example.com', 
 function saved(overrides: Partial<SavedProgress> = {}): SavedProgress {
   return {
     ...toSavedProgress(initialState('pacific-blue', {
-      period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue', draftId: 'draft-1',
+      typeOfStay: 'Midweek', period: { start: '2026-10-12', end: '2026-10-16' }, adults: 2, selectedSlug: 'pacific-blue', draftId: 'draft-1',
       furthestStep: 'summary',
     })),
     ...overrides,
@@ -53,6 +53,13 @@ describe('resuming saved progress', () => {
 
   it('is discarded when the draft is gone', async () => {
     expect(await resumeProgress(saved(), boats)).toBeNull();
+  });
+
+  it('restores the saved type of stay, and none when none was chosen', async () => {
+    expect(await resumeProgress(saved({ typeOfStay: 'WeekMon', draftId: null, period: null, furthestStep: 'dates' }), boats))
+      .toMatchObject({ typeOfStay: 'WeekMon' });
+    expect(await resumeProgress(saved({ typeOfStay: null, draftId: null, period: null, selectedSlug: null, furthestStep: 'dates' }), boats))
+      .toMatchObject({ typeOfStay: null, step: 'dates' });
   });
 
   it('without a draft it goes no further than Your details', async () => {

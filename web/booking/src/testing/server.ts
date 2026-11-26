@@ -2,7 +2,7 @@ import { http, HttpResponse, delay } from 'msw';
 import { setupServer } from 'msw/node';
 import { staysOverlap } from '@shared/utils/periods';
 import { addDays } from '@shared/utils/dates';
-import type { BoatDetails, BoatSummary, FleetAvailability, PublicAddon } from '@/lib/types';
+import type { BoatDetails, BoatImageInfo, BoatRate, BoatSummary, FleetAvailability, FleetDetails, PublicAddon, PublicSeason } from '@/lib/types';
 
 // A small fleet in berth order. "Today" is Sat 01/08/2026 (AEST), so October 2026 onwards is bookable.
 export const settings = {
@@ -14,12 +14,38 @@ export const settings = {
   hireTermsUrl: 'https://bergerhouseboats.com.au/hire-information/hire-terms-and-procedures/',
 };
 
+const photo = (name: string, description: string | null = null): BoatImageInfo =>
+  ({ url: `https://bergerhouseboats.com.au/wp-content/uploads/${name}.jpg`, description });
+
+/** Each boat's photos; Runaway Bear has none. */
+export const photos: Record<string, BoatImageInfo[]> = {
+  kalinda: [photo('kalinda-1'), photo('kalinda-2', 'Kalinda kitchen')],
+  'pacific-blue': [photo('pb-1'), photo('pb-2'), photo('pb-3', 'Upper deck with a heated spa'), photo('pb-4', 'Kitchen')],
+  'misty-blue': [photo('mb-1')],
+  'runaway-bear': [],
+};
+
 export const boats: BoatSummary[] = [
-  { slug: 'kalinda', name: 'Kalinda', imageUrl: null, berth: 12, hasSpa: false, isPetFriendly: false },
-  { slug: 'pacific-blue', name: 'Pacific Blue', imageUrl: null, berth: 12, hasSpa: true, isPetFriendly: false },
-  { slug: 'misty-blue', name: 'Misty Blue', imageUrl: null, berth: 9, hasSpa: false, isPetFriendly: true },
-  { slug: 'runaway-bear', name: 'Runaway Bear', imageUrl: null, berth: 2, hasSpa: false, isPetFriendly: false },
+  { slug: 'kalinda', name: 'Kalinda', thumbnailUrl: photos.kalinda[0].url, berth: 12, hasSpa: false, isPetFriendly: false,
+    tags: ['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky'] },
+  { slug: 'pacific-blue', name: 'Pacific Blue', thumbnailUrl: photos['pacific-blue'][0].url, berth: 12, hasSpa: true, isPetFriendly: false,
+    tags: ['Sleeps 12', 'Heated spa'] },
+  { slug: 'misty-blue', name: 'Misty Blue', thumbnailUrl: photos['misty-blue'][0].url, berth: 9, hasSpa: false, isPetFriendly: true, tags: [] },
+  { slug: 'runaway-bear', name: 'Runaway Bear', thumbnailUrl: '', berth: 2, hasSpa: false, isPetFriendly: false, tags: ['Sleeps 2'] },
 ];
+
+export const seasons: PublicSeason[] = [
+  { id: 'normal', name: 'Normal', ranges: [] },
+  { id: 'off-peak', name: 'Off Peak', ranges: [{ start: '01-05', end: '31-08' }] },
+  { id: 'peak', name: 'Peak', ranges: [{ start: '01-12', end: '31-01' }] },
+];
+
+/** Every season × Midweek, Weekend, Week and Long weekend, except Peak Long weekend (shown as "—"). */
+export function rates(base: number): BoatRate[] {
+  return seasons.flatMap((s, i) => (['Midweek', 'Weekend', 'Week', 'LongWeekend'] as const)
+    .filter((t) => !(s.id === 'peak' && t === 'LongWeekend'))
+    .map((periodType, j) => ({ seasonId: s.id, periodType, price: base + i * 100 + j * 10 })));
+}
 
 export const prices: Record<string, number> = { kalinda: 2535, 'pacific-blue': 4060, 'misty-blue': 1500, 'runaway-bear': 880 };
 
@@ -31,10 +57,21 @@ export const addons: PublicAddon[] = [
 ];
 
 export function details(slug: string, overrides: Partial<BoatDetails> = {}): BoatDetails {
-  const b = boats.find((x) => x.slug === slug) ?? { slug, name: slug, imageUrl: null, berth: 10, hasSpa: false, isPetFriendly: false };
+  const b = boats.find((x) => x.slug === slug) ?? { slug, name: slug, thumbnailUrl: '', berth: 10, hasSpa: false, isPetFriendly: false, tags: [] };
   return {
-    ...b, adultBeds: Math.min(6, b.berth), kidsBeds: b.berth >= 8 ? 2 : 0, beddingDescription: '4 queens and bunks', securityBond: 2000,
-    depositAmount: 1000, isActive: true, addons, ...overrides,
+    ...b, images: photos[slug] ?? [], adultBeds: Math.min(6, b.berth), kidsBeds: b.berth >= 8 ? 2 : 0, beddingDescription: '4 queens and bunks',
+    securityBond: 2000, depositAmount: 1000, rates: rates(prices[slug] ?? 1000), isActive: true, addons, ...overrides,
+  };
+}
+
+/** `GET /api/boat-details` for the fleet above. */
+export function fleetDetails(): FleetDetails {
+  return {
+    boats: boats.map((b) => {
+      const d = details(b.slug);
+      return { slug: b.slug, images: d.images, beddingDescription: d.beddingDescription, securityBond: d.securityBond, depositAmount: d.depositAmount, rates: d.rates };
+    }),
+    seasons,
   };
 }
 
@@ -44,6 +81,9 @@ export const apiState = {
   unavailable: {} as Record<string, { start: string; end: string }[]>,
   enquireOnly: [] as { name: string; firstNight: string; lastNight: string }[],
   boatDetails: {} as Record<string, BoatDetails | null>,
+  /** How `GET /api/boat-details` answers: at once, after `fleetDetailsDelay` ms, or with a 500. */
+  fleetDetails: 'ok' as 'ok' | 'error',
+  fleetDetailsDelay: 0,
   remaining: 6,
   /** Drafts readable with GET /api/booking-drafts/{id}; any other id is 404. */
   drafts: {} as Record<string, { firstName: string; lastName: string; email: string; mobile: string }>,
@@ -56,6 +96,8 @@ export function resetApi() {
   apiState.unavailable = {};
   apiState.enquireOnly = [];
   apiState.boatDetails = {};
+  apiState.fleetDetails = 'ok';
+  apiState.fleetDetailsDelay = 0;
   apiState.remaining = 6;
   apiState.drafts = {};
   apiState.releaseStatus = 204;
@@ -81,6 +123,13 @@ export const handlers = [
       return d ? HttpResponse.json(d) : HttpResponse.json({ title: 'Not found', status: 404 }, { status: 404 });
     }
     return HttpResponse.json(details(slug));
+  }),
+  http.get('*/api/boat-details', async ({ request }) => {
+    await record(request);
+    if (apiState.fleetDetailsDelay) await delay(apiState.fleetDetailsDelay);
+    return apiState.fleetDetails === 'ok'
+      ? HttpResponse.json(fleetDetails())
+      : HttpResponse.json({ title: 'Something went wrong.', status: 500 }, { status: 500 });
   }),
   http.get('*/api/availability', async ({ request }) => {
     await record(request);

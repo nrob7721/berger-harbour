@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { apiState, details, server } from '@/testing/server';
+import { addons, apiState, details, server } from '@/testing/server';
 import { currentState, filledState, renderWithBooking } from '@/testing/render';
 import { AddonsStepInApp } from '@/testing/steps';
 import { setSmallScreen } from '@/testing/screen-size';
@@ -92,5 +92,40 @@ describe('Add-ons step', () => {
     expect(bar.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
     await userEvent.setup().click(within(itemFor('Outboard motor')).getByRole('checkbox'));
     expect(bar.getByTestId('booking-price')).toHaveTextContent('$4,155.00');
+  });
+
+  it('separates the bar\'s Booking price from Back and Continue with a divider', async () => {
+    setSmallScreen(true);
+    renderWithBooking(<AddonsStepInApp />, filledState);
+    const bar = screen.getByTestId('step-action-bar');
+    const divider = await within(bar).findByTestId('booking-price-divider');
+    const price = within(bar).getByTestId('booking-price');
+    const back = within(bar).getByRole('button', { name: 'Back' });
+    expect(price.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('has no divider on a desktop screen', async () => {
+    renderWithBooking(<AddonsStepInApp />, filledState);
+    await screen.findByText('Ice');
+    expect(screen.queryByTestId('booking-price-divider')).not.toBeInTheDocument();
+  });
+
+  it('shows each price with its unit: "each" with a quantity, "per booking" without, with or without a capacity', async () => {
+    const fixed = { priceOnRequest: false, prices: { midweek: 40, weekend: 40, week: 60 }, capacityUnitLabel: null, description: null };
+    apiState.boatDetails['pacific-blue'] = details('pacific-blue', {
+      addons: [
+        ...addons,
+        { ...fixed, id: 'kayak', name: 'Kayak', quantityApplies: true, hasCapacity: true, capacityUnitLabel: 'kayaks' },
+        { ...fixed, id: 'pizza-oven', name: 'Pizza oven', quantityApplies: false, hasCapacity: true, capacityUnitLabel: 'ovens' },
+      ],
+    });
+    renderWithBooking(<AddonsStepInApp />, filledState);
+    await screen.findByText('Kayak');
+    expect(within(itemFor('Ice')).getByText('$5.00 each')).toBeInTheDocument();
+    expect(within(itemFor('Kayak')).getByText('$40.00 each')).toBeInTheDocument();
+    expect(within(itemFor('Outboard motor')).getByText('$95.00 per booking')).toBeInTheDocument();
+    expect(within(itemFor('Pizza oven')).getByText('$40.00 per booking')).toBeInTheDocument();
+    expect(within(itemFor('Welcome hamper')).getByText('Price on request')).toBeInTheDocument();
   });
 });

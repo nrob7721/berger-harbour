@@ -3,11 +3,11 @@ import styles from './BoatImage.module.css';
 
 /**
  * The boat's image from the WordPress site, or a neutral placeholder when it is empty or fails to load. An empty `alt` marks it
- * decorative (the boat's name is given elsewhere).
+ * decorative (the boat's name is given elsewhere). `eager` loads it straight away (the photo reel decides what to load itself).
  */
-export function BoatImage({ src, alt, className }: { src: string | null | undefined; alt: string; className?: string }) {
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
+export function BoatImage({ src, alt, className, eager }: { src: string | null | undefined; alt: string; className?: string; eager?: boolean }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!src || failed === src) {
     return (
       <div className={[styles.placeholder, className].filter(Boolean).join(' ')} role={alt ? 'img' : undefined}
         aria-label={alt ? `${alt} (no photo)` : undefined} aria-hidden={alt ? undefined : true}>
@@ -17,5 +17,6 @@ export function BoatImage({ src, alt, className }: { src: string | null | undefi
       </div>
     );
   }
-  return <img src={src} alt={alt} className={[styles.image, className].filter(Boolean).join(' ')} loading="lazy" onError={() => setFailed(true)} />;
+  return <img src={src} alt={alt} className={[styles.image, className].filter(Boolean).join(' ')} loading={eager ? 'eager' : 'lazy'}
+    onError={() => setFailed(src)} />;
 }

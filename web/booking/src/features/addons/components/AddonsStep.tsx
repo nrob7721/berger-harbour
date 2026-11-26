@@ -66,7 +66,7 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
 
   const visible = allowed.filter((a) => !a.hasCapacity || (remainingFor(a.id) ?? 1) > 0);
   const hire = state.selectedSlug ? period.data?.boats.find((b) => b.slug === state.selectedSlug)?.hirePrice ?? null : null;
-  const price = bookingPrice(hire ?? 0, allowed, state.addons, periodTypeOfState(state));
+  const price = bookingPrice(hire ?? 0, allowed, state.addons, periodTypeOfState(state)!);
 
   const setQuantity = (id: string, quantity: number | null) => {
     const next = { ...state.addons };
@@ -91,13 +91,17 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
       title="Add-ons"
       bar
       barContent={
-        <div className={small ? styles.totalInBar : styles.total} data-testid="booking-price">
-          <div>
-            <div className={styles.totalLabel}>Booking price</div>
-            {price.hasPriceOnRequest && <div className={styles.totalNote}>Excludes price-on-request add-ons</div>}
+        <>
+          <div className={small ? styles.totalInBar : styles.total} data-testid="booking-price">
+            <div>
+              <div className={styles.totalLabel}>Booking price</div>
+              {price.hasPriceOnRequest && <div className={styles.totalNote}>Excludes price-on-request add-ons</div>}
+            </div>
+            <div className={styles.totalValue}>{hire === null ? '' : formatMoney(price.total)}</div>
           </div>
-          <div className={styles.totalValue}>{hire === null ? '' : formatMoney(price.total)}</div>
-        </div>
+          {/* In the bar, a thin divider separates the Booking price from Back and Continue, like the Dates & boat bar's. */}
+          {small && <div className={styles.barDivider} data-testid="booking-price-divider" />}
+        </>
       }
       error={save.isError ? errorMessage(save.error) : null}
       back={<Button onClick={() => dispatch({ type: 'goto', step: 'details' })} disabled={save.isPending}>Back</Button>}
@@ -114,7 +118,7 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
       <ul className={styles.list}>
         {visible.map((a) => {
           const ticked = state.addons[a.id] !== undefined;
-          const p = addonPrice(a, periodTypeOfState(state));
+          const p = addonPrice(a, periodTypeOfState(state)!);
           const left = remainingFor(a.id);
           const max = left ?? 99;
           return (
@@ -130,7 +134,7 @@ export function AddonsStep({ onContinued }: { onContinued: () => void }) {
                 </span>
               </label>
               <div className={styles.side}>
-                <span className={styles.price}>{p === null ? 'Price on request' : `${formatMoney(p)}${a.quantityApplies ? ' each' : ''}`}</span>
+                <span className={styles.price}>{p === null ? 'Price on request' : `${formatMoney(p)} ${a.quantityApplies ? 'each' : 'per booking'}`}</span>
                 {a.quantityApplies && ticked && (
                   <label className={styles.qty}>
                     <span className="visually-hidden">Quantity of {a.name}</span>
