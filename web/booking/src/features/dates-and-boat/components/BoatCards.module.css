@@ -4,6 +4,104 @@
   gap: 10px;
 }
 
+.card {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.card:hover:not(.greyed) {
+  border-color: var(--c-border-strong);
+}
+
+.card:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+/*
+ * The selected card is shown as selected as a whole, like a checked type-of-stay box: a 1px brand border and the light brand
+ * tint (no tick-box). Only colours change, so selecting a card moves nothing.
+ */
+.selected,
+.selected:hover:not(.greyed) {
+  border-color: var(--c-brand);
+  background: var(--c-brand-tint);
+}
+
+.selected .name {
+  color: var(--c-brand);
+}
+
+.greyed {
+  cursor: not-allowed;
+  background: var(--c-surface-muted);
+}
+
+.greyed .image,
+.greyed .name,
+.greyed .berth,
+.greyed .badges {
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+
+.image {
+  flex: none;
+  width: 96px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.berth {
+  font-size: 14px;
+  color: var(--c-text-muted);
+}
+
+.badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-brand-tint);
+  color: var(--c-brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.price {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.reason {
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
 .separator {
   display: flex;
   align-items: center;

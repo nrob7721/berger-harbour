@@ -10,7 +10,7 @@ export interface SwipeHandlers {
 }
 
 /**
- * A horizontal touch swipe (§11.2), used by the calendar and the photo reel: at least 50px sideways and further sideways than up
+ * A horizontal touch swipe (§11.2), used by the calendar: at least 50px sideways and further sideways than up
  * or down. Swiping left calls `onSwipe('next')`, swiping right `onSwipe('previous')`. It never prevents the page scrolling
  * vertically (pair it with `touch-action: pan-y`), and a shorter or mostly vertical movement does nothing.
  */

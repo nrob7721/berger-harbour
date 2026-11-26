@@ -7,17 +7,11 @@ namespace BergerHarbour.Domain.Boats;
 /// <summary>A boat in the fleet. Boats are never deleted; inactive boats can't be booked but keep their history.</summary>
 public sealed partial class Boat : AggregateRoot
 {
-    public const int MaxImages = 30;
-    public const int MaxTags = 30;
-    public const int MaxTagLength = 60;
-
     private Boat(BoatId id, DateTimeOffset createdDate)
     {
         Id = id;
         Name = string.Empty;
         Slug = string.Empty;
-        Images = [];
-        Tags = [];
         Rates = [];
         AllowedAddonIds = [];
         CreatedDate = createdDate;
@@ -44,14 +38,7 @@ public sealed partial class Boat : AggregateRoot
 
     public decimal? DepositAmount { get; private set; }
 
-    /// <summary>The boat's photos in staff order; the first is the thumbnail image.</summary>
-    public IReadOnlyList<BoatImage> Images { get; private set; }
-
-    /// <summary>Short feature lines shown to customers, in staff order.</summary>
-    public IReadOnlyList<string> Tags { get; private set; }
-
-    /// <summary>The URL of the thumbnail image (the first photo), or null when the boat has no photos.</summary>
-    public string? ThumbnailUrl => Images.Count > 0 ? Images[0].Url : null;
+    public string? ImageUrl { get; private set; }
 
     public bool HasSpa { get; private set; }
 
@@ -106,8 +93,7 @@ public sealed partial class Boat : AggregateRoot
             BeddingDescription = details.BeddingDescription,
             SecurityBond = details.SecurityBond,
             DepositAmount = details.DepositAmount,
-            Images = details.Images.ToList(),
-            Tags = details.Tags.ToList(),
+            ImageUrl = details.ImageUrl,
             HasSpa = details.HasSpa,
             IsPetFriendly = details.IsPetFriendly,
             Rates = details.Rates,
@@ -117,6 +103,21 @@ public sealed partial class Boat : AggregateRoot
         };
         boat.SetPersistedVersion(version);
         return boat;
+    }
+
+    /// <summary>
+    /// Empty, or an absolute https:// URL on bergerhouseboats.com.au or www.bergerhouseboats.com.au.
+    /// </summary>
+    public static bool IsValidImageUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return true;
+        }
+
+        return Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttps
+            && uri.Host.ToLowerInvariant() is "bergerhouseboats.com.au" or "www.bergerhouseboats.com.au";
     }
 
     /// <summary>Edits every field; an active boat must still meet the activation rule.</summary>
@@ -140,41 +141,6 @@ public sealed partial class Boat : AggregateRoot
             IsActive = true;
             ModifiedDate = now;
         }
-    }
-
-    /// <summary>
-    /// The seed's backfill (§13): sets the photos when the boat has none and the tags when it has none, and changes nothing else.
-    /// Returns whether anything changed.
-    /// </summary>
-    public bool FillMissingPhotosAndTags(IReadOnlyList<BoatImage> images, IReadOnlyList<string> tags, DateTimeOffset now)
-    {
-        var errors = new ValidationErrors();
-        if (images.Count > MaxImages)
-        {
-            errors.Add("images", "A boat can have at most 30 photos.");
-        }
-
-        var validTags = ValidTags(tags, errors);
-        errors.ThrowIfAny();
-        var changed = false;
-        if (Images.Count == 0 && images.Count > 0)
-        {
-            Images = images.ToList();
-            changed = true;
-        }
-
-        if (Tags.Count == 0 && validTags.Count > 0)
-        {
-            Tags = validTags;
-            changed = true;
-        }
-
-        if (changed)
-        {
-            ModifiedDate = now;
-        }
-
-        return changed;
     }
 
     public void Deactivate(DateTimeOffset now)
@@ -240,39 +206,6 @@ public sealed partial class Boat : AggregateRoot
         PeriodType.LongWeekend => "Long weekend",
         _ => type.ToString(),
     };
-
-    /// <summary>Trimmed, non-blank, at most 60 characters and unique ignoring case; errors are on <c>tags[i]</c>.</summary>
-    private static List<string> ValidTags(IReadOnlyList<string> raw, ValidationErrors errors)
-    {
-        if (raw.Count > MaxTags)
-        {
-            errors.Add("tags", "A boat can have at most 30 tags.");
-        }
-
-        var tags = new List<string>();
-        for (var i = 0; i < raw.Count; i++)
-        {
-            var tag = (raw[i] ?? string.Empty).Trim();
-            if (tag.Length == 0)
-            {
-                errors.Add($"tags[{i}]", "A tag can't be blank.");
-            }
-            else if (tag.Length > MaxTagLength)
-            {
-                errors.Add($"tags[{i}]", "Keep each tag to 60 characters.");
-            }
-            else if (tags.Contains(tag, StringComparer.OrdinalIgnoreCase))
-            {
-                errors.Add($"tags[{i}]", "This tag is already on the boat.");
-            }
-            else
-            {
-                tags.Add(tag);
-            }
-        }
-
-        return tags;
-    }
 
     private void EnsureCanBeActive(IReadOnlyList<Season> seasons)
     {
@@ -343,12 +276,11 @@ public sealed partial class Boat : AggregateRoot
             errors.Add("depositAmount", "Deposit must be more than $0, or left empty to use the default.");
         }
 
-        if (details.Images.Count > MaxImages)
+        var image = string.IsNullOrWhiteSpace(details.ImageUrl) ? null : details.ImageUrl.Trim();
+        if (!IsValidImageUrl(image))
         {
-            errors.Add("images", "A boat can have at most 30 photos.");
+            errors.Add("imageUrl", "Use an https:// link to an image on bergerhouseboats.com.au.");
         }
-
-        var tags = ValidTags(details.Tags, errors);
 
         foreach (var rate in details.Rates)
         {
@@ -377,8 +309,7 @@ public sealed partial class Boat : AggregateRoot
         BeddingDescription = bedding;
         SecurityBond = details.SecurityBond;
         DepositAmount = details.DepositAmount;
-        Images = details.Images.ToList();
-        Tags = tags;
+        ImageUrl = image;
         HasSpa = details.HasSpa;
         IsPetFriendly = details.IsPetFriendly;
         Rates = details.Rates.ToList();

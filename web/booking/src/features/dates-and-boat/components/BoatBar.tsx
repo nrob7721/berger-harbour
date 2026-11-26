@@ -82,7 +82,7 @@ export function BoatBar({ selected, deselected, rate, continueDisabled, onContin
         }
       >
         <div className={styles.boatRow} data-testid="bar-boat">
-          <BoatImage src={shown?.thumbnailUrl} alt="" className={`${styles.thumb} ${!selected && deselected ? styles.greyed : ''}`} />
+          <BoatImage src={shown?.imageUrl} alt="" className={`${styles.thumb} ${!selected && deselected ? styles.greyed : ''}`} />
           <div className={styles.boatText}>
             {selected && (
               <>

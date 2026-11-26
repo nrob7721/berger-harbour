@@ -46,29 +46,3 @@
     font-size: 22px;
   }
 }
-
-/*
- * Fill: the frame is the viewport's height and the card takes what the header leaves, so the step inside lays itself out in that
- * height and the page never scrolls. On a short viewport the step wouldn't fit, so the page scrolls as normal.
- */
-@media (min-height: 601px) {
-  .fill {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
-    padding-bottom: 20px;
-    overflow: hidden;
-  }
-
-  .fill .header {
-    flex: none;
-  }
-
-  .fill .card {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-  }
-}

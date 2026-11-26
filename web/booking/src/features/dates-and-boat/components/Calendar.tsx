@@ -11,7 +11,7 @@ export interface CalendarProps {
   canGoBack: boolean;
   canGoForward: boolean;
   onMonthChange: (delta: 1 | -1) => void;
-  /** Null before the customer chooses one: the calendar is then covered by an inert overlay (decision 44). */
+  /** Null before the customer chooses one: the calendar is then covered by an inert overlay (decision 43). */
   typeOfStay: TypeOfStay | null;
   period: Stay | null;
   availability: FleetAvailability | undefined;
@@ -61,7 +61,7 @@ export function Calendar(props: CalendarProps) {
   }, [focusDay]);
 
   const activate = (day: IsoDate) => {
-    if (!typeOfStay) return; // the inert overlay is up (decision 44)
+    if (!typeOfStay) return; // the inert overlay is up (decision 43)
     const s = states.get(day);
     if (s?.kind === 'available') props.onSelect(s.period);
     else if (s?.kind === 'enquire') props.onEnquire(s.period);

@@ -70,7 +70,7 @@ describe('check-in line and selected text', () => {
 });
 
 describe("requested boat's reason", () => {
-  const boat = { slug: 'a', name: 'A', thumbnailUrl: '', berth: 8, hasSpa: false, isPetFriendly: false, tags: [], isActive: true };
+  const boat = { slug: 'a', name: 'A', imageUrl: null, berth: 8, hasSpa: false, isPetFriendly: false, isActive: true };
   const f = { adults: 2, children: 0, spa: false, pets: false };
   const unavailable: PeriodAvailability = { periodType: 'Midweek', startDate: '2026-10-12', endDate: '2026-10-16', boats: [{ slug: 'a', available: false, hirePrice: 1 }] };
 

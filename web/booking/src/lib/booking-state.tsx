@@ -42,7 +42,7 @@ export interface BookingState {
   /** The furthest step reached; a resumed booking opens it (at most the Summary). */
   furthestStep: Step;
   requestedSlug: string | null;
-  /** None until the customer picks one (decision 44); once picked it can be changed but not cleared. */
+  /** None until the customer picks one (decision 43); once picked it can be changed but not cleared. */
   typeOfStay: TypeOfStay | null;
   period: Stay | null;
   adults: number;

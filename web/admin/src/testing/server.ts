@@ -5,14 +5,12 @@ import type { Addon, Boat, BookingDetail, Customer, Timeline } from '@/lib/types
 export const boats: Boat[] = [
   {
     id: 'b-pb', name: 'Pacific Blue', slug: 'pacific-blue', type: 'House', berth: 12, adultBeds: 6, kidsBeds: 2, beddingDescription: '4 queens',
-    securityBond: 2000, depositAmount: null, effectiveDepositAmount: 1000, thumbnailUrl: 'https://bergerhouseboats.com.au/wp-content/uploads/pb-1.jpg',
-    images: [{ url: 'https://bergerhouseboats.com.au/wp-content/uploads/pb-1.jpg', description: null }, { url: 'https://bergerhouseboats.com.au/wp-content/uploads/pb-2.jpg', description: 'Upper deck' }],
-    tags: ['Sleeps 12', 'Heated spa'], hasSpa: true, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
+    securityBond: 2000, depositAmount: null, effectiveDepositAmount: 1000, imageUrl: null, hasSpa: true, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
     missingForActivation: [], version: 1,
   },
   {
     id: 'b-mb', name: 'Misty Blue', slug: 'misty-blue', type: 'House', berth: 9, adultBeds: 3, kidsBeds: 3, beddingDescription: 'doubles',
-    securityBond: 1500, depositAmount: 1500, effectiveDepositAmount: 1500, thumbnailUrl: null, images: [], tags: [], hasSpa: false, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
+    securityBond: 1500, depositAmount: 1500, effectiveDepositAmount: 1500, imageUrl: null, hasSpa: false, isPetFriendly: false, isActive: true, rates: [], allowedAddonIds: [],
     missingForActivation: [], version: 1,
   },
 ];
@@ -72,12 +70,6 @@ const record = async (request: Request) => {
 
 export const server = setupServer(
   http.get('*/api/boats', async ({ request }) => { await record(request); return HttpResponse.json(boats); }),
-  http.put('*/api/boats/:id', async ({ request, params }) => {
-    await record(request);
-    const body = (await request.clone().json()) as Record<string, unknown>;
-    const saved = boats.find((b) => b.id === params.id)!;
-    return HttpResponse.json({ ...saved, ...body, version: saved.version + 1 });
-  }),
   http.get('*/api/settings/addons', async ({ request }) => { await record(request); return HttpResponse.json(addons); }),
   http.get('*/api/settings/business', async ({ request }) => {
     await record(request);

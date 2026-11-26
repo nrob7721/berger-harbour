@@ -74,7 +74,8 @@ public sealed class BoatService
 
     private static AdminBoat ToDto(Boat b, IReadOnlyList<Season> seasons, BusinessSettings settings) =>
         new(b.Id.Value, b.Name, b.Slug, b.Type, b.Berth, b.AdultBeds, b.KidsBeds, b.BeddingDescription, b.SecurityBond, b.DepositAmount,
-            b.EffectiveDeposit(settings), b.ThumbnailUrl, BoatDetailsService.Images(b), b.Tags, b.HasSpa, b.IsPetFriendly, b.IsActive, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
+            b.EffectiveDeposit(settings), b.ImageUrl,
+            b.HasSpa, b.IsPetFriendly, b.IsActive, b.Rates.Select(r => new BoatRateDto(r.SeasonId.Value, r.PeriodType, r.Price)).ToList(),
             b.AllowedAddonIds.Select(a => a.Value).ToList(), b.MissingForActivation(seasons), b.Version);
 
     private async Task<BusinessSettings> SettingsAsync(CancellationToken ct) =>
@@ -106,18 +107,9 @@ public sealed class BoatService
             errors.Add("allowedAddonIds", "An allowed add-on doesn't exist.");
         }
 
-        var images = new List<BoatImage>();
-        foreach (var (image, i) in (r.Images ?? []).Select((image, i) => (image, i)))
-        {
-            if (errors.Capture(() => BoatImage.Create(image.Url, image.Description, $"images[{i}]")) is { } valid)
-            {
-                images.Add(valid);
-            }
-        }
-
         errors.ThrowIfAny();
-        return new BoatDetails(r.Name, slug, type, r.Berth, r.AdultBeds, r.KidsBeds, r.BeddingDescription, r.SecurityBond, r.DepositAmount, images,
-            r.Tags ?? [], r.HasSpa, r.IsPetFriendly, rates.Select(x => new BoatRate(new SeasonId(x.SeasonId), x.PeriodType, x.Price)).ToList(),
+        return new BoatDetails(r.Name, slug, type, r.Berth, r.AdultBeds, r.KidsBeds, r.BeddingDescription, r.SecurityBond, r.DepositAmount, r.ImageUrl,
+            r.HasSpa, r.IsPetFriendly, rates.Select(x => new BoatRate(new SeasonId(x.SeasonId), x.PeriodType, x.Price)).ToList(),
             allowed.Select(a => new AddonId(a)).ToList());
     }
 }

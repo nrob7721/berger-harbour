@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { initialState } from '@/lib/booking-state';
 import { readSavedProgress, SAVED_PROGRESS_KEY, toSavedProgress } from '@/lib/saved-progress';
 import { filledState, renderWithBooking, renderWithClient } from '@/testing/render';
@@ -44,22 +43,5 @@ describe('Booking app: saved progress', () => {
     seed('pacific-blue');
     renderWithBooking(<div />, { ...filledState, step: 'complete', completed: { bookingId: 'b-1', sessionId: 'cs_1', email: 'jane@example.com' } });
     await waitFor(() => expect(window.localStorage.getItem(SAVED_PROGRESS_KEY)).toBeNull());
-  });
-});
-
-describe('Booking app: boat details', () => {
-  it('requests GET /api/boat-details once, in the background after GET /api/boats, and never again in the session', async () => {
-    renderWithClient(<BookingApp requestedSlug={null} returnedBooking={null} />);
-    expect(await screen.findByRole('heading', { name: 'Choose your dates and boat' })).toBeInTheDocument();
-    await waitFor(() => expect(apiState.calls.some((c) => c.path === '/api/boat-details')).toBe(true));
-    const paths = apiState.calls.map((c) => c.path);
-    expect(paths.indexOf('/api/boats')).toBeLessThan(paths.indexOf('/api/boat-details'));
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('heading', { name: 'Boats' }));
-    for (const more of screen.getAllByRole('button', { name: 'More details' })) await user.click(more);
-    await user.click(screen.getByRole('heading', { name: 'Guests and features' }));
-    await user.click(screen.getByRole('heading', { name: 'Boats' }));
-    expect(apiState.calls.filter((c) => c.path === '/api/boat-details')).toHaveLength(1);
   });
 });

@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Controller, type FieldErrors } from 'react-hook-form';
+import { useWatch, type FieldErrors } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
@@ -11,9 +11,7 @@ import { formatMoney } from '@shared/utils/money';
 import { useAddons, useBusinessSettings, useSeasons } from '@/hooks/useReferenceData';
 import { api, keys } from '@/lib/api';
 import type { Boat, PeriodType, SaveBoatRequest } from '@/lib/types';
-import { boatErrorAliases, type BoatForm } from '../utils/boat-form';
-import { PhotosTab } from './PhotosTab';
-import { TagInput } from './TagInput';
+import { BoatThumb } from './BoatThumb';
 import { UnavailabilitiesTab } from './UnavailabilitiesTab';
 import styles from './BoatDialog.module.css';
 
@@ -24,13 +22,43 @@ const RATE_PERIODS: { type: PeriodType; label: string }[] = [
   { type: 'LongWeekend', label: 'Long weekend' },
 ];
 
-type Tab = 'details' | 'photos' | 'rates' | 'addons' | 'unavailabilities';
+type Tab = 'details' | 'rates' | 'addons' | 'unavailabilities';
+
+interface BoatForm {
+  name: string;
+  slug: string;
+  berth: number | null;
+  adultBeds: number | null;
+  kidsBeds: number | null;
+  beddingDescription: string;
+  securityBond: number | null;
+  depositAmount: number | null;
+  imageUrl: string;
+  hasSpa: boolean;
+  isPetFriendly: boolean;
+  isActive: boolean;
+  rates: Record<string, Partial<Record<PeriodType, number | null>>>;
+  allowedAddonIds: string[];
+}
 
 const numberOrNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v));
-const FIELDS = ['name', 'slug', 'berth', 'adultBeds', 'kidsBeds', 'beddingDescription', 'securityBond', 'depositAmount', 'tags', 'isActive', 'rates'] as const;
-const DETAILS_FIELDS = ['name', 'slug', 'berth', 'adultBeds', 'kidsBeds', 'beddingDescription', 'securityBond', 'depositAmount'] as const;
+const FIELDS = ['name', 'slug', 'berth', 'adultBeds', 'kidsBeds', 'beddingDescription', 'securityBond', 'depositAmount', 'imageUrl', 'isActive', 'rates'] as const;
+const DETAILS_FIELDS = FIELDS.filter((f) => f !== 'rates' && f !== 'isActive');
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const IMAGE_HOSTS = ['bergerhouseboats.com.au', 'www.bergerhouseboats.com.au'];
+
+/** The server's image URL rule: empty, or an absolute https:// URL on the WordPress site. */
+function isValidImageUrl(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  try {
+    const url = new URL(v);
+    return url.protocol === 'https:' && IMAGE_HOSTS.includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Berth ≥ adult beds + kids beds; the error belongs to Berth. */
 const berthCoversBeds = (berth: number | null, form: BoatForm) => {
@@ -44,7 +72,7 @@ function defaults(boat: Boat | null): BoatForm {
   return {
     name: boat?.name ?? '', slug: boat?.slug ?? '', berth: boat?.berth ?? null, adultBeds: boat?.adultBeds ?? null, kidsBeds: boat?.kidsBeds ?? null,
     beddingDescription: boat?.beddingDescription ?? '', securityBond: boat?.securityBond ?? 0, depositAmount: boat?.depositAmount ?? null,
-    tags: boat?.tags ?? [], images: (boat?.images ?? []).map((i) => ({ url: i.url, description: i.description ?? '' })), hasSpa: boat?.hasSpa ?? false, isPetFriendly: boat?.isPetFriendly ?? false, isActive: boat?.isActive ?? false,
+    imageUrl: boat?.imageUrl ?? '', hasSpa: boat?.hasSpa ?? false, isPetFriendly: boat?.isPetFriendly ?? false, isActive: boat?.isActive ?? false,
     rates, allowedAddonIds: boat?.allowedAddonIds ?? [],
   };
 }
@@ -61,13 +89,14 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
   const [formError, setFormError] = useState<string | null>(null);
   // Each field is validated when it loses focus (§6.1).
   const { register, handleSubmit, setError, setFocus, control, formState: { errors } } = useAppForm<BoatForm>({ defaultValues: defaults(boat) });
+  const imageUrl = useWatch({ control, name: 'imageUrl' });
 
   const save = useMutation({
     mutationFn: (v: BoatForm) => {
       const body: SaveBoatRequest = {
         name: v.name, slug: v.slug.trim(), berth: v.berth ?? 0, adultBeds: v.adultBeds, kidsBeds: v.kidsBeds,
         beddingDescription: v.beddingDescription || null, securityBond: v.securityBond ?? 0, depositAmount: v.depositAmount,
-        images: v.images.map((i) => ({ url: i.url.trim(), description: i.description.trim() || null })), tags: v.tags, hasSpa: v.hasSpa, isPetFriendly: v.isPetFriendly, isActive: v.isActive,
+        imageUrl: v.imageUrl.trim() || null, hasSpa: v.hasSpa, isPetFriendly: v.isPetFriendly, isActive: v.isActive,
         rates: Object.entries(v.rates).flatMap(([seasonId, byType]) =>
           Object.entries(byType ?? {}).filter(([, price]) => price !== null && price !== undefined && !Number.isNaN(price))
             .map(([periodType, price]) => ({ seasonId, periodType: periodType as PeriodType, price: price as number }))),
@@ -83,10 +112,8 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
       onClose();
     },
     onError: (e) => {
-      const keys = e instanceof ApiError ? Object.keys(e.errors) : [];
-      const unmatched = applyServerErrors(e, setError, FIELDS, boatErrorAliases(keys));
-      if (keys.some((k) => ['berth', 'slug', 'name', 'depositAmount'].includes(k) || k.startsWith('tags'))) setTab('details');
-      else if (keys.some((k) => k.startsWith('images'))) setTab('photos');
+      const unmatched = applyServerErrors(e, setError, FIELDS);
+      if (e instanceof ApiError && (e.errors.berth || e.errors.slug || e.errors.name || e.errors.imageUrl || e.errors.depositAmount)) setTab('details');
       setFormError(unmatched[0] ?? (e instanceof ApiError && Object.keys(e.errors).length ? null : errorMessage(e)));
     },
   });
@@ -97,13 +124,6 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
     if (detailsField) {
       setTab('details');
       setTimeout(() => setFocus(detailsField));
-      return;
-    }
-    const rows: ({ url?: unknown; description?: unknown } | undefined)[] = Array.isArray(errs.images) ? errs.images : [];
-    const photo = rows.findIndex((row) => row?.url || row?.description);
-    if (photo >= 0) {
-      setTab('photos');
-      setTimeout(() => setFocus(rows[photo]?.url ? `images.${photo}.url` : `images.${photo}.description`));
       return;
     }
     const rate = Object.entries(errs.rates ?? {}).flatMap(([seasonId, byType]) =>
@@ -120,7 +140,7 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
     .find((m): m is string => typeof m === 'string' && m.length > 0);
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'details', label: 'Details' }, { id: 'photos', label: 'Photos' }, { id: 'rates', label: 'Rates' }, { id: 'addons', label: 'Add-ons' },
+    { id: 'details', label: 'Details' }, { id: 'rates', label: 'Rates' }, { id: 'addons', label: 'Add-ons' },
     ...(boat ? [{ id: 'unavailabilities' as const, label: 'Unavailabilities' }] : []),
   ];
 
@@ -188,21 +208,16 @@ export function BoatDialog({ boat, onClose }: { boat: Boat | null; onClose: () =
             <Field className={styles.wide} label="Bedding description" htmlFor={id('bedding')} error={errors.beddingDescription?.message}>
               <textarea id={id('bedding')} className={inputClass} rows={2} {...register('beddingDescription', { validate: rules.maxLength(500, 'Bedding description') })} />
             </Field>
-            <Field className={styles.wide} label="Tags" htmlFor={id('tags')}
-              hint="Short features shown to customers on the boat card, in this order. Press Enter to add each one.">
-              <Controller control={control} name="tags" render={({ field, fieldState }) => (
-                <TagInput id={id('tags')} tags={field.value} onChange={field.onChange} disabled={saving} error={fieldState.error?.message} />
-              )} />
+            <Field className={styles.wide} label="Image URL" htmlFor={id('imageUrl')} error={errors.imageUrl?.message} hint="Link to an image on bergerhouseboats.com.au">
+              <input id={id('imageUrl')} type="url" className={inputClass}
+                {...register('imageUrl', { validate: (v) => isValidImageUrl(v) || 'Use an https:// link to an image on bergerhouseboats.com.au.' })} />
             </Field>
+            {imageUrl && <BoatThumb src={imageUrl} alt="Image preview" className={styles.preview} />}
             <div className={`${styles.checks} ${styles.wide}`}>
               <label><input type="checkbox" {...register('hasSpa')} /> Spa</label>
               <label><input type="checkbox" {...register('isPetFriendly')} /> Pet friendly</label>
               <label className={styles.toggle}><input type="checkbox" role="switch" {...register('isActive')} /> Active (bookable online and by staff)</label>
             </div>
-          </div>
-
-          <div role="tabpanel" id={id('panel-photos')} aria-labelledby={id('tab-photos')} hidden={tab !== 'photos'}>
-            <PhotosTab control={control} register={register} errors={errors} id={id} />
           </div>
 
           <div role="tabpanel" id={id('panel-rates')} aria-labelledby={id('tab-rates')} hidden={tab !== 'rates'}>

@@ -27,7 +27,7 @@ public sealed class BoatCatalogueService
         var reference = await referenceData.LoadAsync(ct);
         var settings = reference.Settings;
         var active = Boat.InListOrder((await boats.ListAsync(ct)).Where(b => b.IsActive && b.Type == BoatType.House), reference.Seasons)
-            .Select(b => new PublicBoatSummary(b.Slug, b.Name, b.ThumbnailUrl ?? string.Empty, b.Berth, b.HasSpa, b.IsPetFriendly, b.Tags))
+            .Select(b => new PublicBoatSummary(b.Slug, b.Name, b.ImageUrl, b.Berth, b.HasSpa, b.IsPetFriendly))
             .ToList();
         return new PublicBoatsResponse(active, new PublicBookingSettings(settings.MinimumLeadTimeDays, settings.BookingsOpenUntil,
             Sydney.DateOf(clock.UtcNow), settings.ContactPhone, settings.ContactEmail?.Value, settings.HireTermsUrl));
@@ -48,9 +48,8 @@ public sealed class BoatCatalogueService
             .OrderBy(a => a.SortOrder)
             .Select(ToPublic)
             .ToList();
-        return new PublicBoatDetails(boat.Slug, boat.Name, boat.ThumbnailUrl ?? string.Empty, BoatDetailsService.Images(boat), boat.Tags, boat.Berth,
-            boat.HasSpa, boat.IsPetFriendly, boat.AdultBeds ?? 0, boat.KidsBeds ?? 0, boat.BeddingDescription, boat.SecurityBond,
-            boat.EffectiveDeposit(reference.Settings), BoatDetailsService.Rates(boat), boat.IsActive, addons);
+        return new PublicBoatDetails(boat.Slug, boat.Name, boat.ImageUrl, boat.Berth, boat.HasSpa, boat.IsPetFriendly, boat.AdultBeds ?? 0,
+            boat.KidsBeds ?? 0, boat.BeddingDescription, boat.SecurityBond, boat.EffectiveDeposit(reference.Settings), boat.IsActive, addons);
     }
 
     private static PublicAddon ToPublic(AddonDefinition a) =>

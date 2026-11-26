@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@shared/components/Button/Button';
 import { Dialog } from '@shared/components/Dialog/Dialog';
@@ -6,7 +6,7 @@ import { addDays, addMonths, monthGrid, startOfMonth, type IsoDate } from '@shar
 import { formatMoney } from '@shared/utils/money';
 import { TYPE_OF_STAY_LABELS, TYPES_OF_STAY, type Stay, type TypeOfStay } from '@shared/utils/periods';
 import { Notice } from '@/components/Notice/Notice';
-import { useBoatDetails, useFleetDetails, usePeriodAvailability } from '@/hooks/useFleet';
+import { useBoatDetails, usePeriodAvailability } from '@/hooks/useFleet';
 import { useSmallScreen } from '@/hooks/useSmallScreen';
 import { keys } from '@/lib/api';
 import { isAfter, periodTypeOfState, useBooking } from '@/lib/booking-state';
@@ -18,7 +18,6 @@ import {
 } from '../utils/availability';
 import { CHOOSE_DATES_AND_BOAT, datesContinue } from '../utils/continue';
 import { BoatBar } from './BoatBar';
-import type { MoreDetailsState } from './BoatDetails';
 import { BoatCards } from './BoatCards';
 import { Calendar } from './Calendar';
 import styles from './DatesAndBoatStep.module.css';
@@ -30,11 +29,6 @@ export interface DatesAndBoatStepProps {
   onContinue: () => void;
 }
 
-/** The desktop layout of the step (decision 43). Local to the step: it is never saved and opens as `details` every time. */
-type View = 'details' | 'boats';
-
-/** A click on one of these in the inactive column does its job without switching view (§11.2). */
-const COLUMN_CONTROLS = 'button, a, input, select, textarea, label, [data-boat-card]';
 
 export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }: DatesAndBoatStepProps) {
   const { state, dispatch } = useBooking();
@@ -47,11 +41,6 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const [enquire, setEnquire] = useState<string | null>(null);
   const [rooming, setRooming] = useState<string | null>(null);
   const [continueError, setContinueError] = useState<string | null>(null);
-  const [view, setView] = useState<View>('details');
-  /** The column that switched view from the keyboard keeps focus, out of the tab order, until it loses it. */
-  const [focusedColumn, setFocusedColumn] = useState<View | null>(null);
-  const [openDetails, setOpenDetails] = useState<ReadonlySet<string>>(new Set());
-  const fleetDetails = useFleetDetails();
 
   // Coming back after the Payment step (or a 409) fetches availability again.
   useEffect(() => {
@@ -78,8 +67,8 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   }, [state.selectedSlug, state.adults, state.children, state.spa, state.pets, periodResult.data, fleet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const requested: CardBoat | null = requestedBoat
-    ? { slug: requestedBoat.slug, name: requestedBoat.name, thumbnailUrl: requestedBoat.thumbnailUrl, berth: requestedBoat.berth,
-        hasSpa: requestedBoat.hasSpa, isPetFriendly: requestedBoat.isPetFriendly, tags: requestedBoat.tags, isActive: requestedBoat.isActive }
+    ? { slug: requestedBoat.slug, name: requestedBoat.name, imageUrl: requestedBoat.imageUrl, berth: requestedBoat.berth,
+        hasSpa: requestedBoat.hasSpa, isPetFriendly: requestedBoat.isPetFriendly, isActive: requestedBoat.isActive }
     : null;
   const requestedReason = requested ? requestedBoatReason(requested, filters, periodResult.data) : null;
   const freeFor = (slug: string) => periodResult.data?.boats.find((b) => b.slug === slug)?.available ?? false;
@@ -148,75 +137,9 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const announce = [state.period ? selectedLine(state.period) : '', selectedBoat ? `Selected boat: ${selectedBoat.name}.` : 'No boat selected.']
     .filter(Boolean).join(' ');
   const deselect = () => dispatch({ type: 'selectBoat', slug: null });
-
-  /** A card's More details: from `GET /api/boat-details`, or the boat's own data for an inactive requested boat (§11.2). */
-  const detailsFor = (slug: string): MoreDetailsState => {
-    if (fleetDetails.isError) return { status: 'error', retry: () => void fleetDetails.refetch() };
-    if (!fleetDetails.data) return { status: 'loading' };
-    const own = requestedBoat && !requestedBoat.isActive && requestedBoat.slug === slug ? requestedBoat : null;
-    const details = own ?? fleetDetails.data.boats.find((b) => b.slug === slug);
-    return details ? { status: 'ready', details, seasons: fleetDetails.data.seasons } : { status: 'loading' };
-  };
-  const toggleDetails = (slug: string) =>
-    setOpenDetails((open) => {
-      const next = new Set(open);
-      if (!next.delete(slug)) next.add(slug);
-      return next;
-    });
-
-  // Views (desktop and the modal, decision 43): a click on the inactive column's background, or Enter/Space on it, switches.
-  const switchView = (to: View) => {
-    setView(to);
-    if (to === 'details') setOpenDetails(new Set());
-  };
-  const boatsView = !small && view === 'boats';
-  const columnProps = (column: View, className: string) => {
-    if (small) return { className };
-    if (view === column) {
-      return {
-        className: `${className} ${styles.activeColumn}`,
-        tabIndex: focusedColumn === column ? -1 : undefined,
-        onBlur: () => setFocusedColumn(null),
-      };
-    }
-    return {
-      className: `${className} ${styles.inactiveColumn}`,
-      role: 'group',
-      tabIndex: 0,
-      'aria-label': column === 'boats' ? 'Show boat details' : 'Show booking details',
-      'data-testid': `inactive-${column}`,
-      onClick: (e: MouseEvent<HTMLDivElement>) => {
-        if (!(e.target as HTMLElement).closest(COLUMN_CONTROLS)) switchView(column);
-      },
-      onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
-        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
-        e.preventDefault();
-        setFocusedColumn(column);
-        switchView(column);
-      },
-    };
-  };
-
-  /** A mode's header: the active one names the mode, the other is the button that switches to it (the column's own background still works too). */
-  const modeHeader = (column: View, label: string) => {
-    const active = view === column;
-    return (
-      <h3 className={`${styles.modeHeader} ${active ? styles.modeActive : ''}`}>
-        <button type="button" className={styles.modeButton} aria-current={active ? 'true' : undefined} onClick={() => !active && switchView(column)}>
-          {label}
-          {!active && <span aria-hidden="true" className={styles.modeCue}>{column === 'boats' ? 'View boats ›' : '‹ Back to dates'}</span>}
-        </button>
-      </h3>
-    );
-  };
-
   /** The boat cards, in the right column or the boat expander. `picked` runs when a card selects a boat (not on a deselect). */
   const boatCards = (picked?: () => void) => (
     <BoatCards
-      layout={small || boatsView ? 'detailed' : 'compact'}
-      openDetails={openDetails}
-      detailsFor={detailsFor}
-      onToggleDetails={toggleDetails}
       requested={requested}
       requestedReason={requestedReason}
       others={others}
@@ -249,9 +172,8 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
     <section className={styles.step} aria-labelledby="dates-heading">
       <h2 id="dates-heading" className={styles.heading}>Choose your dates and boat</h2>
       {state.notice && <Notice tone="warning">{state.notice}</Notice>}
-      <div className={`${styles.columns} ${boatsView ? styles.boatsView : ''}`} data-testid="dates-columns" data-view={small ? undefined : view}>
-        <div {...columnProps('details', styles.left)}>
-          {!small && modeHeader('details', 'Booking details')}
+      <div className={styles.columns}>
+        <div className={styles.left}>
           <div className={styles.filters}>
             <h3 className={styles.subheading}>Guests and features</h3>
             <div className={styles.guestRow}>
@@ -306,7 +228,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
           />
           {availability.isError && <Notice tone="error">We couldn't load availability. Please try again.</Notice>}
 
-          {small && state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
+          {state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
           <div className="visually-hidden" aria-live="polite" data-testid="live-region">{announce}</div>
 
           {selectedBoat && (
@@ -316,35 +238,31 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             </p>
           )}
 
-          {small && continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
+          {!small && (
+            <div className={styles.rate} data-testid="base-hire-rate">
+              <div>
+                <div className={styles.rateLabel}>Base hire rate</div>
+                <div className={styles.rateSub}>Excludes add-ons</div>
+              </div>
+              <div className={styles.rateValue}>{rate}</div>
+            </div>
+          )}
+
+          {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
+          {!small && (
+            <div className={styles.actions}>
+              <Button variant="primary" onClick={continueClicked} disabled={continueDisabled}>Continue</Button>
+            </div>
+          )}
         </div>
 
         {!small && (
-          <div {...columnProps('boats', styles.right)}>
-            {modeHeader('boats', 'Boats')}
+          <div className={styles.right}>
+            <h3 className={styles.label}>Boats</h3>
             {boatCards()}
           </div>
         )}
       </div>
-
-      {!small && (
-        // The sticky menu (§11.2): under both columns, never scrolled away and not crossed by the divider; the selected dates, the
-        // Base hire rate and Continue are always in reach.
-        <div className={styles.menu} data-testid="step-menu">
-          {state.period && <p className={styles.menuDates} data-testid="selected-line">{selectedLine(state.period)}</p>}
-          <div className={styles.rate} data-testid="base-hire-rate">
-            <div>
-              <div className={styles.rateLabel}>Base hire rate</div>
-              <div className={styles.rateSub}>Excludes add-ons</div>
-            </div>
-            <div className={styles.rateValue}>{rate}</div>
-          </div>
-          <div className={styles.menuAction}>
-            {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
-            <Button variant="primary" onClick={continueClicked} disabled={continueDisabled}>Continue</Button>
-          </div>
-        </div>
-      )}
 
       {small && (
         <BoatBar

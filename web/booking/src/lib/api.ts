@@ -2,14 +2,12 @@ import { http, query } from '@shared/lib/http';
 import type { OnlinePeriodType } from '@shared/utils/periods';
 import type {
   BoatDetails, BoatsResponse, BookingStatus, CheckoutResponse, CreateBookingRequest, CreateBookingResponse, CreateDraftRequest, DraftDetails,
-  FleetAvailability, FleetDetails, PaymentLinkDetails, PeriodAvailability, Quote, QuoteRequest, UpdateDraftRequest,
+  FleetAvailability, PaymentLinkDetails, PeriodAvailability, Quote, QuoteRequest, UpdateDraftRequest,
 } from './types';
 
 export const api = {
   boats: () => http.get<BoatsResponse>('/api/boats'),
   boat: (slug: string) => http.get<BoatDetails>(`/api/boats/${encodeURIComponent(slug)}`),
-  /** The More details of the whole fleet in one call, never one call per boat (§8.1). */
-  boatDetails: () => http.get<FleetDetails>('/api/boat-details'),
   availability: (from: string, to: string) => http.get<FleetAvailability>(`/api/availability${query({ from, to })}`),
   periodAvailability: (periodType: OnlinePeriodType, startDate: string) =>
     http.get<PeriodAvailability>(`/api/availability/period${query({ periodType, startDate })}`),
@@ -32,7 +30,6 @@ export const api = {
 export const keys = {
   boats: ['boats'] as const,
   boat: (slug: string) => ['boat', slug] as const,
-  boatDetails: ['boat-details'] as const,
   availabilityRoot: ['availability'] as const,
   availability: (from: string, to: string) => ['availability', from, to] as const,
   periodRoot: ['period'] as const,

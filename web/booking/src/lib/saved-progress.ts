@@ -10,7 +10,7 @@ import type { BookingState, RoomingAcceptance, Step } from './booking-state';
 export interface SavedProgress {
   version: 2;
   requestedSlug: string | null;
-  /** Null before the customer has picked one (v1.5, decision 44). */
+  /** Null before the customer has picked one (v1.5, decision 43). */
   typeOfStay: TypeOfStay | null;
   period: Stay | null;
   adults: number;

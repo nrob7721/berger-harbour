@@ -126,43 +126,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/boat-details": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "text/plain": components["schemas"]["FleetDetailsResponse"];
-                        "application/json": components["schemas"]["FleetDetailsResponse"];
-                        "text/json": components["schemas"]["FleetDetailsResponse"];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/boats/{slug}/quote": {
         parameters: {
             query?: never;
@@ -611,16 +574,6 @@ export interface components {
             slug: string;
             unavailable: components["schemas"]["StayRangeDto"][];
         };
-        BoatImageDto: {
-            url: string;
-            description: null | string;
-        };
-        BoatRateDto: {
-            seasonId: string;
-            periodType: components["schemas"]["PeriodType"];
-            /** Format: double */
-            price: number;
-        };
         /** @enum {unknown} */
         BookingStatus: "PendingPayment" | "Active" | "Superseded" | "Cancelled" | "Expired";
         BookingStatusResponse: {
@@ -700,20 +653,6 @@ export interface components {
             enquireOnly: components["schemas"]["EnquireOnlyRange"][];
             boats: components["schemas"]["BoatAvailability"][];
         };
-        FleetBoatDetails: {
-            slug: string;
-            images: components["schemas"]["BoatImageDto"][];
-            beddingDescription: null | string;
-            /** Format: double */
-            securityBond: number;
-            /** Format: double */
-            depositAmount: number;
-            rates: components["schemas"]["BoatRateDto"][];
-        };
-        FleetDetailsResponse: {
-            boats: components["schemas"]["FleetBoatDetails"][];
-            seasons: components["schemas"]["PublicSeason"][];
-        };
         /** @enum {unknown} */
         MilestoneKind: "Deposit" | "Balance" | "First" | "Final";
         PaymentLinkDetails: {
@@ -770,9 +709,7 @@ export interface components {
         PublicBoatDetails: {
             slug: string;
             name: string;
-            thumbnailUrl: string;
-            images: components["schemas"]["BoatImageDto"][];
-            tags: string[];
+            imageUrl: null | string;
             /** Format: int32 */
             berth: number;
             hasSpa: boolean;
@@ -786,7 +723,6 @@ export interface components {
             securityBond: number;
             /** Format: double */
             depositAmount: number;
-            rates: components["schemas"]["BoatRateDto"][];
             isActive: boolean;
             addons: components["schemas"]["PublicAddon"][];
         };
@@ -797,12 +733,11 @@ export interface components {
         PublicBoatSummary: {
             slug: string;
             name: string;
-            thumbnailUrl: string;
+            imageUrl: null | string;
             /** Format: int32 */
             berth: number;
             hasSpa: boolean;
             isPetFriendly: boolean;
-            tags: string[];
         };
         PublicBookingSettings: {
             /** Format: int32 */
@@ -814,11 +749,6 @@ export interface components {
             contactPhone: null | string;
             contactEmail: null | string;
             hireTermsUrl: string;
-        };
-        PublicSeason: {
-            id: string;
-            name: string;
-            ranges: components["schemas"]["SeasonRangeDto"][];
         };
         QuoteAddonLine: {
             addonId: string;
@@ -880,10 +810,6 @@ export interface components {
             /** Format: date */
             dueDate: string;
             dueAtBooking: boolean;
-        };
-        SeasonRangeDto: {
-            start: string;
-            end: string;
         };
         StayRangeDto: {
             /** Format: date */

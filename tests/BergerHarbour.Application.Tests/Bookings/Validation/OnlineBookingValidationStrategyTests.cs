@@ -118,7 +118,7 @@ public class OnlineBookingValidationStrategyTests
         Assert.True(strategy.Validate(request, Context(boat) with { Scope = BookingValidationScope.Quote, Draft = null }).IsEmpty);
     }
 
-    private static BoatDetails Details() => new("Pacific Blue", "pacific-blue", BoatType.House, 12, 6, 2, "4 queens", 2000, null, [], [], false, false,
+    private static BoatDetails Details() => new("Pacific Blue", "pacific-blue", BoatType.House, 12, 6, 2, "4 queens", 2000, null, null, false, false,
         PeriodTypes.Online.Select(t => new BoatRate(Normal.Id, t, 4060)).ToList(), [Parking, Ice]);
 
     private static Boat PacificBlue()

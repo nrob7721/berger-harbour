@@ -42,7 +42,7 @@ public class ControllerRuleTests
     public void The_apis_have_exactly_the_specified_controllers()
     {
         AssertSame(
-            ["AddonAvailabilityController", "AvailabilityController", "BoatDetailsController", "BoatQuotesController", "BoatsController", "BookingDraftsController", "BookingsController",
+            ["AddonAvailabilityController", "AvailabilityController", "BoatQuotesController", "BoatsController", "BookingDraftsController", "BookingsController",
                 "PaymentsController", "StripeWebhookController"],
             Controllers("BergerHarbour.PublicApi").Select(c => c.Name));
         AssertSame(

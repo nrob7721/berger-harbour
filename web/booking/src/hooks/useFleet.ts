@@ -12,14 +12,6 @@ export function useBoatDetails(slug: string | null | undefined) {
   return useQuery({ queryKey: keys.boat(slug ?? ''), queryFn: () => api.boat(slug!), enabled: !!slug, staleTime: Infinity, retry: false });
 }
 
-/**
- * The More details (photos, bedding, prices) of every active house boat and the seasons (§8.1), fetched in the background once
- * `GET /api/boats` has loaded and cached for the session. Nothing waits for it; a failure is retried only by hand.
- */
-export function useFleetDetails(enabled = true) {
-  return useQuery({ queryKey: keys.boatDetails, queryFn: api.boatDetails, enabled, staleTime: Infinity, retry: false });
-}
-
 /** Each boat's availability and hire price for the selected period, cached per (period type, start date). */
 export function usePeriodAvailability(type: OnlinePeriodType | null, period: Stay | null) {
   return useQuery({

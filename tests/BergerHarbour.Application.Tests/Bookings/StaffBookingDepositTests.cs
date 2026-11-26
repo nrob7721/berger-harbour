@@ -19,7 +19,7 @@ public class StaffBookingDepositTests
         var service = h.Get<BoatService>();
         var b = await service.GetAsync(h.Boat(slug).Id.Value);
         await service.UpdateAsync(b.Id, new SaveBoatRequest(b.Name, b.Slug, b.Berth, b.AdultBeds, b.KidsBeds, b.BeddingDescription, b.SecurityBond,
-            deposit, b.Images, b.Tags, b.HasSpa, b.IsPetFriendly, b.IsActive, b.Rates, b.AllowedAddonIds, b.Version));
+            deposit, b.ImageUrl, b.HasSpa, b.IsPetFriendly, b.IsActive, b.Rates, b.AllowedAddonIds, b.Version));
     }
 
     private async Task SetDefaultDepositAsync(decimal deposit)
