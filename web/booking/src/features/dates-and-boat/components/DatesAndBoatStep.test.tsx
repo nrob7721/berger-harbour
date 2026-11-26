@@ -797,7 +797,7 @@ describe('Dates & boat: detailed boat cards and More details', () => {
 describe('Dates & boat: small-screen detailed cards', () => {
   const toggle = () => within(screen.getByTestId('step-action-bar')).getByRole('button', { name: /See other boats|Choose a boat|Hide boats/ });
 
-  it('show the first 5 tags and "+{n} more", which shows the rest in place', async () => {
+  it('show the first 5 tags and "+{n} more", which opens More details at its Features tab', async () => {
     setSmallScreen(true);
     renderStep();
     const user = userEvent.setup();
@@ -806,7 +806,10 @@ describe('Dates & boat: small-screen detailed cards', () => {
     expect(kalinda.getAllByRole('listitem').map((t) => t.textContent))
       .toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', '+2 more']);
     await user.click(kalinda.getByRole('button', { name: '+2 more' }));
+    expect(kalinda.getByRole('button', { name: 'Hide details' })).toHaveAttribute('aria-expanded', 'true');
+    expect(kalinda.getByRole('tab', { name: 'Features' })).toHaveAttribute('aria-selected', 'true');
     expect(kalinda.getAllByRole('listitem')).toHaveLength(7);
+    expect(kalinda.queryByRole('button', { name: /more$/ })).not.toBeInTheDocument();
     expect(currentState().selectedSlug).toBeNull();
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
   });

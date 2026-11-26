@@ -292,7 +292,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
           />
           {availability.isError && <Notice tone="error">We couldn't load availability. Please try again.</Notice>}
 
-          {state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
+          {small && state.period && <p className={styles.selectedLine} data-testid="selected-line">{selectedLine(state.period)}</p>}
           <div className="visually-hidden" aria-live="polite" data-testid="live-region">{announce}</div>
 
           {selectedBoat && (
@@ -302,22 +302,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
             </p>
           )}
 
-          {!small && (
-            <div className={styles.rate} data-testid="base-hire-rate">
-              <div>
-                <div className={styles.rateLabel}>Base hire rate</div>
-                <div className={styles.rateSub}>Excludes add-ons</div>
-              </div>
-              <div className={styles.rateValue}>{rate}</div>
-            </div>
-          )}
-
-          {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
-          {!small && (
-            <div className={styles.actions}>
-              <Button variant="primary" onClick={continueClicked} disabled={continueDisabled}>Continue</Button>
-            </div>
-          )}
+          {small && continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
         </div>
 
         {!small && (
@@ -327,6 +312,25 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
           </div>
         )}
       </div>
+
+      {!small && (
+        // The sticky menu (§11.2): under both columns, never scrolled away and not crossed by the divider; the selected dates, the
+        // Base hire rate and Continue are always in reach.
+        <div className={styles.menu} data-testid="step-menu">
+          {state.period && <p className={styles.menuDates} data-testid="selected-line">{selectedLine(state.period)}</p>}
+          <div className={styles.rate} data-testid="base-hire-rate">
+            <div>
+              <div className={styles.rateLabel}>Base hire rate</div>
+              <div className={styles.rateSub}>Excludes add-ons</div>
+            </div>
+            <div className={styles.rateValue}>{rate}</div>
+          </div>
+          <div className={styles.menuAction}>
+            {continueError && !(state.period && state.selectedSlug) && <p className={styles.error} role="alert">{continueError}</p>}
+            <Button variant="primary" onClick={continueClicked} disabled={continueDisabled}>Continue</Button>
+          </div>
+        </div>
+      )}
 
       {small && (
         <BoatBar

@@ -1,4 +1,4 @@
-import { useId, useState, type MouseEvent } from 'react';
+import { useId, type MouseEvent } from 'react';
 import { formatMoney } from '@shared/utils/money';
 import { BoatImage } from '@/components/BoatImage/BoatImage';
 import type { CardBoat } from '../utils/availability';
@@ -9,7 +9,7 @@ import styles from './BoatCard.module.css';
 /** `compact`: the Booking details view. `detailed`: the Boats view and the small-screen boat expander (§11.2). */
 export type BoatCardLayout = 'compact' | 'detailed';
 
-/** Tags a card shows before "+{n} more". */
+/** Tags a card shows before "+{n} more", which opens More details at its Features tab. */
 export const SMALL_SCREEN_TAGS = 5;
 
 export interface BoatCardProps {
@@ -35,7 +35,6 @@ const CONTROL = '[data-card-control]';
  */
 export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, details, onToggle, onToggleDetails }: BoatCardProps) {
   const detailsId = useId();
-  const [allTags, setAllTags] = useState(false);
   const detailed = layout === 'detailed';
   const open = detailed && detailsOpen;
 
@@ -44,10 +43,11 @@ export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, d
     onToggle();
   };
 
-  // Once the details are ready the tags move into the details' Tags tab.
+  // Once the details are ready the tags move into the details' Features tab.
   const tagsInTabs = open && details.status === 'ready';
   const tags = detailed && !tagsInTabs ? boat.tags : [];
-  const shownTags = !allTags ? tags.slice(0, SMALL_SCREEN_TAGS) : tags;
+  // While the details are open but not ready (spinner or error) the tags can't move into the Features tab, so all of them show.
+  const shownTags = open ? tags : tags.slice(0, SMALL_SCREEN_TAGS);
   const hiddenTags = tags.length - shownTags.length;
 
   return (
@@ -97,7 +97,7 @@ export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, d
             {shownTags.map((t) => <li key={t} className={styles.tag}>{t}</li>)}
             {hiddenTags > 0 && (
               <li>
-                <button type="button" className={`${styles.tag} ${styles.moreTags}`} data-card-control onClick={() => setAllTags(true)}>
+                <button type="button" className={`${styles.tag} ${styles.moreTags}`} data-card-control onClick={onToggleDetails}>
                   +{hiddenTags} more
                 </button>
               </li>

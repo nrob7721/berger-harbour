@@ -9,6 +9,7 @@ import { PayButton, PaymentStep } from '@/features/deposit-checkout/components/D
 import { DetailsStep } from '@/features/details/components/DetailsStep';
 import { SummaryStep } from '@/features/summary/components/SummaryStep';
 import { useBoatDetails, useFleet, useFleetDetails } from '@/hooks/useFleet';
+import { useSmallScreen } from '@/hooks/useSmallScreen';
 import { BookingProvider, initialState, useBooking, type BookingState } from '@/lib/booking-state';
 import { resumeProgress } from '@/lib/resume-progress';
 import { clearSavedProgress, readSavedProgress } from '@/lib/saved-progress';
@@ -113,11 +114,12 @@ function Skeleton() {
 export function Steps({ fleet, requested }: { fleet: BoatsResponse; requested: BoatDetails | null }) {
   const { state, dispatch } = useBooking();
   const advance = useAdvance();
+  const small = useSmallScreen();
   const progress = (
     <StepProgress current={state.step} furthest={state.furthestStep} busy={state.jumpTarget !== null} onSelect={(step) => dispatch({ type: 'jump', step })} />
   );
   return (
-    <Shell progress={progress}>
+    <Shell progress={progress} fill={state.step === 'dates' && !small}>
       {state.step === 'dates' && (
         <DatesAndBoatStep fleet={fleet.boats} settings={fleet.settings} requestedBoat={requested} onContinue={() => void advance('details')} />
       )}
