@@ -197,6 +197,19 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
     };
   };
 
+  /** A mode's header: the active one names the mode, the other is the button that switches to it (the column's own background still works too). */
+  const modeHeader = (column: View, label: string) => {
+    const active = view === column;
+    return (
+      <h3 className={`${styles.modeHeader} ${active ? styles.modeActive : ''}`}>
+        <button type="button" className={styles.modeButton} aria-current={active ? 'true' : undefined} onClick={() => !active && switchView(column)}>
+          {label}
+          {!active && <span aria-hidden="true" className={styles.modeCue}>{column === 'boats' ? 'View boats ›' : '‹ Back to dates'}</span>}
+        </button>
+      </h3>
+    );
+  };
+
   /** The boat cards, in the right column or the boat expander. `picked` runs when a card selects a boat (not on a deselect). */
   const boatCards = (picked?: () => void) => (
     <BoatCards
@@ -238,6 +251,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
       {state.notice && <Notice tone="warning">{state.notice}</Notice>}
       <div className={`${styles.columns} ${boatsView ? styles.boatsView : ''}`} data-testid="dates-columns" data-view={small ? undefined : view}>
         <div {...columnProps('details', styles.left)}>
+          {!small && modeHeader('details', 'Booking details')}
           <div className={styles.filters}>
             <h3 className={styles.subheading}>Guests and features</h3>
             <div className={styles.guestRow}>
@@ -307,7 +321,7 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
 
         {!small && (
           <div {...columnProps('boats', styles.right)}>
-            <h3 className={styles.label}>Boats</h3>
+            {modeHeader('boats', 'Boats')}
             {boatCards()}
           </div>
         )}

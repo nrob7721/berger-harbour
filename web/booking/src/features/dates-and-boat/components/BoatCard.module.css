@@ -203,6 +203,20 @@
   grid-area: more;
   display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
+}
+
+.siteLink {
+  padding: 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-brand);
+}
+
+.siteLink:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
 }
 
 .moreButton {

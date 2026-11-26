@@ -34,6 +34,12 @@ export function seasonDates(season: PublicSeason): string {
   return season.ranges.length === 0 ? 'All other dates' : season.ranges.map((r) => `${dayMonth(r.start)} – ${dayMonth(r.end)}`).join(', ');
 }
 
+/**
+ * Experiment: the feature tags are hidden everywhere for now (the closed cards' tags and the Features tab). The tags are still
+ * loaded, saved and edited in Fleet; set this to true to show them again.
+ */
+export const SHOW_FEATURE_TAGS = false;
+
 type TabKey = 'features' | 'prices' | 'bedding';
 
 export interface BoatDetailsProps {
@@ -73,7 +79,7 @@ export function BoatDetails({ id, tags, boatName, state, mediaClassName, bodyCla
   const { details, seasons } = state;
   const rate = (seasonId: string, type: string) => details.rates.find((r) => r.seasonId === seasonId && r.periodType === type)?.price;
   const tabs: { key: TabKey; label: string }[] = [
-    ...(tags.length > 0 ? [{ key: 'features' as const, label: 'Features' }] : []),
+    ...(SHOW_FEATURE_TAGS && tags.length > 0 ? [{ key: 'features' as const, label: 'Features' }] : []),
     { key: 'prices', label: 'Prices' },
     ...(details.beddingDescription ? [{ key: 'bedding' as const, label: 'Bedding' }] : []),
   ];

@@ -6,6 +6,7 @@ import { currentState, renderWithBooking } from '@/testing/render';
 import { setSmallScreen } from '@/testing/screen-size';
 import type { BookingState } from '@/lib/booking-state';
 import type { BoatDetails } from '@/lib/types';
+import { SHOW_FEATURE_TAGS } from './BoatDetails';
 import { DatesAndBoatStep } from './DatesAndBoatStep';
 
 /** Renders the step with Mid-week chosen unless the state says otherwise (a fresh start has none, decision 44). */
@@ -580,7 +581,6 @@ describe('Dates & boat: views', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('heading', { name: 'Boats' }));
     expect(view()).toBe('boats');
-    expect(within(screen.getByTestId('boat-kalinda')).getByText('Sleeps 12')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'More details' })).toHaveLength(boats.length);
     await user.click(screen.getByRole('heading', { name: 'Guests and features' }));
     expect(view()).toBe('details');
@@ -669,7 +669,7 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     return card(slug);
   };
 
-  it('toggle the selection with a click anywhere outside their controls, and show the first 5 tags then "+n more"', async () => {
+  it.skipIf(!SHOW_FEATURE_TAGS)('toggle the selection with a click anywhere outside their controls, and show the first 5 tags then "+n more"', async () => {
     const user = await boatsView();
     expect(card('kalinda').getAllByRole('listitem').map((t) => t.textContent))
       .toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', '+2 more']);
@@ -745,8 +745,10 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     const user = await boatsView();
     const kalinda = await openDetails(user, 'kalinda');
     const panel = within(await kalinda.findByTestId('boat-details'));
-    expect(panel.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Features', 'Prices', 'Bedding']);
-    expect(panel.getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky']);
+    expect(panel.getAllByRole('tab').map((t) => t.textContent)).toEqual(SHOW_FEATURE_TAGS ? ['Features', 'Prices', 'Bedding'] : ['Prices', 'Bedding']);
+    if (SHOW_FEATURE_TAGS) {
+      expect(panel.getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky']);
+    }
     await user.click(panel.getByRole('tab', { name: 'Bedding' }));
     expect(panel.getByText('4 queens and bunks')).toBeInTheDocument();
     expect(currentState().selectedSlug).toBeNull(); // the tabs never select the boat
@@ -761,12 +763,12 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     expect(panel.getByText('Deposit $1,000.00 · Security bond $2,000.00')).toBeInTheDocument();
   });
 
-  it('show a spinner while the boat details are loading, with the tags straight away', async () => {
+  it('show a spinner while the boat details are loading', async () => {
     apiState.fleetDetailsDelay = 400;
     const user = await boatsView();
     const kalinda = await openDetails(user, 'kalinda');
     expect(kalinda.getByRole('status', { name: 'Loading boat details' })).toBeInTheDocument();
-    expect(kalinda.getByText('Sleeps 12')).toBeInTheDocument();
+    if (SHOW_FEATURE_TAGS) expect(kalinda.getByText('Sleeps 12')).toBeInTheDocument();
     expect(await kalinda.findByTestId('photo-reel', {}, { timeout: 2000 })).toBeInTheDocument();
   });
 
@@ -789,7 +791,7 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     const user = await boatsView({}, old);
     const card = await openDetails(user, 'old-boat');
     expect(await card.findByRole('img', { name: 'The old boat' })).toBeInTheDocument();
-    expect(card.getByText('Retired')).toBeInTheDocument();
+    if (SHOW_FEATURE_TAGS) expect(card.getByText('Retired')).toBeInTheDocument();
     expect(toggleOf('old-boat')).toHaveAttribute('aria-pressed', 'false');
   });
 });
@@ -797,7 +799,7 @@ describe('Dates & boat: detailed boat cards and More details', () => {
 describe('Dates & boat: small-screen detailed cards', () => {
   const toggle = () => within(screen.getByTestId('step-action-bar')).getByRole('button', { name: /See other boats|Choose a boat|Hide boats/ });
 
-  it('show the first 5 tags and "+{n} more", which opens More details at its Features tab', async () => {
+  it.skipIf(!SHOW_FEATURE_TAGS)('show the first 5 tags and "+{n} more", which opens More details at its Features tab', async () => {
     setSmallScreen(true);
     renderStep();
     const user = userEvent.setup();
@@ -841,5 +843,33 @@ describe('Dates & boat: photo reel on closed detailed cards', () => {
     expect(currentState().selectedSlug).toBeNull();
     await user.click(pacific.getByRole('button', { name: 'More details' }));
     expect(reel.getByTestId('photo-counter')).toHaveTextContent('2 / 4'); // opening keeps the reel where it was
+  });
+});
+
+describe('Dates & boat: mode headers and website links', () => {
+  it('switches mode with the header buttons, the active one marked current', async () => {
+    renderStep();
+    const user = userEvent.setup();
+    const details = screen.getByRole('button', { name: /^Booking details/ });
+    const boatsHeader = screen.getByRole('button', { name: /^Boats/ });
+    expect(details).toHaveAttribute('aria-current', 'true');
+    expect(boatsHeader).not.toHaveAttribute('aria-current');
+    await user.click(boatsHeader);
+    expect(screen.getByTestId('dates-columns')).toHaveAttribute('data-view', 'boats');
+    expect(boatsHeader).toHaveAttribute('aria-current', 'true');
+    await user.click(screen.getByRole('button', { name: /^Booking details/ }));
+    expect(screen.getByTestId('dates-columns')).toHaveAttribute('data-view', 'details');
+  });
+
+  it('links each detailed boat card to its page on the WordPress site, without selecting the boat', async () => {
+    renderStep();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /^Boats/ }));
+    const link = within(screen.getByTestId('boat-kalinda')).getByRole('link', { name: /View on our website/ });
+    expect(link).toHaveAttribute('href', 'https://bergerhouseboats.com.au/houseboats/kalinda/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    await user.click(link);
+    expect(currentState().selectedSlug).toBeNull();
   });
 });

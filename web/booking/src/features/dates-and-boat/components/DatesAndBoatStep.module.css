@@ -90,6 +90,56 @@
   outline-offset: -3px;
 }
 
+/* The mode headers: the top of each column, sticky while it scrolls; the inactive one is a button that switches to it. */
+.modeHeader {
+  position: sticky;
+  top: calc(-1 * var(--space-3));
+  z-index: 1;
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 16px;
+}
+
+.modeButton {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.modeActive .modeButton {
+  border-bottom-color: var(--c-brand);
+  color: var(--c-text);
+  cursor: default;
+}
+
+.modeHeader:not(.modeActive) .modeButton:hover {
+  color: var(--c-brand);
+  background: var(--c-brand-tint);
+}
+
+.modeButton:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: -3px;
+}
+
+.modeCue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-brand);
+}
+
 /* The sticky menu: as wide as the card above it, with the selected dates, the Base hire rate and Continue. */
 .menu {
   position: sticky;

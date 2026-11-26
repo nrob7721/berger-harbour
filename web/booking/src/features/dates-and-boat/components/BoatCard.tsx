@@ -1,8 +1,9 @@
 import { useId, type MouseEvent } from 'react';
 import { formatMoney } from '@shared/utils/money';
+import { boatPageUrl } from '@/config/env';
 import { BoatImage } from '@/components/BoatImage/BoatImage';
 import type { CardBoat } from '../utils/availability';
-import { BoatDetails, type MoreDetailsState } from './BoatDetails';
+import { BoatDetails, SHOW_FEATURE_TAGS, type MoreDetailsState } from './BoatDetails';
 import { PhotoReel } from './PhotoReel';
 import styles from './BoatCard.module.css';
 
@@ -45,7 +46,7 @@ export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, d
 
   // Once the details are ready the tags move into the details' Features tab.
   const tagsInTabs = open && details.status === 'ready';
-  const tags = detailed && !tagsInTabs ? boat.tags : [];
+  const tags = SHOW_FEATURE_TAGS && detailed && !tagsInTabs ? boat.tags : [];
   // While the details are open but not ready (spinner or error) the tags can't move into the Features tab, so all of them show.
   const shownTags = open ? tags : tags.slice(0, SMALL_SCREEN_TAGS);
   const hiddenTags = tags.length - shownTags.length;
@@ -117,6 +118,9 @@ export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, d
           >
             {open ? 'Hide details' : 'More details'}
           </button>
+          <a className={styles.siteLink} href={boatPageUrl(boat.slug)} target="_blank" rel="noopener noreferrer" data-card-control>
+            View on our website<span className="visually-hidden"> ({boat.name}, opens in a new tab)</span> ↗
+          </a>
         </div>
       )}
     </div>
