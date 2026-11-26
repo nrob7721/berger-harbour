@@ -13,15 +13,13 @@
 /*
  * The two views (decision 43), as one card. Booking details: the controls take most of the width and the compact cards a narrow
  * column. Boats: the left column narrows to about 360px and the detailed cards take the rest. The columns resize over about
- * 300ms; the one divider between them is the right column's left border, so it slides with the edge. On a desktop-sized viewport
+ * 300ms; the one divider between them is the right column's left border (no border around the pair), so it slides with the edge. On a desktop-sized viewport
  * the step fills the page and each column scrolls on its own, so the page never does (the sticky menu below never leaves).
  */
 .columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   align-items: stretch;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius);
   overflow: hidden;
   transition: grid-template-columns 0.3s ease;
 }
@@ -68,21 +66,14 @@
 .activeColumn,
 .inactiveColumn {
   padding: var(--space-3);
-  transition: background 0.15s;
 }
 
 .activeColumn:focus {
   outline: none;
 }
 
-/* The inactive column: a light grey shade that darkens on hover; a click on its background switches view. */
 .inactiveColumn {
-  background: rgb(30 40 50 / 0.045);
   cursor: pointer;
-}
-
-.inactiveColumn:hover {
-  background: rgb(30 40 50 / 0.085);
 }
 
 .inactiveColumn:focus-visible {
