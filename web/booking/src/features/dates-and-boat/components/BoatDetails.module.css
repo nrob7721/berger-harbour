@@ -78,3 +78,59 @@
   font-size: 13px;
   color: var(--c-text-muted);
 }
+
+.tabList {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tabButton {
+  padding: 4px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+
+.tabButton:focus-visible {
+  outline: 3px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+.tabActive {
+  border-bottom-color: var(--c-brand);
+  color: var(--c-brand);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 4px;
+  cursor: default;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-surface);
+  font-size: 12px;
+  line-height: 1.4;
+}

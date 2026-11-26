@@ -745,7 +745,12 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     const user = await boatsView();
     const kalinda = await openDetails(user, 'kalinda');
     const panel = within(await kalinda.findByTestId('boat-details'));
+    expect(panel.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Tags', 'Prices', 'Bedding']);
+    expect(panel.getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky']);
+    await user.click(panel.getByRole('tab', { name: 'Bedding' }));
     expect(panel.getByText('4 queens and bunks')).toBeInTheDocument();
+    expect(currentState().selectedSlug).toBeNull(); // the tabs never select the boat
+    await user.click(panel.getByRole('tab', { name: 'Prices' }));
     const table = panel.getByTestId('prices-table');
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Season', 'Midweek', 'Weekend', 'Week', 'Long Weekend']);
     const rows = within(table).getAllByRole('row').slice(1);
