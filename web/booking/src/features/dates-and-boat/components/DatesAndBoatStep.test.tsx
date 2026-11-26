@@ -669,10 +669,10 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     return card(slug);
   };
 
-  it('toggle the selection with a click anywhere outside their controls, and show every tag in order', async () => {
+  it('toggle the selection with a click anywhere outside their controls, and show the first 5 tags then "+n more"', async () => {
     const user = await boatsView();
     expect(card('kalinda').getAllByRole('listitem').map((t) => t.textContent))
-      .toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky']);
+      .toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', '+2 more']);
     await user.click(card('kalinda').getByText('Generator'));
     expect(toggleOf('kalinda')).toHaveAttribute('aria-pressed', 'true');
     await user.click(screen.getByTestId('boat-kalinda').querySelector('img')!);
@@ -745,7 +745,7 @@ describe('Dates & boat: detailed boat cards and More details', () => {
     const user = await boatsView();
     const kalinda = await openDetails(user, 'kalinda');
     const panel = within(await kalinda.findByTestId('boat-details'));
-    expect(panel.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Tags', 'Prices', 'Bedding']);
+    expect(panel.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Features', 'Prices', 'Bedding']);
     expect(panel.getAllByRole('listitem').map((t) => t.textContent)).toEqual(['Sleeps 12', '3 double bedrooms', 'Bunk room', 'Air conditioning', 'Generator', 'Upper-deck BBQ', 'Esky']);
     await user.click(panel.getByRole('tab', { name: 'Bedding' }));
     expect(panel.getByText('4 queens and bunks')).toBeInTheDocument();
@@ -822,5 +822,21 @@ describe('Dates & boat: small-screen detailed cards', () => {
     await user.click(pacific.getByRole('button', { name: 'Hide details' }));
     expect(toggle()).toHaveAttribute('aria-expanded', 'true');
     expect(currentState().selectedSlug).toBeNull();
+  });
+});
+
+describe('Dates & boat: photo reel on closed detailed cards', () => {
+  it('shows the photo reel instead of the thumbnail once the details have arrived, without opening More details', async () => {
+    renderStep();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('heading', { name: 'Boats' }));
+    const pacific = within(screen.getByTestId('boat-pacific-blue'));
+    const reel = within(await pacific.findByTestId('photo-reel'));
+    expect(pacific.getByRole('button', { name: 'More details' })).toHaveAttribute('aria-expanded', 'false');
+    await user.click(reel.getByRole('button', { name: 'Next photo' }));
+    expect(reel.getByTestId('photo-counter')).toHaveTextContent('2 / 4');
+    expect(currentState().selectedSlug).toBeNull();
+    await user.click(pacific.getByRole('button', { name: 'More details' }));
+    expect(reel.getByTestId('photo-counter')).toHaveTextContent('2 / 4'); // opening keeps the reel where it was
   });
 });

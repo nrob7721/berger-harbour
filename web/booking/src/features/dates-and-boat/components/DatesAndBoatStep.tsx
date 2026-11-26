@@ -201,7 +201,6 @@ export function DatesAndBoatStep({ fleet, settings, requestedBoat, onContinue }:
   const boatCards = (picked?: () => void) => (
     <BoatCards
       layout={small || boatsView ? 'detailed' : 'compact'}
-      small={small}
       openDetails={openDetails}
       detailsFor={detailsFor}
       onToggleDetails={toggleDetails}

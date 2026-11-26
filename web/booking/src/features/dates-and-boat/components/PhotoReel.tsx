@@ -8,6 +8,8 @@ export interface PhotoReelProps {
   boatName: string;
   /** The boat's photos in order; the first is the thumbnail image. */
   images: BoatImageInfo[];
+  /** Whether the photo's description shows as a caption under the photo (open card only). Default true. */
+  showCaption?: boolean;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface PhotoReelProps {
  * a caption. A touch swipe changes photo with the calendar's swipe rule. Only the current photo and the next one are loaded,
  * then one more ahead as the customer moves. A boat without photos shows the placeholder alone.
  */
-export function PhotoReel({ boatName, images }: PhotoReelProps) {
+export function PhotoReel({ boatName, images, showCaption = true }: PhotoReelProps) {
   const [index, setIndex] = useState(0);
   const [loadedUpTo, setLoadedUpTo] = useState(Math.min(1, images.length - 1));
   const count = images.length;
@@ -53,7 +55,7 @@ export function PhotoReel({ boatName, images }: PhotoReelProps) {
           </>
         )}
       </div>
-      {caption && <p className={styles.caption} data-testid="photo-caption">{caption}</p>}
+      {showCaption && caption && <p className={styles.caption} data-testid="photo-caption">{caption}</p>}
     </div>
   );
 }

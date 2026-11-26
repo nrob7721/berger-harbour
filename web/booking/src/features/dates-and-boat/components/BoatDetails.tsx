@@ -3,7 +3,6 @@ import { Button } from '@shared/components/Button/Button';
 import { Spinner } from '@shared/components/Spinner/Spinner';
 import { formatMoney } from '@shared/utils/money';
 import type { BoatImageInfo, BoatRate, PublicSeason } from '@/lib/types';
-import { PhotoReel } from './PhotoReel';
 import styles from './BoatDetails.module.css';
 
 /** What a boat's More details show: from `GET /api/boat-details`, or `GET /api/boats/{slug}` for an inactive requested boat. */
@@ -35,27 +34,27 @@ export function seasonDates(season: PublicSeason): string {
   return season.ranges.length === 0 ? 'All other dates' : season.ranges.map((r) => `${dayMonth(r.start)} – ${dayMonth(r.end)}`).join(', ');
 }
 
-type TabKey = 'tags' | 'prices' | 'bedding';
+type TabKey = 'features' | 'prices' | 'bedding';
 
 export interface BoatDetailsProps {
   id: string;
-  /** The boat's tags: shown in the Tags tab once the details are ready. */
+  /** The boat's tags: shown in the Features tab once the details are ready. */
   tags: string[];
   boatName: string;
   state: MoreDetailsState;
-  /** Where the photo reel (or the spinner or error in its place) goes: the card's image slot. */
+  /** Where the spinner or error goes while the details aren't ready: the card's image slot. */
   mediaClassName: string;
   /** Where the bedding and prices go: under the reel and tags. */
   bodyClassName: string;
 }
 
 /**
- * A boat card's More details (§11.2): the photo reel in place of the thumbnail, then the bedding description and the prices
- * table under the reel and tags. While `GET /api/boat-details` hasn't arrived a small spinner shows in their place; if it failed,
- * an error with Retry.
+ * A boat card's More details (§11.2): the Features, Prices and Bedding tabs under the reel and tags (the card itself shows the
+ * reel in the image slot once the details have arrived). While `GET /api/boat-details` hasn't arrived a small spinner shows in
+ * the image slot; if it failed, an error with Retry.
  */
 export function BoatDetails({ id, tags, boatName, state, mediaClassName, bodyClassName }: BoatDetailsProps) {
-  const [tab, setTab] = useState<TabKey>('tags');
+  const [tab, setTab] = useState<TabKey>('features');
   if (state.status !== 'ready') {
     return (
       <div id={`${id}-media`} className={`${mediaClassName} ${styles.pending}`} data-testid="boat-details-pending">
@@ -74,7 +73,7 @@ export function BoatDetails({ id, tags, boatName, state, mediaClassName, bodyCla
   const { details, seasons } = state;
   const rate = (seasonId: string, type: string) => details.rates.find((r) => r.seasonId === seasonId && r.periodType === type)?.price;
   const tabs: { key: TabKey; label: string }[] = [
-    ...(tags.length > 0 ? [{ key: 'tags' as const, label: 'Tags' }] : []),
+    ...(tags.length > 0 ? [{ key: 'features' as const, label: 'Features' }] : []),
     { key: 'prices', label: 'Prices' },
     ...(details.beddingDescription ? [{ key: 'bedding' as const, label: 'Bedding' }] : []),
   ];
@@ -89,9 +88,6 @@ export function BoatDetails({ id, tags, boatName, state, mediaClassName, bodyCla
   };
   return (
     <>
-      <div id={`${id}-media`} className={mediaClassName}>
-        <PhotoReel boatName={boatName} images={details.images} />
-      </div>
       <div id={`${id}-body`} className={`${bodyClassName} ${styles.body}`} data-testid="boat-details">
         <div className={styles.tabList} role="tablist" aria-label={`${boatName} details`}>
           {tabs.map((t) => (
@@ -113,7 +109,7 @@ export function BoatDetails({ id, tags, boatName, state, mediaClassName, bodyCla
           ))}
         </div>
         <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${active}`} className={styles.panel}>
-          {active === 'tags' && (
+          {active === 'features' && (
             <ul className={styles.tags} aria-label={`${boatName} features`}>
               {tags.map((t) => <li key={t} className={styles.tag}>{t}</li>)}
             </ul>

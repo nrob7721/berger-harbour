@@ -6,7 +6,6 @@ import styles from './BoatCards.module.css';
 export interface BoatCardsProps {
   /** `compact` in the Booking details view; `detailed` in the Boats view and the small-screen expander (§6.1). */
   layout: BoatCardLayout;
-  small: boolean;
   requested: CardBoat | null;
   /** The requested boat's grey reason, or null when it can be selected. */
   requestedReason: string | null;
@@ -33,7 +32,6 @@ export function BoatCards(props: BoatCardsProps) {
       key={boat.slug}
       boat={boat}
       layout={props.layout}
-      small={props.small}
       selected={boat.slug === selectedSlug}
       reason={reason}
       price={prices[boat.slug]}

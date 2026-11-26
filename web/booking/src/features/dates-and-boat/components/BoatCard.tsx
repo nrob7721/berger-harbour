@@ -3,19 +3,18 @@ import { formatMoney } from '@shared/utils/money';
 import { BoatImage } from '@/components/BoatImage/BoatImage';
 import type { CardBoat } from '../utils/availability';
 import { BoatDetails, type MoreDetailsState } from './BoatDetails';
+import { PhotoReel } from './PhotoReel';
 import styles from './BoatCard.module.css';
 
 /** `compact`: the Booking details view. `detailed`: the Boats view and the small-screen boat expander (§11.2). */
 export type BoatCardLayout = 'compact' | 'detailed';
 
-/** Tags shown on a small screen before "+{n} more". */
+/** Tags a card shows before "+{n} more". */
 export const SMALL_SCREEN_TAGS = 5;
 
 export interface BoatCardProps {
   boat: CardBoat;
   layout: BoatCardLayout;
-  /** On a small screen only the first 5 tags show at first. */
-  small: boolean;
   selected: boolean;
   /** The grey reason a requested boat can't be selected, or null. */
   reason: string | null;
@@ -34,7 +33,7 @@ const CONTROL = '[data-card-control]';
  * inner toggle button (`aria-pressed`) carrying the selection for keyboard and screen readers. A detailed card shows the boat's
  * tags and a More details button; opening the details never selects the boat, and selecting never opens them.
  */
-export function BoatCard({ boat, layout, small, selected, reason, price, detailsOpen, details, onToggle, onToggleDetails }: BoatCardProps) {
+export function BoatCard({ boat, layout, selected, reason, price, detailsOpen, details, onToggle, onToggleDetails }: BoatCardProps) {
   const detailsId = useId();
   const [allTags, setAllTags] = useState(false);
   const detailed = layout === 'detailed';
@@ -48,7 +47,7 @@ export function BoatCard({ boat, layout, small, selected, reason, price, details
   // Once the details are ready the tags move into the details' Tags tab.
   const tagsInTabs = open && details.status === 'ready';
   const tags = detailed && !tagsInTabs ? boat.tags : [];
-  const shownTags = small && !allTags ? tags.slice(0, SMALL_SCREEN_TAGS) : tags;
+  const shownTags = !allTags ? tags.slice(0, SMALL_SCREEN_TAGS) : tags;
   const hiddenTags = tags.length - shownTags.length;
 
   return (
@@ -61,13 +60,17 @@ export function BoatCard({ boat, layout, small, selected, reason, price, details
       ].join(' ')}
       onClick={onClick}
     >
-      {open ? (
-        <BoatDetails id={detailsId} tags={boat.tags} boatName={boat.name} state={details} mediaClassName={styles.media} bodyClassName={styles.details} />
-      ) : (
+      {detailed && details.status === 'ready' ? (
+        // The reel replaces the thumbnail as soon as the details have arrived, open or not, so photos can be flipped straight away.
+        <div id={`${detailsId}-media`} className={styles.media}>
+          <PhotoReel boatName={boat.name} images={details.details.images} showCaption={open} />
+        </div>
+      ) : !open ? (
         <div className={styles.media}>
           <BoatImage src={boat.thumbnailUrl} alt="" className={styles.image} />
         </div>
-      )}
+      ) : null}
+      {open && <BoatDetails id={detailsId} tags={boat.tags} boatName={boat.name} state={details} mediaClassName={styles.media} bodyClassName={styles.details} />}
       <div className={styles.info}>
         <button
           type="button"
