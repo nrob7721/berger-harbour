@@ -51,6 +51,12 @@ describe('resuming saved progress', () => {
     });
   });
 
+  it('opens Dates & boat when the boat was deselected after the Summary was reached', async () => {
+    apiState.drafts['draft-1'] = jane;
+    const resumed = await resumeProgress(saved({ selectedSlug: null }), boats);
+    expect(resumed).toMatchObject({ step: 'dates', selectedSlug: null, furthestStep: 'summary' });
+  });
+
   it('is discarded when the draft is gone', async () => {
     expect(await resumeProgress(saved(), boats)).toBeNull();
   });

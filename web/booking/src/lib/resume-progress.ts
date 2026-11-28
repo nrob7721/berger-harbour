@@ -44,6 +44,8 @@ export async function resumeProgress(saved: SavedProgress, fleet: BoatSummary[])
   }
   let step = atMost(saved.furthestStep, 'summary');
   if (!details && STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf('details')) step = 'details';
+  // A boat deselected on Dates & boat after the Summary was reached leaves furthestStep behind; every later step needs a boat and a period.
+  if (!saved.selectedSlug || !saved.period) step = 'dates';
 
   // 3. A saved period is checked again against the online rules and the selected boat's availability.
   if (saved.period && saved.typeOfStay) {
